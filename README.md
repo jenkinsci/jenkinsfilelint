@@ -92,6 +92,24 @@ jenkinsfilelint --skip '*/src/*.groovy' --skip 'vars/*.groovy' Jenkinsfile src/U
 
 The `--skip` option accepts glob patterns and can be used multiple times.
 
+### Including Only Specific Files
+
+Use the `--include` option to validate only files that match specified patterns (whitelist approach). Files not matching any include pattern are silently skipped:
+
+```bash
+# Only validate Jenkinsfiles (files starting with "Jenkinsfile")
+jenkinsfilelint --include 'Jenkinsfile*' Jenkinsfile Jenkinsfile.prod src/Utils.groovy
+
+# Only validate pipeline groovy files in a specific folder
+jenkinsfilelint --include 'pipelines/*.groovy' pipelines/deploy.groovy src/Utils.groovy
+
+# Use multiple include patterns
+jenkinsfilelint --include 'Jenkinsfile*' --include 'pipelines/*.groovy' \
+  Jenkinsfile pipelines/deploy.groovy src/Utils.groovy
+```
+
+The `--include` and `--skip` options can be combined: `--include` first narrows the set of files to consider, then `--skip` further excludes files within that set.
+
 ### Pre-commit Hook
 
 Create or update `.pre-commit-config.yaml` in your repository:
@@ -124,6 +142,17 @@ repos:
     hooks:
       - id: jenkinsfilelint
         args: ["--skip=*/src/*.groovy", "--skip=vars/*.groovy"]
+```
+
+To validate only specific files:
+
+```yaml
+repos:
+  - repo: https://github.com/shenxianpeng/jenkinsfilelint
+    rev: # or specific version tag
+    hooks:
+      - id: jenkinsfilelint
+        args: ["--include=Jenkinsfile*", "--include=pipelines/*.groovy"]
 ```
 
 > [!WARNING]

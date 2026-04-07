@@ -30,6 +30,29 @@ def should_skip_file(filepath: str, skip_patterns: Optional[List[str]]) -> bool:
     return False
 
 
+def should_include_file(filepath: str, include_patterns: Optional[List[str]]) -> bool:
+    """Check if a file should be included based on the provided patterns.
+
+    When include patterns are specified, only files matching at least one pattern
+    will be validated. Files that do not match any pattern are skipped.
+
+    Args:
+        filepath: Path to the file to check
+        include_patterns: List of glob patterns to match against, or None/empty
+
+    Returns:
+        True if the file should be included, False otherwise
+    """
+    if not include_patterns:
+        return True
+
+    path = Path(filepath)
+    for pattern in include_patterns:
+        if path.match(pattern):
+            return True
+    return False
+
+
 def main():
     """Main entry point for the CLI."""
     # Ensure stdout and stderr use UTF-8 encoding on Windows
@@ -90,6 +113,15 @@ def main():
         help="Glob pattern(s) for files to skip. Can be used multiple times. "
         "Example: --skip '*/src/*.groovy' --skip 'vars/*.groovy'",
     )
+    parser.add_argument(
+        "--include",
+        action="append",
+        default=[],
+        metavar="PATTERN",
+        help="Glob pattern(s) for files to include. When specified, only files "
+        "matching at least one pattern are validated. Can be used multiple times. "
+        "Example: --include 'Jenkinsfile*' --include 'pipelines/*.groovy'",
+    )
 
     args = parser.parse_args()
 
@@ -105,7 +137,13 @@ def main():
     printed_messages = set()  # Track messages already printed for deduplication
 
     for jenkinsfile in args.jenkinsfile:
-        # Check if file should be skipped
+        # Check if file should be included (whitelist)
+        if not should_include_file(jenkinsfile, args.include):
+            if args.verbose:
+                print(f"⊘ {jenkinsfile}: Skipped (does not match include pattern)")
+            continue
+
+        # Check if file should be skipped (blacklist)
         if should_skip_file(jenkinsfile, args.skip):
             if args.verbose:
                 print(f"⊘ {jenkinsfile}: Skipped (matches skip pattern)")

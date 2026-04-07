@@ -5,7 +5,7 @@ import os
 import pytest
 import tempfile
 from unittest.mock import patch, Mock
-from jenkinsfilelint.cli import main, should_skip_file
+from jenkinsfilelint.cli import main, should_skip_file, should_include_file
 
 
 class TestCLIMain:
@@ -414,3 +414,213 @@ class TestCLISkipOption:
             os.unlink(vars_file)
             os.rmdir(src_dir)
             os.rmdir(vars_dir)
+
+
+class TestShouldIncludeFile:
+    """Test the should_include_file function."""
+
+    def test_no_include_patterns_includes_all(self):
+        """Test that all files are included when no patterns are provided."""
+        assert should_include_file("src/MyClass.groovy", []) is True
+        assert should_include_file("Jenkinsfile", []) is True
+        assert should_include_file("Jenkinsfile", None) is True
+
+    def test_exact_match(self):
+        """Test exact filename match."""
+        assert should_include_file("Jenkinsfile", ["Jenkinsfile"]) is True
+        assert should_include_file("src/Other.groovy", ["Jenkinsfile"]) is False
+
+    def test_glob_pattern_wildcard(self):
+        """Test glob pattern with wildcard."""
+        assert should_include_file("pipelines/deploy.groovy", ["pipelines/*.groovy"]) is True
+        assert should_include_file("src/Utils.groovy", ["pipelines/*.groovy"]) is False
+
+    def test_glob_pattern_prefix(self):
+        """Test Jenkinsfile* pattern."""
+        assert should_include_file("Jenkinsfile", ["Jenkinsfile*"]) is True
+        assert should_include_file("Jenkinsfile.prod", ["Jenkinsfile*"]) is True
+        assert should_include_file("src/Utils.groovy", ["Jenkinsfile*"]) is False
+
+    def test_multiple_patterns(self):
+        """Test multiple include patterns (any match includes the file)."""
+        patterns = ["Jenkinsfile*", "pipelines/*.groovy"]
+        assert should_include_file("Jenkinsfile", patterns) is True
+        assert should_include_file("Jenkinsfile.prod", patterns) is True
+        assert should_include_file("pipelines/deploy.groovy", patterns) is True
+        assert should_include_file("src/Utils.groovy", patterns) is False
+
+
+class TestCLIIncludeOption:
+    """Test the CLI --include option."""
+
+    def test_include_matches_file(self, capsys):
+        """Test that only files matching --include are validated."""
+        f = tempfile.NamedTemporaryFile(
+            mode="w", delete=False, prefix="Jenkinsfile", suffix=""
+        )
+        f.write("pipeline { agent any }")
+        f.flush()
+        f.close()
+        temp_path = f.name
+
+        try:
+            with patch(
+                "sys.argv",
+                ["jenkinsfilelint", "--include", "Jenkinsfile*", temp_path],
+            ):
+                with pytest.raises(SystemExit) as exc_info:
+                    main()
+                # No Jenkins URL → credentials error → exit 1
+                assert exc_info.value.code == 1
+
+            captured = capsys.readouterr()
+            assert "credentials required" in captured.err.lower()
+        finally:
+            os.unlink(temp_path)
+
+    def test_include_skips_non_matching_file(self, capsys):
+        """Test that files not matching --include are skipped."""
+        f = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".groovy")
+        f.write("class Utils { }")
+        f.flush()
+        f.close()
+        temp_path = f.name
+
+        try:
+            with patch(
+                "sys.argv",
+                ["jenkinsfilelint", "--include", "Jenkinsfile*", temp_path],
+            ):
+                with pytest.raises(SystemExit) as exc_info:
+                    main()
+                # File skipped because it doesn't match the include pattern
+                assert exc_info.value.code == 0
+        finally:
+            os.unlink(temp_path)
+
+    def test_include_skips_non_matching_file_verbose(self, capsys):
+        """Test that skipped non-matching files are reported in verbose mode."""
+        f = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".groovy")
+        f.write("class Utils { }")
+        f.flush()
+        f.close()
+        temp_path = f.name
+
+        try:
+            with patch(
+                "sys.argv",
+                [
+                    "jenkinsfilelint",
+                    "--verbose",
+                    "--include",
+                    "Jenkinsfile*",
+                    temp_path,
+                ],
+            ):
+                with pytest.raises(SystemExit) as exc_info:
+                    main()
+                assert exc_info.value.code == 0
+
+            captured = capsys.readouterr()
+            assert "does not match include pattern" in captured.out
+        finally:
+            os.unlink(temp_path)
+
+    def test_include_and_skip_combined(self, capsys):
+        """Test combining --include and --skip options.
+
+        --include whitelists files, --skip then blacklists within that set.
+        """
+        groovy_dir = tempfile.mkdtemp()
+        pipeline_file = os.path.join(groovy_dir, "deploy.groovy")
+        helper_file = os.path.join(groovy_dir, "utils.groovy")
+
+        with open(pipeline_file, "w") as f:
+            f.write("pipeline { agent any }")
+        with open(helper_file, "w") as f:
+            f.write("def call() { }")
+
+        try:
+            with patch(
+                "sys.argv",
+                [
+                    "jenkinsfilelint",
+                    "--jenkins-url",
+                    "https://jenkins.example.com",
+                    "--include",
+                    "*.groovy",
+                    "--skip",
+                    "*/utils.groovy",
+                    pipeline_file,
+                    helper_file,
+                ],
+            ):
+                with patch("jenkinsfilelint.linter.requests.post") as mock_post:
+                    mock_response = Mock()
+                    mock_response.status_code = 200
+                    mock_response.json.return_value = {"status": "ok"}
+                    mock_response.raise_for_status = Mock()
+                    mock_post.return_value = mock_response
+
+                    with pytest.raises(SystemExit) as exc_info:
+                        main()
+                    assert exc_info.value.code == 0
+                    # Only deploy.groovy validated; utils.groovy is skipped
+                    mock_post.assert_called_once()
+        finally:
+            os.unlink(pipeline_file)
+            os.unlink(helper_file)
+            os.rmdir(groovy_dir)
+
+    def test_multiple_include_patterns(self, capsys):
+        """Test using multiple --include options."""
+        jenkinsfile = tempfile.NamedTemporaryFile(
+            mode="w", delete=False, prefix="Jenkinsfile"
+        )
+        jenkinsfile.write("pipeline { agent any }")
+        jenkinsfile.flush()
+        jenkinsfile.close()
+        jenkinsfile_path = jenkinsfile.name
+
+        groovy_dir = tempfile.mkdtemp()
+        pipeline_groovy = os.path.join(groovy_dir, "pipeline.groovy")
+        helper_groovy = os.path.join(groovy_dir, "utils.groovy")
+
+        with open(pipeline_groovy, "w") as f:
+            f.write("pipeline { agent any }")
+        with open(helper_groovy, "w") as f:
+            f.write("def call() { }")
+
+        try:
+            with patch(
+                "sys.argv",
+                [
+                    "jenkinsfilelint",
+                    "--jenkins-url",
+                    "https://jenkins.example.com",
+                    "--include",
+                    "Jenkinsfile*",
+                    "--include",
+                    "*/pipeline.groovy",
+                    jenkinsfile_path,
+                    pipeline_groovy,
+                    helper_groovy,
+                ],
+            ):
+                with patch("jenkinsfilelint.linter.requests.post") as mock_post:
+                    mock_response = Mock()
+                    mock_response.status_code = 200
+                    mock_response.json.return_value = {"status": "ok"}
+                    mock_response.raise_for_status = Mock()
+                    mock_post.return_value = mock_response
+
+                    with pytest.raises(SystemExit) as exc_info:
+                        main()
+                    assert exc_info.value.code == 0
+                    # Jenkinsfile and pipeline.groovy validated; utils.groovy skipped
+                    assert mock_post.call_count == 2
+        finally:
+            os.unlink(jenkinsfile_path)
+            os.unlink(pipeline_groovy)
+            os.unlink(helper_groovy)
+            os.rmdir(groovy_dir)
