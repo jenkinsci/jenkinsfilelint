@@ -133,6 +133,36 @@ class TestCLIMain:
         finally:
             os.unlink(temp_path)
 
+    def test_validate_verbose_shows_message_on_success(self, capsys):
+        """Test that verbose mode prints the validation message on success."""
+        f = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".groovy")
+        f.write("pipeline { agent any }")
+        f.flush()
+        f.close()
+        temp_path = f.name
+
+        try:
+            with patch(
+                "sys.argv",
+                ["jenkinsfilelint", "--verbose", "--jenkins-url", "https://jenkins.example.com", temp_path],
+            ):
+                with patch("jenkinsfilelint.linter.requests.post") as mock_post:
+                    mock_response = Mock()
+                    mock_response.status_code = 200
+                    mock_response.json.return_value = {"status": "ok"}
+                    mock_response.raise_for_status = Mock()
+                    mock_post.return_value = mock_response
+
+                    with pytest.raises(SystemExit) as exc_info:
+                        main()
+                    assert exc_info.value.code == 0
+
+            captured = capsys.readouterr()
+            assert "Validating" in captured.out
+            assert "Jenkinsfile successfully validated" in captured.out
+        finally:
+            os.unlink(temp_path)
+
     def test_validate_with_jenkins_url_argument(self):
         """Test validation with Jenkins URL argument."""
         f = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".groovy")
@@ -624,3 +654,39 @@ class TestCLIIncludeOption:
             os.unlink(pipeline_groovy)
             os.unlink(helper_groovy)
             os.rmdir(groovy_dir)
+
+
+class TestWindowsUTF8Encoding:
+    """Test UTF-8 encoding setup on Windows."""
+
+    def test_windows_utf8_stdout_and_stderr_wrapped(self):
+        """Test that stdout/stderr are wrapped with UTF-8 on win32 when needed."""
+        import io
+
+        mock_stdout = Mock()
+        mock_stdout.buffer = io.BytesIO()
+        mock_stderr = Mock()
+        mock_stderr.buffer = io.BytesIO()
+
+        with patch("sys.platform", "win32"):
+            with patch("sys.stdout", mock_stdout):
+                with patch("sys.stderr", mock_stderr):
+                    with patch("sys.argv", ["jenkinsfilelint", "--help"]):
+                        with pytest.raises(SystemExit):
+                            main()
+
+    def test_windows_utf8_already_wrapped_utf8(self):
+        """Test that stdout/stderr are not re-wrapped when already UTF-8 TextIOWrapper."""
+        import io
+
+        mock_stdout = Mock(spec=io.TextIOWrapper)
+        mock_stdout.encoding = "utf-8"
+        mock_stderr = Mock(spec=io.TextIOWrapper)
+        mock_stderr.encoding = "utf-8"
+
+        with patch("sys.platform", "win32"):
+            with patch("sys.stdout", mock_stdout):
+                with patch("sys.stderr", mock_stderr):
+                    with patch("sys.argv", ["jenkinsfilelint", "--help"]):
+                        with pytest.raises(SystemExit):
+                            main()
