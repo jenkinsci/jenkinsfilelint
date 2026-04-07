@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/shenxianpeng/jenkinsfilelint/actions/workflows/main.yml/badge.svg)](https://github.com/shenxianpeng/jenkinsfilelint/actions/workflows/main.yml)
 [![codecov](https://codecov.io/gh/shenxianpeng/jenkinsfilelint/graph/badge.svg?token=Z9UTXBL2XG)](https://codecov.io/gh/shenxianpeng/jenkinsfilelint)
+[![PyPI version](https://badge.fury.io/py/jenkinsfilelint.svg)](https://pypi.org/project/jenkinsfilelint/)
 
 A Python-based Jenkinsfile linter that validates Jenkinsfiles using Jenkins API.
 
