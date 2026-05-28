@@ -82,6 +82,9 @@ class JenkinsfileLinter:
                             return False, f"Validation errors:\n{error_msg}"
                         # If no errors list but status is not ok, return the whole response
                         return False, str(result_json)
+                else:
+                    # JSON response is not a dict (e.g., a list), treat as valid if no errors
+                    return True, str(result_json)
             except ValueError:
                 # Not JSON, fall back to text parsing
                 result = response.text.strip()

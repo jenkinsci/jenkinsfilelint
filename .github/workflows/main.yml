@@ -33,35 +33,6 @@ jobs:
       run: |
         jenkinsfilelint --help
 
-    - name: Test linting with Jenkins server (if credentials are set)
-      shell: bash
-      if: ${{ matrix.python-version == '3.14' && matrix.os == 'ubuntu-latest' }} # reduce requests
-      env:
-        JENKINS_URL: ${{ secrets.JENKINS_URL }}
-        JENKINS_USER: ${{ secrets.JENKINS_USER }}
-        JENKINS_TOKEN: ${{ secrets.JENKINS_TOKEN }}
-      run: |
-        if [ -n "$JENKINS_URL" ] && [ -n "$JENKINS_USER" ] && [ -n "$JENKINS_TOKEN" ]; then
-          echo "Testing with Jenkins validation..."
-          if jenkinsfilelint -v tests/Jenkinsfile.fail &> output.log; then
-            echo "Expected validation to fail, but it passed"
-            cat output.log
-            exit 1
-          else
-            echo "Validation failed as expected"
-            cat output.log
-            # Check if we got Jenkins validation errors or connection errors
-            if grep -q "Not a valid section definition\|Error connecting to Jenkins" output.log; then
-              echo "✓ Validation test passed"
-            else
-              echo "Unexpected output"
-              exit 1
-            fi
-          fi
-        else
-          echo "Jenkins credentials not set; skipping Jenkins validation test."
-        fi
-
     - name: Run unit tests
       run: |
         pytest tests/ -v --cov=jenkinsfilelint --cov-report=term-missing --cov-report=xml

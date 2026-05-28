@@ -262,6 +262,394 @@ class TestJenkinsfileLinterValidateWithJenkins:
         assert "Error reading file" in message
 
 
+class TestJenkinsfileLinterHTTPErrors:
+    """Test HTTP error responses from Jenkins."""
+
+    @patch("requests.post")
+    def test_validate_http_401(self, mock_post):
+        """Test validation when Jenkins returns HTTP 401 Unauthorized."""
+        from requests.exceptions import HTTPError
+
+        mock_response = Mock()
+        mock_response.status_code = 401
+        mock_response.raise_for_status.side_effect = HTTPError(
+            "401 Client Error: Unauthorized", response=mock_response
+        )
+        mock_post.return_value = mock_response
+
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
+            f.write("pipeline { agent any }")
+            f.flush()
+            temp_path = f.name
+
+        try:
+            linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com")
+            is_valid, message = linter._validate_with_jenkins(temp_path)
+            assert is_valid is False
+            assert "Error connecting to Jenkins" in message
+            assert "401" in message
+        finally:
+            os.unlink(temp_path)
+
+    @patch("requests.post")
+    def test_validate_http_403(self, mock_post):
+        """Test validation when Jenkins returns HTTP 403 Forbidden."""
+        from requests.exceptions import HTTPError
+
+        mock_response = Mock()
+        mock_response.status_code = 403
+        mock_response.raise_for_status.side_effect = HTTPError(
+            "403 Client Error: Forbidden", response=mock_response
+        )
+        mock_post.return_value = mock_response
+
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
+            f.write("pipeline { agent any }")
+            f.flush()
+            temp_path = f.name
+
+        try:
+            linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com")
+            is_valid, message = linter._validate_with_jenkins(temp_path)
+            assert is_valid is False
+            assert "Error connecting to Jenkins" in message
+            assert "403" in message
+        finally:
+            os.unlink(temp_path)
+
+    @patch("requests.post")
+    def test_validate_http_500(self, mock_post):
+        """Test validation when Jenkins returns HTTP 500 Internal Server Error."""
+        from requests.exceptions import HTTPError
+
+        mock_response = Mock()
+        mock_response.status_code = 500
+        mock_response.raise_for_status.side_effect = HTTPError(
+            "500 Server Error: Internal Server Error", response=mock_response
+        )
+        mock_post.return_value = mock_response
+
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
+            f.write("pipeline { agent any }")
+            f.flush()
+            temp_path = f.name
+
+        try:
+            linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com")
+            is_valid, message = linter._validate_with_jenkins(temp_path)
+            assert is_valid is False
+            assert "Error connecting to Jenkins" in message
+        finally:
+            os.unlink(temp_path)
+
+
+class TestJenkinsfileLinterTimeout:
+    """Test timeout scenarios."""
+
+    @patch("requests.post")
+    def test_validate_timeout(self, mock_post):
+        """Test validation when Jenkins request times out."""
+        import requests
+
+        mock_post.side_effect = requests.exceptions.Timeout("Connection timed out")
+
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
+            f.write("pipeline { agent any }")
+            f.flush()
+            temp_path = f.name
+
+        try:
+            linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com")
+            is_valid, message = linter._validate_with_jenkins(temp_path)
+            assert is_valid is False
+            assert "Error connecting to Jenkins" in message
+            assert "timed out" in message.lower()
+        finally:
+            os.unlink(temp_path)
+
+    @patch("requests.post")
+    def test_validate_connection_timeout(self, mock_post):
+        """Test validation when connection times out during connect phase."""
+        from requests.exceptions import ConnectTimeout
+
+        mock_post.side_effect = ConnectTimeout("Connection timed out")
+
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
+            f.write("pipeline { agent any }")
+            f.flush()
+            temp_path = f.name
+
+        try:
+            linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com")
+            is_valid, message = linter._validate_with_jenkins(temp_path)
+            assert is_valid is False
+            assert "Error connecting to Jenkins" in message
+        finally:
+            os.unlink(temp_path)
+
+
+class TestJenkinsfileLinterGroovyErrors:
+    """Test Groovy compilation error responses from Jenkins."""
+
+    @patch("requests.post")
+    def test_validate_workflowscript_error(self, mock_post):
+        """Test validation with Groovy WorkflowScript compilation error."""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.text = (
+            "WorkflowScript: 12: Expected a stage @ line 12, column 1.\n"
+            "   stages {\n"
+            "   ^\n"
+            "1 error"
+        )
+        mock_response.json.side_effect = ValueError("Not JSON")
+        mock_response.raise_for_status = Mock()
+        mock_post.return_value = mock_response
+
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
+            f.write("pipeline { agent any }")
+            f.flush()
+            temp_path = f.name
+
+        try:
+            linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com")
+            is_valid, message = linter._validate_with_jenkins(temp_path)
+            assert is_valid is False
+            assert "WorkflowScript" in message
+            assert "12" in message
+        finally:
+            os.unlink(temp_path)
+
+    @patch("requests.post")
+    def test_validate_unexpected_token_error(self, mock_post):
+        """Test validation with Groovy unexpected token error."""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.text = (
+            "WorkflowScript: 5: unexpected token: } @ line 5, column 1.\n"
+        )
+        mock_response.json.side_effect = ValueError("Not JSON")
+        mock_response.raise_for_status = Mock()
+        mock_post.return_value = mock_response
+
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
+            f.write("pipeline { }")
+            f.flush()
+            temp_path = f.name
+
+        try:
+            linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com")
+            is_valid, message = linter._validate_with_jenkins(temp_path)
+            assert is_valid is False
+            assert "unexpected token" in message
+        finally:
+            os.unlink(temp_path)
+
+    @patch("requests.post")
+    def test_validate_unable_to_resolve_class_error(self, mock_post):
+        """Test validation with unresolved class error."""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.text = (
+            "WorkflowScript: 3: unable to resolve class MyCustomClass\n"
+        )
+        mock_response.json.side_effect = ValueError("Not JSON")
+        mock_response.raise_for_status = Mock()
+        mock_post.return_value = mock_response
+
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
+            f.write("def x = new MyCustomClass()")
+            f.flush()
+            temp_path = f.name
+
+        try:
+            linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com")
+            is_valid, message = linter._validate_with_jenkins(temp_path)
+            assert is_valid is False
+            assert "unable to resolve class" in message
+        finally:
+            os.unlink(temp_path)
+
+    @patch("requests.post")
+    def test_validate_expected_error(self, mock_post):
+        """Test validation with syntax 'Expected' error pattern."""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.text = (
+            "WorkflowScript: 8: Expected a symbol @ line 8, column 5.\n"
+        )
+        mock_response.json.side_effect = ValueError("Not JSON")
+        mock_response.raise_for_status = Mock()
+        mock_post.return_value = mock_response
+
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
+            f.write("pipeline { agent any stages {} }")
+            f.flush()
+            temp_path = f.name
+
+        try:
+            linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com")
+            is_valid, message = linter._validate_with_jenkins(temp_path)
+            assert is_valid is False
+            assert "Expected" in message
+        finally:
+            os.unlink(temp_path)
+
+
+class TestJenkinsfileLinterJSONEdgeCases:
+    """Test edge cases in JSON response parsing."""
+
+    @patch("requests.post")
+    def test_validate_json_non_dict_response(self, mock_post):
+        """Test validation when JSON response is not a dict."""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = ["item1", "item2"]  # List, not dict
+        mock_response.raise_for_status = Mock()
+        mock_post.return_value = mock_response
+
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
+            f.write("pipeline { agent any }")
+            f.flush()
+            temp_path = f.name
+
+        try:
+            linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com")
+            is_valid, message = linter._validate_with_jenkins(temp_path)
+            # Non-dict JSON falls through to text parsing; no error indicators
+            # mean it's treated as valid
+            assert is_valid is True
+        finally:
+            os.unlink(temp_path)
+
+    @patch("requests.post")
+    def test_validate_json_status_ok_no_errors_list(self, mock_post):
+        """Test JSON with status=ok and extra fields."""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "status": "ok",
+            "data": {"result": "success"},
+        }
+        mock_response.raise_for_status = Mock()
+        mock_post.return_value = mock_response
+
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
+            f.write("pipeline { agent any }")
+            f.flush()
+            temp_path = f.name
+
+        try:
+            linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com")
+            is_valid, message = linter._validate_with_jenkins(temp_path)
+            assert is_valid is True
+            assert "successfully validated" in message
+        finally:
+            os.unlink(temp_path)
+
+    @patch("requests.post")
+    def test_validate_json_status_error_empty_data(self, mock_post):
+        """Test JSON error with empty data dict."""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "status": "error",
+            "data": {},
+        }
+        mock_response.raise_for_status = Mock()
+        mock_post.return_value = mock_response
+
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
+            f.write("pipeline { agent any }")
+            f.flush()
+            temp_path = f.name
+
+        try:
+            linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com")
+            is_valid, message = linter._validate_with_jenkins(temp_path)
+            assert is_valid is False
+            # Falls back to str(result_json) when no errors in data
+            assert "error" in message.lower()
+        finally:
+            os.unlink(temp_path)
+
+
+class TestJenkinsfileLinterFileScenarios:
+    """Test various file-related validation scenarios."""
+
+    @patch("requests.post")
+    def test_validate_with_unicode_content(self, mock_post):
+        """Test validation with Jenkinsfile containing Unicode characters."""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"status": "ok"}
+        mock_response.raise_for_status = Mock()
+        mock_post.return_value = mock_response
+
+        with tempfile.NamedTemporaryFile(mode="w", delete=False, encoding="utf-8") as f:
+            f.write('pipeline { agent any stages { stage("Déploiement") { steps { sh "echo 你好" } } } }')
+            f.flush()
+            temp_path = f.name
+
+        try:
+            linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com")
+            is_valid, message = linter._validate_with_jenkins(temp_path)
+            assert is_valid is True
+            # Verify the content was sent correctly
+            call_kwargs = mock_post.call_args[1]
+            assert "Déploiement" in call_kwargs["data"]["jenkinsfile"]
+            assert "你好" in call_kwargs["data"]["jenkinsfile"]
+        finally:
+            os.unlink(temp_path)
+
+    @patch("requests.post")
+    def test_validate_with_empty_file(self, mock_post):
+        """Test validation of an empty file via Jenkins."""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.side_effect = ValueError("Not JSON")
+        mock_response.text = ""
+        mock_response.raise_for_status = Mock()
+        mock_post.return_value = mock_response
+
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
+            f.write("")
+            f.flush()
+            temp_path = f.name
+
+        try:
+            linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com")
+            is_valid, message = linter._validate_with_jenkins(temp_path)
+            # Empty file with no error indicators → valid with empty result
+            assert is_valid is True
+            assert message == ""
+        finally:
+            os.unlink(temp_path)
+
+    @patch("requests.post")
+    def test_validate_empty_file_with_jenkins_error(self, mock_post):
+        """Test validation of an empty file when Jenkins returns error."""
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.side_effect = ValueError("Not JSON")
+        mock_response.text = "No Jenkinsfile specified"
+        mock_response.raise_for_status = Mock()
+        mock_post.return_value = mock_response
+
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
+            f.write("")
+            f.flush()
+            temp_path = f.name
+
+        try:
+            linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com")
+            is_valid, message = linter._validate_with_jenkins(temp_path)
+            assert is_valid is False
+            assert "No Jenkinsfile specified" in message
+        finally:
+            os.unlink(temp_path)
+
+
 class TestJenkinsfileLinterValidate:
     """Test the main validate method."""
 
