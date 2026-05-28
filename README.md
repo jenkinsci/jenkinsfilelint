@@ -16,6 +16,7 @@ Catch Jenkinsfile syntax errors before they break your CI.
 - [Features](#features)
 - [Installation](#installation)
 - [Usage](#usage)
+- [Security Notes](#security-notes)
 - [How It Works](#how-it-works)
 - [Requirements](#requirements)
 - [License](#license)
