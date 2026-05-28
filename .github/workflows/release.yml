@@ -4,40 +4,31 @@ on:
   release:
     branches: [main]
     types: [published]
-  workflow_dispatch:
-
-permissions:
-  contents: read
 
 jobs:
   deploy:
 
     runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/jenkinsfilelint
+
+    permissions:
+      id-token: write  # required for PyPI Trusted Publishing (OIDC)
 
     steps:
     - uses: actions/checkout@v6
-      # use fetch --all for setuptools_scm to work
       with:
-        fetch-depth: 0
+        fetch-depth: 0  # needed for setuptools_scm to derive version from git tags
     - name: Set up Python
       uses: actions/setup-python@v6
       with:
         python-version: '3.x'
-    - name: Install dependencies
-      run: python -m pip install --upgrade pip twine
-    - name: Build wheel
-      run: python -m pip wheel -w dist --no-deps .
+    - name: Install build tools
+      run: python -m pip install --upgrade pip build twine
+    - name: Build distribution
+      run: python -m build
     - name: Check distribution
       run: twine check dist/*
-    - name: Publish package (to TestPyPI)
-      if: github.event_name == 'workflow_dispatch' && github.repository == 'shenxianpeng/jenkinsfilelint'
-      env:
-        TWINE_USERNAME: __token__
-        TWINE_PASSWORD: ${{ secrets.TEST_PYPI_TOKEN }}
-      run: twine upload --repository testpypi dist/*
-    - name: Publish package (to PyPI)
-      if: github.event_name != 'workflow_dispatch' && github.repository == 'shenxianpeng/jenkinsfilelint'
-      env:
-        TWINE_USERNAME: __token__
-        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
-      run: twine upload dist/*
+    - name: Publish to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
