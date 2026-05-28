@@ -4,7 +4,11 @@
 [![codecov](https://codecov.io/gh/shenxianpeng/jenkinsfilelint/graph/badge.svg?token=Z9UTXBL2XG)](https://codecov.io/gh/shenxianpeng/jenkinsfilelint)
 [![PyPI version](https://img.shields.io/pypi/v/jenkinsfilelint )](https://pypi.org/project/jenkinsfilelint/)
 
-A Python-based Jenkinsfile linter that validates Jenkinsfiles using Jenkins API.
+Catch Jenkinsfile syntax errors before they break your CI.
+
+`jenkinsfilelint` validates Jenkinsfiles through your real Jenkins instance and works as a CLI or pre-commit hook.
+
+> **What it is:** A Jenkinsfile syntax gate — not a Groovy formatter, not a static analyzer. It sends your Jenkinsfile to your Jenkins server's Pipeline validation API and tells you if it will actually parse. If it passes here, it will pass on the server.
 
 ## Table of Contents
 
