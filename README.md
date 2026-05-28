@@ -156,7 +156,7 @@ Valid files produce no output. This format is ideal for:
 - **Jenkins pipeline self-validation** — parseable by pipeline scripts
 - **External validators** (ODS[^1], custom CI systems) — structured, machine-friendly output
 
-[^1]: [Open Delivery Stack](https://github.com/opendeliverystack) — an open-source CI/CD framework for automated software delivery.
+[^1]: [Open Delivery Stack](https://github.com/open-delivery-spec) — an open-source CI/CD framework for automated software delivery.
 
 ### Pre-commit Hook
 
