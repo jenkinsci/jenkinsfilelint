@@ -25,6 +25,7 @@ Catch Jenkinsfile syntax errors before they break your CI.
 - Supports both command-line usage and environment variables for configuration
 - Requires Jenkins credentials for validation
 - Supports skipping files that are not Jenkins pipelines (e.g., pure Groovy helper classes)
+- Machine-readable JSON and GitHub Actions annotation output for CI/CD integration
 
 ## Installation
 
@@ -113,6 +114,47 @@ jenkinsfilelint --include 'Jenkinsfile*' --include 'pipelines/*.groovy' \
 ```
 
 The `--include` and `--skip` options can be combined: `--include` first narrows the set of files to consider, then `--skip` further excludes files within that set.
+
+### Machine-Readable Output
+
+Use `--format` to get structured output for CI/CD automation. When specified, all human-readable output is suppressed.
+
+#### JSON (`--format json`)
+
+Outputs a JSON array of per-file results to stdout:
+
+```bash
+jenkinsfilelint Jenkinsfile --format json
+```
+
+```json
+[
+  {
+    "file": "Jenkinsfile",
+    "valid": false,
+    "message": "WorkflowScript: 12: Expected a stage @ line 12, column 5."
+  }
+]
+```
+
+Exit code is `0` when all files are valid, `1` otherwise.
+
+#### GitHub Annotations (`--format github`)
+
+Emits [GitHub Actions workflow annotations](https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/workflow-commands-for-github-actions#setting-an-error-message) for invalid files. Line numbers are parsed from Jenkins error messages:
+
+```bash
+jenkinsfilelint Jenkinsfile --format github
+```
+
+```text
+::error file=Jenkinsfile,line=12::WorkflowScript: 12: Expected a stage @ line 12, column 5.
+```
+
+Valid files produce no output. This format is ideal for:
+- **GitHub Actions** — inline annotations in PR diffs
+- **Jenkins pipeline self-validation** — parseable by pipeline scripts
+- **External validators** (ODS, custom CI systems) — structured, machine-friendly output
 
 ### Pre-commit Hook
 
