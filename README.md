@@ -141,7 +141,7 @@ CLI flags override env vars. There is no config file.
 
 ## How It Works
 
-`jenkinsfilelint` is a **syntax gate** — it checks that your Declarative Pipeline compiles, not that it's semantically correct.
+`jenkinsfilelint` is a **syntax gate** — it checks that your Declarative Pipeline syntax is valid.
 
 1. Reads the local Jenkinsfile.
 2. POSTs it to `<JENKINS_URL>/pipeline-model-converter/validate`.
