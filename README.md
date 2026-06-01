@@ -6,7 +6,7 @@
 
 Catch Jenkinsfile syntax errors before they break your CI.
 
-`jenkinsfilelint` sends your Jenkinsfiles to your Jenkins server's `<JENKINS_URL>/pipeline-model-converter/validate` endpoint for real syntax validation. It's primarily a [pre-commit](https://pre-commit.com/) hook, but also works as a CLI tool.
+`jenkinsfilelint` sends your Jenkinsfiles to your Jenkins server's `/pipeline-model-converter/validate` endpoint for real syntax validation. It's primarily a [pre-commit](https://pre-commit.com/) hook, but also works as a CLI tool.
 
 ## Quick Start
 
@@ -97,9 +97,15 @@ Supply credentials via environment variables (recommended) or CLI flags:
 
 \* Only required if your Jenkins requires authentication.
 
+> [!TIP]
+> Even if your Jenkins allows anonymous access for validation, using an API token is recommended for production setups.
+
 CLI flags override env vars. There is no config file.
 
 ## Security
+
+> [!WARNING]
+> Never hardcode credentials in config files — use environment variables.
 
 - **Never** put `--token` or `--username` in `.pre-commit-config.yaml` — use environment variables.
 - Use an API token, not your password.
@@ -107,13 +113,15 @@ CLI flags override env vars. There is no config file.
 
 ## How It Works
 
-`jenkinsfilelint` is a **syntax gate** — it checks that your Declarative Pipeline compiles, not that it's semantically correct.
+> [!NOTE]
+> `jenkinsfilelint` is a **syntax gate** — it checks that your Declarative Pipeline compiles, not that it's semantically correct.
 
 1. Reads the local Jenkinsfile.
 2. POSTs it to `<JENKINS_URL>/pipeline-model-converter/validate`.
 3. Jenkins parses the Pipeline and returns `"ok"` or errors.
 4. Errors are printed and the tool exits non-zero.
 
+> [!IMPORTANT]
 > It only answers: **"Will Jenkins accept this syntax?"**
 
 ## Requirements
