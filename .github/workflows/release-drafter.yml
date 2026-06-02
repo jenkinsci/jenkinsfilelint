@@ -15,7 +15,7 @@ jobs:
       contents: write
       # Required for autolabeler to add labels to PRs
       pull-requests: write
-      
+
     steps:
       - uses: release-drafter/release-drafter@v7
         with:

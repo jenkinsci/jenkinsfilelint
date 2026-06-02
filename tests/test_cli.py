@@ -144,7 +144,13 @@ class TestCLIMain:
         try:
             with patch(
                 "sys.argv",
-                ["jenkinsfilelint", "--verbose", "--jenkins-url", "https://jenkins.example.com", temp_path],
+                [
+                    "jenkinsfilelint",
+                    "--verbose",
+                    "--jenkins-url",
+                    "https://jenkins.example.com",
+                    temp_path,
+                ],
             ):
                 with patch("jenkinsfilelint.linter.requests.post") as mock_post:
                     mock_response = Mock()
@@ -462,7 +468,10 @@ class TestShouldIncludeFile:
 
     def test_glob_pattern_wildcard(self):
         """Test glob pattern with wildcard."""
-        assert should_include_file("pipelines/deploy.groovy", ["pipelines/*.groovy"]) is True
+        assert (
+            should_include_file("pipelines/deploy.groovy", ["pipelines/*.groovy"])
+            is True
+        )
         assert should_include_file("src/Utils.groovy", ["pipelines/*.groovy"]) is False
 
     def test_glob_pattern_prefix(self):

@@ -587,7 +587,9 @@ class TestJenkinsfileLinterFileScenarios:
         mock_post.return_value = mock_response
 
         with tempfile.NamedTemporaryFile(mode="w", delete=False, encoding="utf-8") as f:
-            f.write('pipeline { agent any stages { stage("Déploiement") { steps { sh "echo 你好" } } } }')
+            f.write(
+                'pipeline { agent any stages { stage("Déploiement") { steps { sh "echo 你好" } } } }'
+            )
             f.flush()
             temp_path = f.name
 
