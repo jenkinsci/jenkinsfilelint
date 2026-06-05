@@ -152,7 +152,7 @@ class TestCLIMain:
                     temp_path,
                 ],
             ):
-                with patch("jenkinsfilelint.linter.requests.post") as mock_post:
+                with patch("jenkinsfilelint.linter.requests.Session.post") as mock_post:
                     mock_response = Mock()
                     mock_response.status_code = 200
                     mock_response.json.return_value = {"status": "ok"}
@@ -187,7 +187,7 @@ class TestCLIMain:
                     temp_path,
                 ],
             ):
-                with patch("jenkinsfilelint.linter.requests.post") as mock_post:
+                with patch("jenkinsfilelint.linter.requests.Session.post") as mock_post:
                     mock_response = Mock()
                     mock_response.status_code = 200
                     mock_response.json.return_value = {"status": "ok"}
@@ -223,7 +223,7 @@ class TestCLIMain:
                     temp_path,
                 ],
             ):
-                with patch("jenkinsfilelint.linter.requests.post") as mock_post:
+                with patch("jenkinsfilelint.linter.requests.Session.post") as mock_post:
                     mock_response = Mock()
                     mock_response.status_code = 200
                     mock_response.json.return_value = {"status": "ok"}
@@ -268,7 +268,9 @@ class TestCLIMain:
                 },
             ):
                 with patch("sys.argv", ["jenkinsfilelint", temp_path]):
-                    with patch("jenkinsfilelint.linter.requests.post") as mock_post:
+                    with patch(
+                        "jenkinsfilelint.linter.requests.Session.post"
+                    ) as mock_post:
                         mock_response = Mock()
                         mock_response.status_code = 200
                         mock_response.json.return_value = {"status": "ok"}
@@ -397,7 +399,7 @@ class TestCLISkipOption:
                     jenkinsfile_path,
                 ],
             ):
-                with patch("jenkinsfilelint.linter.requests.post") as mock_post:
+                with patch("jenkinsfilelint.linter.requests.Session.post") as mock_post:
                     mock_response = Mock()
                     mock_response.status_code = 200
                     mock_response.json.return_value = {"status": "ok"}
@@ -594,7 +596,7 @@ class TestCLIIncludeOption:
                     helper_file,
                 ],
             ):
-                with patch("jenkinsfilelint.linter.requests.post") as mock_post:
+                with patch("jenkinsfilelint.linter.requests.Session.post") as mock_post:
                     mock_response = Mock()
                     mock_response.status_code = 200
                     mock_response.json.return_value = {"status": "ok"}
@@ -646,7 +648,7 @@ class TestCLIIncludeOption:
                     helper_groovy,
                 ],
             ):
-                with patch("jenkinsfilelint.linter.requests.post") as mock_post:
+                with patch("jenkinsfilelint.linter.requests.Session.post") as mock_post:
                     mock_response = Mock()
                     mock_response.status_code = 200
                     mock_response.json.return_value = {"status": "ok"}

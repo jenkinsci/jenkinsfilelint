@@ -26,6 +26,34 @@ class JenkinsfileLinter:
         self.username = username or os.environ.get("JENKINS_USER")
         self.token = token or os.environ.get("JENKINS_TOKEN")
 
+    def _get_crumb(self, session: requests.Session) -> dict:
+        """Fetch Jenkins CSRF crumb for POST requests.
+
+        The crumb is session-scoped (tied to JSESSIONID), so the same
+        requests.Session must be used for both the crumb GET and the
+        validation POST.
+
+        Args:
+            session: requests.Session to use for the request (preserves cookies).
+
+        Returns:
+            Dict with crumb headers, or empty dict if crumb issuer is not available.
+        """
+        crumb_url = f"{self.jenkins_url.rstrip('/')}/crumbIssuer/api/json"
+        auth = (self.username, self.token) if self.username and self.token else None
+        try:
+            response = session.get(crumb_url, auth=auth, timeout=10)
+            response.raise_for_status()
+            crumb_data = response.json()
+            crumb_value = crumb_data.get("crumb", "")
+            crumb_request_field = crumb_data.get("crumbRequestField", "Jenkins-Crumb")
+            if crumb_value:
+                return {crumb_request_field: crumb_value}
+        except requests.exceptions.RequestException:
+            # Crumb issuer may not be available; proceed without crumb
+            pass
+        return {}
+
     def _validate_with_jenkins(self, jenkinsfile_path: str) -> Tuple[bool, str]:
         """Validate Jenkinsfile using Jenkins API.
 
@@ -59,10 +87,24 @@ class JenkinsfileLinter:
             auth = (self.username, self.token)
 
         try:
+            # Use a single session for crumb + validation to preserve cookies.
+            # Jenkins CSRF crumbs are session-scoped (tied to JSESSIONID), so
+            # the crumb GET and validation POST must share the same session.
+            session = requests.Session()
+
+            # Fetch CSRF crumb (required for Jenkins 2.x+ with CSRF protection)
+            crumb_headers = self._get_crumb(session)
+
             # Send validation request
             # Jenkins expects 'jenkinsfile' as form data, not a file upload
             data = {"jenkinsfile": jenkinsfile_content}
-            response = requests.post(validation_url, data=data, auth=auth, timeout=30)
+            response = session.post(
+                validation_url,
+                data=data,
+                auth=auth,
+                headers=crumb_headers,
+                timeout=30,
+            )
 
             # Check response
             response.raise_for_status()

@@ -82,7 +82,7 @@ class TestJenkinsfileLinterValidateWithJenkins:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_successful_with_text_response(self, mock_post):
         """Test successful validation with text response."""
         mock_response = Mock()
@@ -105,7 +105,7 @@ class TestJenkinsfileLinterValidateWithJenkins:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_successful_with_json_response(self, mock_post):
         """Test successful validation with JSON response."""
         mock_response = Mock()
@@ -127,7 +127,7 @@ class TestJenkinsfileLinterValidateWithJenkins:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_with_errors_in_json(self, mock_post):
         """Test validation with errors in JSON response."""
         mock_response = Mock()
@@ -153,7 +153,7 @@ class TestJenkinsfileLinterValidateWithJenkins:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_with_json_error_no_error_list(self, mock_post):
         """Test validation with JSON error response but no errors list."""
         mock_response = Mock()
@@ -178,7 +178,7 @@ class TestJenkinsfileLinterValidateWithJenkins:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_with_errors_in_text(self, mock_post):
         """Test validation with errors in text response."""
         mock_response = Mock()
@@ -201,7 +201,7 @@ class TestJenkinsfileLinterValidateWithJenkins:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_with_authentication(self, mock_post):
         """Test validation with authentication."""
         mock_response = Mock()
@@ -232,7 +232,7 @@ class TestJenkinsfileLinterValidateWithJenkins:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_connection_error(self, mock_post):
         """Test validation when connection to Jenkins fails."""
         import requests
@@ -265,7 +265,7 @@ class TestJenkinsfileLinterValidateWithJenkins:
 class TestJenkinsfileLinterHTTPErrors:
     """Test HTTP error responses from Jenkins."""
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_http_401(self, mock_post):
         """Test validation when Jenkins returns HTTP 401 Unauthorized."""
         from requests.exceptions import HTTPError
@@ -291,7 +291,7 @@ class TestJenkinsfileLinterHTTPErrors:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_http_403(self, mock_post):
         """Test validation when Jenkins returns HTTP 403 Forbidden."""
         from requests.exceptions import HTTPError
@@ -317,7 +317,7 @@ class TestJenkinsfileLinterHTTPErrors:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_http_500(self, mock_post):
         """Test validation when Jenkins returns HTTP 500 Internal Server Error."""
         from requests.exceptions import HTTPError
@@ -346,7 +346,7 @@ class TestJenkinsfileLinterHTTPErrors:
 class TestJenkinsfileLinterTimeout:
     """Test timeout scenarios."""
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_timeout(self, mock_post):
         """Test validation when Jenkins request times out."""
         import requests
@@ -367,7 +367,7 @@ class TestJenkinsfileLinterTimeout:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_connection_timeout(self, mock_post):
         """Test validation when connection times out during connect phase."""
         from requests.exceptions import ConnectTimeout
@@ -391,7 +391,7 @@ class TestJenkinsfileLinterTimeout:
 class TestJenkinsfileLinterGroovyErrors:
     """Test Groovy compilation error responses from Jenkins."""
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_workflowscript_error(self, mock_post):
         """Test validation with Groovy WorkflowScript compilation error."""
         mock_response = Mock()
@@ -420,7 +420,7 @@ class TestJenkinsfileLinterGroovyErrors:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_unexpected_token_error(self, mock_post):
         """Test validation with Groovy unexpected token error."""
         mock_response = Mock()
@@ -445,7 +445,7 @@ class TestJenkinsfileLinterGroovyErrors:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_unable_to_resolve_class_error(self, mock_post):
         """Test validation with unresolved class error."""
         mock_response = Mock()
@@ -470,7 +470,7 @@ class TestJenkinsfileLinterGroovyErrors:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_expected_error(self, mock_post):
         """Test validation with syntax 'Expected' error pattern."""
         mock_response = Mock()
@@ -499,7 +499,7 @@ class TestJenkinsfileLinterGroovyErrors:
 class TestJenkinsfileLinterJSONEdgeCases:
     """Test edge cases in JSON response parsing."""
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_json_non_dict_response(self, mock_post):
         """Test validation when JSON response is not a dict."""
         mock_response = Mock()
@@ -522,7 +522,7 @@ class TestJenkinsfileLinterJSONEdgeCases:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_json_status_ok_no_errors_list(self, mock_post):
         """Test JSON with status=ok and extra fields."""
         mock_response = Mock()
@@ -547,7 +547,7 @@ class TestJenkinsfileLinterJSONEdgeCases:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_json_status_error_empty_data(self, mock_post):
         """Test JSON error with empty data dict."""
         mock_response = Mock()
@@ -577,7 +577,7 @@ class TestJenkinsfileLinterJSONEdgeCases:
 class TestJenkinsfileLinterFileScenarios:
     """Test various file-related validation scenarios."""
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_with_unicode_content(self, mock_post):
         """Test validation with Jenkinsfile containing Unicode characters."""
         mock_response = Mock()
@@ -604,7 +604,7 @@ class TestJenkinsfileLinterFileScenarios:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_with_empty_file(self, mock_post):
         """Test validation of an empty file via Jenkins."""
         mock_response = Mock()
@@ -628,7 +628,7 @@ class TestJenkinsfileLinterFileScenarios:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_empty_file_with_jenkins_error(self, mock_post):
         """Test validation of an empty file when Jenkins returns error."""
         mock_response = Mock()
@@ -662,7 +662,7 @@ class TestJenkinsfileLinterValidate:
         assert is_valid is False
         assert "File not found" in message
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_with_jenkins_url_uses_jenkins_validation(self, mock_post):
         """Test that Jenkins validation is used when URL is set."""
         mock_response = Mock()
@@ -699,3 +699,206 @@ class TestJenkinsfileLinterValidate:
             assert "jenkins url not provided" in message.lower()
         finally:
             os.unlink(temp_path)
+
+
+class TestJenkinsfileLinterGetCrumb:
+    """Test the _get_crumb method for CSRF protection."""
+
+    def test_get_crumb_success_standard_field(self):
+        """Test successful crumb fetch with standard field name."""
+        linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com")
+        mock_session = Mock()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "crumb": "abc123crumb",
+            "crumbRequestField": "Jenkins-Crumb",
+        }
+        mock_response.raise_for_status = Mock()
+        mock_session.get.return_value = mock_response
+
+        result = linter._get_crumb(mock_session)
+
+        assert result == {"Jenkins-Crumb": "abc123crumb"}
+        mock_session.get.assert_called_once()
+
+    def test_get_crumb_success_custom_field(self):
+        """Test crumb fetch with a custom request field name."""
+        linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com")
+        mock_session = Mock()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "crumb": "xyz789crumb",
+            "crumbRequestField": ".crumb",
+        }
+        mock_response.raise_for_status = Mock()
+        mock_session.get.return_value = mock_response
+
+        result = linter._get_crumb(mock_session)
+
+        assert result == {".crumb": "xyz789crumb"}
+
+    def test_get_crumb_empty_value(self):
+        """Test crumb fetch when crumb value is empty."""
+        linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com")
+        mock_session = Mock()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "crumb": "",
+            "crumbRequestField": "Jenkins-Crumb",
+        }
+        mock_response.raise_for_status = Mock()
+        mock_session.get.return_value = mock_response
+
+        result = linter._get_crumb(mock_session)
+
+        # Empty crumb should return empty dict
+        assert result == {}
+
+    def test_get_crumb_missing_crumb_field(self):
+        """Test crumb fetch when JSON has no crumb field."""
+        linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com")
+        mock_session = Mock()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"crumbRequestField": "Jenkins-Crumb"}
+        mock_response.raise_for_status = Mock()
+        mock_session.get.return_value = mock_response
+
+        result = linter._get_crumb(mock_session)
+
+        assert result == {}
+
+    def test_get_crumb_http_404(self):
+        """Test crumb fetch when crumb issuer returns 404 (not available)."""
+        import requests as real_requests
+
+        linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com")
+        mock_session = Mock()
+        mock_response = Mock()
+        mock_response.raise_for_status.side_effect = real_requests.exceptions.HTTPError(
+            "404 Not Found", response=Mock(status_code=404)
+        )
+        mock_session.get.return_value = mock_response
+
+        result = linter._get_crumb(mock_session)
+
+        # Should gracefully return empty dict
+        assert result == {}
+
+    def test_get_crumb_connection_error(self):
+        """Test crumb fetch when connection fails."""
+        import requests as real_requests
+
+        linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com")
+        mock_session = Mock()
+        mock_session.get.side_effect = real_requests.exceptions.ConnectionError(
+            "Connection refused"
+        )
+
+        result = linter._get_crumb(mock_session)
+
+        # Should gracefully return empty dict
+        assert result == {}
+
+    def test_get_crumb_timeout(self):
+        """Test crumb fetch when request times out."""
+        import requests as real_requests
+
+        linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com")
+        mock_session = Mock()
+        mock_session.get.side_effect = real_requests.exceptions.Timeout(
+            "Connection timed out"
+        )
+
+        result = linter._get_crumb(mock_session)
+
+        # Should gracefully return empty dict
+        assert result == {}
+
+    def test_get_crumb_with_auth(self):
+        """Test crumb fetch passes auth credentials."""
+        linter = JenkinsfileLinter(
+            jenkins_url="https://jenkins.example.com",
+            username="testuser",
+            token="testtoken",
+        )
+        mock_session = Mock()
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "crumb": "auth-crumb",
+            "crumbRequestField": "Jenkins-Crumb",
+        }
+        mock_response.raise_for_status = Mock()
+        mock_session.get.return_value = mock_response
+
+        result = linter._get_crumb(mock_session)
+
+        assert result == {"Jenkins-Crumb": "auth-crumb"}
+        # Verify auth was passed
+        call_kwargs = mock_session.get.call_args[1]
+        assert call_kwargs["auth"] == ("testuser", "testtoken")
+
+    def test_validate_includes_crumb_in_post(self):
+        """Test that crumb headers are included in the validation POST request."""
+        linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com")
+
+        with (
+            tempfile.NamedTemporaryFile(mode="w", delete=False) as f,
+            patch("requests.Session.post") as mock_post,
+        ):
+            f.write("pipeline { agent any }")
+            f.flush()
+            temp_path = f.name
+
+            mock_response = Mock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {"status": "ok"}
+            mock_response.raise_for_status = Mock()
+            mock_post.return_value = mock_response
+
+            is_valid, message = linter._validate_with_jenkins(temp_path)
+
+            # Verify crumb header was passed to POST
+            mock_post.assert_called_once()
+            call_kwargs = mock_post.call_args[1]
+            assert "headers" in call_kwargs
+            assert call_kwargs["headers"] == {"Jenkins-Crumb": "mock-crumb"}
+            assert is_valid is True
+
+    def test_validate_works_when_crumb_fails(self):
+        """Test that validation still works when crumb fetch fails."""
+        import requests as real_requests
+
+        linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com")
+
+        with (
+            tempfile.NamedTemporaryFile(mode="w", delete=False) as f,
+            patch("requests.Session.get") as mock_get,
+            patch("requests.Session.post") as mock_post,
+        ):
+            f.write("pipeline { agent any }")
+            f.flush()
+            temp_path = f.name
+
+            # Crumb fetch fails
+            mock_get.side_effect = real_requests.exceptions.ConnectionError(
+                "Connection refused"
+            )
+
+            mock_response = Mock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {"status": "ok"}
+            mock_response.raise_for_status = Mock()
+            mock_post.return_value = mock_response
+
+            is_valid, message = linter._validate_with_jenkins(temp_path)
+
+            # Should still validate successfully (with empty headers)
+            mock_post.assert_called_once()
+            call_kwargs = mock_post.call_args[1]
+            assert call_kwargs["headers"] == {}
+            assert is_valid is True
