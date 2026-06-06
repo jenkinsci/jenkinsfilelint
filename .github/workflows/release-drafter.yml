@@ -19,4 +19,4 @@ jobs:
     steps:
       - uses: release-drafter/release-drafter@v7
         with:
-          config-name: github:shenxianpeng/.github:/.github/release-drafter.yml
+          config-name: github:jenkinsci/.github:/.github/release-drafter.yml
