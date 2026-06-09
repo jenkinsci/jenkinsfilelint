@@ -1,0 +1,6 @@
+# Extends the shared Jenkins Release Drafter configuration
+# but overrides versioning to use full semver (x.y.z) instead of (x.y).
+_extends: github:jenkinsci/.github:/.github/release-drafter.yml
+name-template: $NEXT_PATCH_VERSION
+tag-template: $NEXT_PATCH_VERSION
+version-template: $MAJOR.$MINOR.$PATCH
