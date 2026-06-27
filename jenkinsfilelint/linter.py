@@ -14,9 +14,7 @@ class JenkinsfileLinter:
     """
 
     @staticmethod
-    def _pick(
-        explicit: Optional[str], env_var: str
-    ) -> Optional[str]:
+    def _pick(explicit: Optional[str], env_var: str) -> Optional[str]:
         """Return *explicit* if set, otherwise lookup *env_var* in the environment."""
         return explicit if explicit is not None else os.environ.get(env_var)
 
