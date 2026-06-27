@@ -265,13 +265,15 @@ class TestDockerRunner:
         r = DockerRunner(image="explicit:tag")
         assert r.image == "explicit:tag"
 
-    def test_file_not_found(self):
+    @patch("shutil.which", return_value="/usr/bin/docker")
+    def test_file_not_found(self, mock_which):
         r = DockerRunner()
         ok, msg = r.validate("/nonexistent")
         assert ok is False
         assert "Error reading file" in msg
 
-    def test_file_read_error(self):
+    @patch("shutil.which", return_value="/usr/bin/docker")
+    def test_file_read_error(self, mock_which):
         ok, msg = DockerRunner().validate("/nonexistent/file.groovy")
         assert ok is False
         assert "Error reading file" in msg
