@@ -40,7 +40,7 @@ class _RunnerRegistry:
         ):
             try:
                 mod = importlib.import_module(modname)
-            except Exception:
+            except Exception:  # pragma: no cover
                 continue
 
             for name in dir(mod):
