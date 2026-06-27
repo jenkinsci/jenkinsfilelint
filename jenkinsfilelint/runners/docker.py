@@ -91,7 +91,8 @@ class DockerRunner(ValidationRunner):
             # Extract meaningful errors from lint output
             lines = (result.stdout or "").splitlines()
             errors = [
-                line for line in lines
+                line
+                for line in lines
                 if line.strip() and "Linting" not in line and "Done" not in line
             ]
             if errors:
