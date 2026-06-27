@@ -16,7 +16,7 @@ Usage::
     ok, msg = runner.validate("Jenkinsfile")
 """
 
-from typing import Dict, List, Optional, Type
+from typing import Dict, List, Type
 from .base import ValidationRunner
 
 
