@@ -34,16 +34,12 @@ class DockerRunner(ValidationRunner):
                 "(e.g. --runner jenkins).",
             )
 
-        # Verify the file is readable before spinning up Docker
-        try:
-            with open(jenkinsfile_path, "r", encoding="utf-8") as f:
-                f.read()
-        except IOError as e:
-            return False, f"Error reading file: {e}"
-
         temp_dir = tempfile.mkdtemp(prefix="jenkinsfilelint-")
         try:
-            shutil.copy2(jenkinsfile_path, os.path.join(temp_dir, "Jenkinsfile"))
+            try:
+                shutil.copy2(jenkinsfile_path, os.path.join(temp_dir, "Jenkinsfile"))
+            except IOError as e:
+                return False, f"Error reading file: {e}"
 
             try:
                 result = subprocess.run(
@@ -74,11 +70,10 @@ class DockerRunner(ValidationRunner):
                     f"docker pull {self.image}",
                 )
 
-            combined = (result.stdout or "") + "\n" + (result.stderr or "")
-
-            if "Cannot connect to the Docker daemon" in combined:
+            stderr = (result.stderr or "").strip()
+            if "Cannot connect to the Docker daemon" in stderr:
                 return False, "Cannot connect to Docker daemon. Is Docker running?"
-            if "Unable to find image" in combined and "locally" in combined:
+            if "Unable to find image" in stderr and "locally" in stderr:
                 return (
                     False,
                     f"Docker image '{self.image}' not found. "
@@ -97,8 +92,8 @@ class DockerRunner(ValidationRunner):
             ]
             if errors:
                 return False, "Validation errors:\n" + "\n".join(errors)
-            if result.stderr and result.stderr.strip():
-                return False, result.stderr.strip()
+            if stderr:
+                return False, stderr
             return False, "Jenkinsfile validation failed"
 
         finally:

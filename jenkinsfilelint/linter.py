@@ -13,6 +13,13 @@ class JenkinsfileLinter:
     New runners are auto-discovered from the ``runners/`` package.
     """
 
+    @staticmethod
+    def _pick(
+        explicit: Optional[str], env_var: str
+    ) -> Optional[str]:
+        """Return *explicit* if set, otherwise lookup *env_var* in the environment."""
+        return explicit if explicit is not None else os.environ.get(env_var)
+
     def __init__(
         self,
         jenkins_url: Optional[str] = None,
@@ -36,23 +43,21 @@ class JenkinsfileLinter:
 
         self._runner_name = runner
 
-        # Collect kwargs that are intended for the runner
+        # Collect kwargs that are intended for the runner,
+        # preferring explicit arguments over environment variables
         kwargs = dict(runner_kwargs)
-        if jenkins_url or os.environ.get("JENKINS_URL"):
-            if jenkins_url is not None:
-                kwargs.setdefault("jenkins_url", jenkins_url)
-            else:
-                kwargs.setdefault("jenkins_url", os.environ.get("JENKINS_URL"))
-        if username or os.environ.get("JENKINS_USER"):
-            if username is not None:
-                kwargs.setdefault("username", username)
-            else:
-                kwargs.setdefault("username", os.environ.get("JENKINS_USER"))
-        if token or os.environ.get("JENKINS_TOKEN"):
-            if token is not None:
-                kwargs.setdefault("token", token)
-            else:
-                kwargs.setdefault("token", os.environ.get("JENKINS_TOKEN"))
+
+        jenkins_url = self._pick(jenkins_url, "JENKINS_URL")
+        if jenkins_url is not None:
+            kwargs.setdefault("jenkins_url", jenkins_url)
+
+        username = self._pick(username, "JENKINS_USER")
+        if username is not None:
+            kwargs.setdefault("username", username)
+
+        token = self._pick(token, "JENKINS_TOKEN")
+        if token is not None:
+            kwargs.setdefault("token", token)
 
         # Only pass kwargs that the runner's __init__ actually accepts
         try:
@@ -82,8 +87,6 @@ class JenkinsfileLinter:
         Returns:
             ``(is_valid, message)``
         """
-        import os as _os
-
-        if not _os.path.isfile(jenkinsfile_path):
+        if not os.path.isfile(jenkinsfile_path):
             return False, f"File not found: {jenkinsfile_path}"
         return self._runner.validate(jenkinsfile_path)
