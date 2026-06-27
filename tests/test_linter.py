@@ -242,6 +242,26 @@ class TestJenkinsApiRunner:
         finally:
             os.unlink(p)
 
+    @patch("jenkinsfilelint.runners.jenkins_api.requests.post")
+    def test_json_error_no_errors_list(self, mock_post):
+        """JSON response where status is not 'ok' and 'errors' key is missing."""
+        mock_resp = Mock(status_code=200)
+        mock_resp.json.return_value = {"status": "error", "message": "Something broke"}
+        mock_resp.raise_for_status = Mock()
+        mock_post.return_value = mock_resp
+
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
+            f.write("pipeline { }")
+            f.flush()
+            p = f.name
+        try:
+            r = JenkinsApiRunner(jenkins_url="https://jenkins.example.com")
+            ok, msg = r.validate(p)
+            assert ok is False
+            assert "Something broke" in msg
+        finally:
+            os.unlink(p)
+
 
 # ===========================================================================
 # DockerRunner
@@ -399,6 +419,44 @@ class TestDockerRunner:
                 assert "timed out" in msg.lower()
             finally:
                 os.unlink(p)
+
+    @patch("shutil.which", return_value="/usr/bin/docker")
+    @patch("subprocess.run")
+    def test_daemon_connection_error(self, mock_run, mock_which):
+        """Docker installed but daemon not running."""
+        mock_run.return_value = Mock(
+            returncode=1,
+            stdout="",
+            stderr="Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?",
+        )
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
+            f.write("pipeline { }")
+            p = f.name
+        try:
+            ok, msg = DockerRunner().validate(p)
+            assert ok is False
+            assert "Cannot connect to Docker daemon" in msg
+        finally:
+            os.unlink(p)
+
+    @patch("shutil.which", return_value="/usr/bin/docker")
+    @patch("subprocess.run")
+    def test_image_not_found(self, mock_run, mock_which):
+        """Docker image not available locally and pull fails."""
+        mock_run.return_value = Mock(
+            returncode=1,
+            stdout="",
+            stderr="Unable to find image 'jenkins/jenkinsfile-runner:latest' locally",
+        )
+        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
+            f.write("pipeline { }")
+            p = f.name
+        try:
+            ok, msg = DockerRunner().validate(p)
+            assert ok is False
+            assert "not found" in msg.lower()
+        finally:
+            os.unlink(p)
 
 
 # ===========================================================================

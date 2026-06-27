@@ -1,0 +1,34 @@
+  #!/usr/bin/env python3
+> """Base class for all validation runners."""
+  
+> from abc import ABC, abstractmethod
+> from typing import Tuple
+  
+  
+> class ValidationRunner(ABC):
+>     """Abstract base class for Jenkinsfile validation backends.
+  
+>     Subclasses must implement ``validate()`` and provide a unique ``name``.
+>     The runner is automatically discovered and registered when placed in the
+>     ``runners/`` package with a name ending in ``_runner``.
+>     """
+  
+      #: Short identifier used in ``--runner`` CLI arguments.
+      #: Each subclass **must** override this.
+>     name: str = ""
+  
+      #: Human-readable description shown in ``--help``.
+>     description: str = ""
+  
+>     @abstractmethod
+>     def validate(self, jenkinsfile_path: str) -> Tuple[bool, str]:
+>         """Validate a Jenkinsfile.
+  
+>         Args:
+>             jenkinsfile_path: Absolute or relative path to the Jenkinsfile.
+  
+>         Returns:
+>             A tuple ``(is_valid, message)``:
+>             - ``is_valid`` is ``True`` when the file is syntactically correct.
+>             - ``message`` contains details on success or failure.
+>         """
