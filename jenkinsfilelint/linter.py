@@ -1,132 +1,89 @@
 #!/usr/bin/env python3
-"""Core linter module for validating Jenkinsfiles."""
+"""Core linter module — facade over the runner registry."""
 
 import os
-import requests
 from typing import Tuple, Optional
+from .runners import registry
 
 
 class JenkinsfileLinter:
-    """Linter for validating Jenkinsfiles using Jenkins API."""
+    """Linter for validating Jenkinsfiles.
+
+    Delegates to a ``ValidationRunner`` chosen via *runner*.
+    New runners are auto-discovered from the ``runners/`` package.
+    """
 
     def __init__(
         self,
         jenkins_url: Optional[str] = None,
         username: Optional[str] = None,
         token: Optional[str] = None,
+        runner: str = "jenkins",
+        **runner_kwargs,
     ):
         """Initialize the linter.
 
         Args:
-            jenkins_url: Jenkins server URL (optional, can be set via JENKINS_URL env var)
-            username: Jenkins username (optional, can be set via JENKINS_USER env var)
-            token: Jenkins API token (optional, can be set via JENKINS_TOKEN env var)
+            jenkins_url: Jenkins server URL (used by the ``jenkins`` runner).
+            username: Jenkins username (used by the ``jenkins`` runner).
+            token: Jenkins API token (used by the ``jenkins`` runner).
+            runner: Validation backend name. Run ``jenkinsfilelint --help`` for
+                the list of available runners. Defaults to ``"jenkins"``.
+            **runner_kwargs: Additional keyword arguments forwarded to the
+                runner's constructor (e.g. ``image=`` for the ``docker`` runner).
         """
-        self.jenkins_url = jenkins_url or os.environ.get("JENKINS_URL")
-        self.username = username or os.environ.get("JENKINS_USER")
-        self.token = token or os.environ.get("JENKINS_TOKEN")
+        import inspect
 
-    def _validate_with_jenkins(self, jenkinsfile_path: str) -> Tuple[bool, str]:
-        """Validate Jenkinsfile using Jenkins API.
+        self._runner_name = runner
 
-        Args:
-            jenkinsfile_path: Path to the Jenkinsfile
+        # Collect kwargs that are intended for the runner
+        kwargs = dict(runner_kwargs)
+        if jenkins_url or os.environ.get("JENKINS_URL"):
+            if jenkins_url is not None:
+                kwargs.setdefault("jenkins_url", jenkins_url)
+            else:
+                kwargs.setdefault("jenkins_url", os.environ.get("JENKINS_URL"))
+        if username or os.environ.get("JENKINS_USER"):
+            if username is not None:
+                kwargs.setdefault("username", username)
+            else:
+                kwargs.setdefault("username", os.environ.get("JENKINS_USER"))
+        if token or os.environ.get("JENKINS_TOKEN"):
+            if token is not None:
+                kwargs.setdefault("token", token)
+            else:
+                kwargs.setdefault("token", os.environ.get("JENKINS_TOKEN"))
 
-        Returns:
-            Tuple of (is_valid, message)
-        """
-        if not self.jenkins_url:
-            return (
-                False,
-                "Jenkins URL not provided. Set JENKINS_URL environment variable or pass --jenkins-url.",
-            )
-
-        # Read the Jenkinsfile content
+        # Only pass kwargs that the runner's __init__ actually accepts
         try:
-            with open(jenkinsfile_path, "r", encoding="utf-8") as f:
-                jenkinsfile_content = f.read()
-        except IOError as e:
-            return False, f"Error reading file: {e}"
+            runner_cls = registry.get_class(runner)
+        except KeyError:
+            available = ", ".join(registry.names())
+            raise ValueError(
+                f"Unknown runner: '{runner}'. Available runners: {available}"
+            ) from None
+        sig = inspect.signature(runner_cls.__init__)
+        valid_params = set(sig.parameters.keys()) - {"self"}
+        filtered_kwargs = {k: v for k, v in kwargs.items() if k in valid_params}
 
-        # Prepare the validation endpoint
-        validation_url = (
-            f"{self.jenkins_url.rstrip('/')}/pipeline-model-converter/validate"
-        )
+        self._runner = runner_cls(**filtered_kwargs)
 
-        # Prepare authentication
-        auth = None
-        if self.username and self.token:
-            auth = (self.username, self.token)
-
-        try:
-            # Send validation request
-            # Jenkins expects 'jenkinsfile' as form data, not a file upload
-            data = {"jenkinsfile": jenkinsfile_content}
-            response = requests.post(validation_url, data=data, auth=auth, timeout=30)
-
-            # Check response
-            response.raise_for_status()
-
-            # Try to parse as JSON first for structured error handling
-            try:
-                result_json = response.json()
-                # If JSON response, check for errors in structured format
-                if isinstance(result_json, dict):
-                    if result_json.get("status") == "ok":
-                        return True, "Jenkinsfile successfully validated"
-                    else:
-                        # Extract error messages if available
-                        errors = result_json.get("data", {}).get("errors", [])
-                        if errors:
-                            error_msg = "\n".join([str(err) for err in errors])
-                            return False, f"Validation errors:\n{error_msg}"
-                        # If no errors list but status is not ok, return the whole response
-                        return False, str(result_json)
-                else:
-                    # JSON response is not a dict (e.g., a list), treat as valid if no errors
-                    return True, str(result_json)
-            except ValueError:
-                # Not JSON, fall back to text parsing
-                result = response.text.strip()
-
-                # Check if there are errors in the response
-                # Common error patterns from Jenkins
-                error_indicators = [
-                    "Errors",
-                    "error",
-                    "No Jenkinsfile specified",
-                    "WorkflowScript:",  # Groovy compilation errors
-                    "Expected",  # Syntax error patterns
-                    "unexpected token",
-                    "unable to resolve class",
-                ]
-
-                if any(indicator in result for indicator in error_indicators):
-                    return False, result
-                else:
-                    return True, result
-
-        except requests.exceptions.RequestException as e:
-            return False, f"Error connecting to Jenkins: {e}"
+    @property
+    def runner_name(self) -> str:
+        """Name of the active validation runner."""
+        return self._runner_name
 
     def validate(self, jenkinsfile_path: str) -> Tuple[bool, str]:
-        """Validate a Jenkinsfile.
+        """Validate a Jenkinsfile using the configured runner.
 
         Args:
-            jenkinsfile_path: Path to the Jenkinsfile
+            jenkinsfile_path: Path to the Jenkinsfile.
 
         Returns:
-            Tuple of (is_valid, message)
+            ``(is_valid, message)``
         """
-        # Check if file exists
-        if not os.path.isfile(jenkinsfile_path):
+        import os as _os
+
+        if not _os.path.isfile(jenkinsfile_path):
             return False, f"File not found: {jenkinsfile_path}"
-
-        # Require Jenkins URL
-        if not self.jenkins_url:
-            return (
-                False,
-                "Jenkins URL not provided. Set JENKINS_URL environment variable or pass --jenkins-url.",
-            )
-
-        return self._validate_with_jenkins(jenkinsfile_path)
+        return self._runner.validate(jenkinsfile_path)

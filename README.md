@@ -121,13 +121,15 @@ You can also combine both — `--include` narrows first, then `--skip` removes f
 
 Supply credentials via environment variables (recommended) or CLI flags:
 
-| Env Variable    | CLI Flag       | Required |
-|-----------------|----------------|----------|
-| `JENKINS_URL`   | `--jenkins-url`| Yes      |
-| `JENKINS_USER`  | `--username`   | No *     |
-| `JENKINS_TOKEN` | `--token`      | No *     |
+| Env Variable      | CLI Flag         | Required   |
+|-------------------|------------------|------------|
+| `JENKINS_URL`     | `--jenkins-url`  | Yes \*     |
+| `JENKINS_USER`    | `--username`     | No \*\*    |
+| `JENKINS_TOKEN`   | `--token`        | No \*\*    |
+| `JFR_DOCKER_IMAGE`| (none)           | No         |
 
-\* Only required if your Jenkins requires authentication.
+\* Required only with `--runner jenkins` (the default).
+\*\* Only required if your Jenkins requires authentication.
 
 > [!TIP]
 > Even if your Jenkins allows anonymous access for validation, using an API token is recommended for production setups.
@@ -147,17 +149,64 @@ CLI flags override env vars. There is no config file.
 
 `jenkinsfilelint` is a **syntax gate** — it checks that your Declarative Pipeline syntax is valid.
 
+It supports two validation backends:
+
+### Remote Jenkins API (`--runner jenkins`, default)
+
 1. Reads the local Jenkinsfile.
 2. POSTs it to `<JENKINS_URL>/pipeline-model-converter/validate`.
 3. Jenkins parses the Pipeline and returns `"ok"` or errors.
 4. Errors are printed and the tool exits non-zero.
 
+Requires a running Jenkins server.
+
+### Standalone Docker (`--runner docker`)
+
+1. Reads the local Jenkinsfile.
+2. Mounts it into a [Jenkinsfile Runner](https://github.com/jenkinsci/jenkinsfile-runner) Docker container.
+3. Runs the `lint` command, which uses the exact same Pipeline Model Definition parser
+   (`Converter.scriptToPipelineDef()`) as Jenkins.
+4. Errors are printed and the tool exits non-zero.
+
+No Jenkins server needed — just Docker.
+
+### Comparison
+
+| Aspect | Jenkins API (`--runner jenkins`) | Docker (`--runner docker`) |
+|--------|----------------------------------|----------------------------|
+| Requires | A running Jenkins server | Docker only |
+| Works offline | ❌ | ✅ |
+| Validation engine | `pipeline-model-converter/validate` endpoint | Jenkinsfile Runner `lint` command |
+| Parser used | `Converter.scriptToPipelineDef()` | Same (`Converter.scriptToPipelineDef()`) |
+| Result consistency | ✅ Reference implementation | ✅ Same parser, same results |
+| Startup time | Fast (HTTP request) | Slower (Docker pull + container boot) |
+| Image size | N/A | ~400 MB (pulled once, cached) |
+
 It only answers: **"Will Jenkins accept this syntax?"**
+
+> [!TIP]
+> Use `--runner docker` for local development, CI pipelines without Jenkins, or when you
+> want offline validation. Use `--runner jenkins` (default) for tight integration with
+> your existing Jenkins server.
+
+### Environment Variables for Docker Runner
+
+| Env Variable      | Description | Default |
+|-------------------|-------------|---------|
+| `JFR_DOCKER_IMAGE`| Jenkinsfile Runner Docker image | `jenkins/jenkinsfile-runner` |
+
+Example using a custom image:
+
+```bash
+export JFR_DOCKER_IMAGE=my-registry/jenkinsfile-runner:custom
+jenkinsfilelint --runner docker Jenkinsfile
+```
 
 ## Requirements
 
 - Python 3.10+
-- Jenkins server with the Pipeline plugin
+- **Jenkins API runner** (`--runner jenkins`, default): a Jenkins server with the Pipeline plugin
+- **Docker runner** (`--runner docker`): Docker installed and running
 
 ## Contributing
 

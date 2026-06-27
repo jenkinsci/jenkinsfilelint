@@ -7,6 +7,7 @@ import io
 from pathlib import Path
 from typing import List, Optional
 from .linter import JenkinsfileLinter
+from .runners import registry
 from . import __version__
 
 
@@ -53,28 +54,10 @@ def should_include_file(filepath: str, include_patterns: Optional[List[str]]) ->
     return False
 
 
-def main():
-    """Main entry point for the CLI."""
-    # Ensure stdout and stderr use UTF-8 encoding on Windows
-    # Only wrap if not already wrapped to avoid issues in tests
-    if sys.platform == "win32":
-        if (
-            not isinstance(sys.stdout, io.TextIOWrapper)
-            or sys.stdout.encoding.lower() != "utf-8"
-        ):
-            sys.stdout = io.TextIOWrapper(
-                sys.stdout.buffer, encoding="utf-8", errors="replace"
-            )
-        if (
-            not isinstance(sys.stderr, io.TextIOWrapper)
-            or sys.stderr.encoding.lower() != "utf-8"
-        ):
-            sys.stderr = io.TextIOWrapper(
-                sys.stderr.buffer, encoding="utf-8", errors="replace"
-            )
-
+def build_parser() -> argparse.ArgumentParser:
+    """Build and return the argument parser."""
     parser = argparse.ArgumentParser(
-        description="Validate Jenkinsfiles using Jenkins API"
+        description="Validate Jenkinsfiles using Jenkins API or Jenkinsfile Runner"
     )
     parser.add_argument(
         "-V",
@@ -122,7 +105,36 @@ def main():
         "matching at least one pattern are validated. Can be used multiple times. "
         "Example: --include 'Jenkinsfile*' --include 'pipelines/*.groovy'",
     )
+    parser.add_argument(
+        "--runner",
+        choices=registry.names(),
+        default="jenkins",
+        help=f"Validation backend. Available runners:\n\n{registry.help_text()}",
+    )
+    return parser
 
+
+def main():
+    """Main entry point for the CLI."""
+    # Ensure stdout and stderr use UTF-8 encoding on Windows
+    # Only wrap if not already wrapped to avoid issues in tests
+    if sys.platform == "win32":
+        if (
+            not isinstance(sys.stdout, io.TextIOWrapper)
+            or sys.stdout.encoding.lower() != "utf-8"
+        ):
+            sys.stdout = io.TextIOWrapper(
+                sys.stdout.buffer, encoding="utf-8", errors="replace"
+            )
+        if (
+            not isinstance(sys.stderr, io.TextIOWrapper)
+            or sys.stderr.encoding.lower() != "utf-8"
+        ):
+            sys.stderr = io.TextIOWrapper(
+                sys.stderr.buffer, encoding="utf-8", errors="replace"
+            )
+
+    parser = build_parser()
     args = parser.parse_args()
 
     # Create linter instance
@@ -130,6 +142,7 @@ def main():
         jenkins_url=args.jenkins_url,
         username=args.username,
         token=args.token,
+        runner=args.runner,
     )
 
     # Validate all provided files
