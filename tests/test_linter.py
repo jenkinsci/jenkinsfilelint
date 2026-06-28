@@ -314,9 +314,14 @@ class TestDockerRunner:
     @patch("shutil.which", return_value="/usr/bin/docker")
     @patch("subprocess.run")
     def test_success(self, mock_run, _):
-        mock_run.return_value = Mock(
-            returncode=0, stdout="Linting...\nDone\n", stderr=""
-        )
+        # First call: docker image inspect (image exists)
+        # Second call: docker run (valid)
+        mock_run.side_effect = [
+            Mock(returncode=0, stdout="", stderr=""),  # inspect
+            Mock(
+                returncode=0, stdout="Linting...\nDone\n", stderr=""
+            ),  # run
+        ]
         with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
             f.write("pipeline { agent any }")
             p = f.name
@@ -330,11 +335,15 @@ class TestDockerRunner:
     @patch("shutil.which", return_value="/usr/bin/docker")
     @patch("subprocess.run")
     def test_syntax_errors(self, mock_run, _):
-        mock_run.return_value = Mock(
-            returncode=1,
-            stdout="Linting...\nWorkflowScript: 3: Expected a stage @ line 3, column 1.\n",
-            stderr="",
-        )
+        # First call: inspect (image exists), second call: docker run (errors)
+        mock_run.side_effect = [
+            Mock(returncode=0, stdout="", stderr=""),  # inspect
+            Mock(
+                returncode=1,
+                stdout="Linting...\nWorkflowScript: 3: Expected a stage @ line 3, column 1.\n",
+                stderr="",
+            ),  # run
+        ]
         with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
             f.write("pipeline { }")
             p = f.name
@@ -349,9 +358,12 @@ class TestDockerRunner:
     @patch("shutil.which", return_value="/usr/bin/docker")
     @patch("subprocess.run")
     def test_stderr_error(self, mock_run, _):
-        mock_run.return_value = Mock(
-            returncode=1, stdout="Linting...\nDone\n", stderr="ERROR: something broke"
-        )
+        mock_run.side_effect = [
+            Mock(returncode=0, stdout="", stderr=""),  # inspect
+            Mock(
+                returncode=1, stdout="Linting...\nDone\n", stderr="ERROR: something broke"
+            ),  # run
+        ]
         with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
             f.write("broken")
             p = f.name
@@ -365,7 +377,10 @@ class TestDockerRunner:
     @patch("shutil.which", return_value="/usr/bin/docker")
     @patch("subprocess.run")
     def test_fallback_message(self, mock_run, _):
-        mock_run.return_value = Mock(returncode=1, stdout="", stderr="")
+        mock_run.side_effect = [
+            Mock(returncode=0, stdout="", stderr=""),  # inspect
+            Mock(returncode=1, stdout="", stderr=""),  # run
+        ]
         with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
             f.write("?")
             p = f.name
@@ -379,16 +394,22 @@ class TestDockerRunner:
     @patch("shutil.which", return_value="/usr/bin/docker")
     @patch("subprocess.run")
     def test_custom_image(self, mock_run, _):
-        mock_run.return_value = Mock(
-            returncode=0, stdout="Linting...\nDone\n", stderr=""
-        )
+        mock_run.side_effect = [
+            Mock(returncode=0, stdout="", stderr=""),  # inspect
+            Mock(
+                returncode=0, stdout="Linting...\nDone\n", stderr=""
+            ),  # run
+        ]
         with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
             f.write("pipeline { }")
             p = f.name
         try:
             DockerRunner(image="custom/img:v1").validate(p)
-            args = mock_run.call_args[0][0]
+            # Second call should be the docker run command
+            args = mock_run.call_args_list[1][0][0]
             assert "custom/img:v1" in args
+            assert "--workdir" in args
+            assert "/workspace" in args
         finally:
             os.unlink(p)
 
@@ -409,14 +430,15 @@ class TestDockerRunner:
     @patch("shutil.which", return_value="/usr/bin/docker")
     def test_timeout(self, mock_which):
         with patch("subprocess.run") as mock_run:
-            mock_run.side_effect = subprocess.TimeoutExpired("cmd", 300)
+            # inspect times out → handled with a "daemon not responding" message
+            mock_run.side_effect = subprocess.TimeoutExpired("docker image inspect", 30)
             with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
                 f.write("pipeline { }")
                 p = f.name
             try:
                 ok, msg = DockerRunner().validate(p)
                 assert ok is False
-                assert "timed out" in msg.lower()
+                assert "daemon did not respond" in msg.lower()
             finally:
                 os.unlink(p)
 
@@ -424,11 +446,16 @@ class TestDockerRunner:
     @patch("subprocess.run")
     def test_daemon_connection_error(self, mock_run, mock_which):
         """Docker installed but daemon not running."""
-        mock_run.return_value = Mock(
-            returncode=1,
-            stdout="",
-            stderr="Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?",
-        )
+        # First call: inspect succeeds (image exists)
+        # Second call: docker run fails with daemon error
+        mock_run.side_effect = [
+            Mock(returncode=0, stdout="", stderr=""),  # inspect
+            Mock(
+                returncode=1,
+                stdout="",
+                stderr="Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?",
+            ),  # run
+        ]
         with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
             f.write("pipeline { }")
             p = f.name
@@ -441,13 +468,18 @@ class TestDockerRunner:
 
     @patch("shutil.which", return_value="/usr/bin/docker")
     @patch("subprocess.run")
-    def test_image_not_found(self, mock_run, mock_which):
+    def test_image_not_found_and_pull_fails(self, mock_run, mock_which):
         """Docker image not available locally and pull fails."""
-        mock_run.return_value = Mock(
-            returncode=1,
-            stdout="",
-            stderr="Unable to find image 'jenkins/jenkinsfile-runner:latest' locally",
-        )
+        # First call: inspect fails (image not found)
+        # Second call: pull fails
+        mock_run.side_effect = [
+            Mock(returncode=1, stdout="", stderr=""),  # inspect: not found
+            Mock(
+                returncode=1,
+                stdout="",
+                stderr="Error response from daemon: pull access denied",
+            ),  # pull: failed
+        ]
         with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
             f.write("pipeline { }")
             p = f.name
@@ -455,6 +487,8 @@ class TestDockerRunner:
             ok, msg = DockerRunner().validate(p)
             assert ok is False
             assert "not found" in msg.lower()
+            assert "pull failed" in msg.lower()
+            assert "pull access denied" in msg
         finally:
             os.unlink(p)
 

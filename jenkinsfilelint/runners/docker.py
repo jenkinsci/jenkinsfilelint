@@ -26,6 +26,65 @@ class DockerRunner(ValidationRunner):
         #: Docker image to use.
         self.image = image or os.environ.get("JFR_DOCKER_IMAGE") or self.DEFAULT_IMAGE
 
+    def _ensure_image(self) -> Optional[str]:
+        """Check if the Docker image exists locally; pull it if missing.
+
+        Returns:
+            ``None`` on success, or an error message string on failure.
+        """
+        # Check if the image exists locally
+        try:
+            inspect_result = subprocess.run(
+                ["docker", "image", "inspect", self.image],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if inspect_result.returncode == 0:
+                return None  # Image exists
+        except FileNotFoundError:
+            return (
+                "Docker binary not found. "
+                "Install Docker or use a different runner."
+            )
+        except subprocess.TimeoutExpired:
+            return (
+                "Docker daemon did not respond when checking for the image. "
+                "Is Docker running?"
+            )
+
+        # Image not found locally — try to pull it
+        try:
+            pull_result = subprocess.run(
+                ["docker", "pull", self.image],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+        except FileNotFoundError:
+            return (
+                "Docker binary not found. "
+                "Install Docker or use a different runner."
+            )
+        except subprocess.TimeoutExpired:
+            return (
+                f"Timed out pulling Docker image '{self.image}' (120 s). "
+                f"Check your network connection or try manually: "
+                f"docker pull {self.image}"
+            )
+
+        if pull_result.returncode != 0:
+            stderr = (pull_result.stderr or "").strip()
+            msg = (
+                f"Docker image '{self.image}' not found and pull failed."
+            )
+            if stderr:
+                msg += f"\n{stderr}"
+            msg += f"\nTry manually: docker pull {self.image}"
+            return msg
+
+        return None  # Successfully pulled
+
     def validate(self, jenkinsfile_path: str) -> Tuple[bool, str]:
         if not shutil.which("docker"):
             return (
@@ -33,6 +92,11 @@ class DockerRunner(ValidationRunner):
                 "Docker is not available. Install Docker or use a different runner "
                 "(e.g. --runner jenkins).",
             )
+
+        # Ensure the Docker image is available (auto-pull if needed)
+        err = self._ensure_image()
+        if err is not None:
+            return False, err
 
         temp_dir = tempfile.mkdtemp(prefix="jenkinsfilelint-")
         try:
@@ -49,6 +113,8 @@ class DockerRunner(ValidationRunner):
                         "--rm",
                         "-v",
                         f"{temp_dir}:/workspace",
+                        "--workdir",
+                        "/workspace",
                         self.image,
                         "lint",
                     ],
@@ -73,12 +139,6 @@ class DockerRunner(ValidationRunner):
             stderr = (result.stderr or "").strip()
             if "Cannot connect to the Docker daemon" in stderr:
                 return False, "Cannot connect to Docker daemon. Is Docker running?"
-            if "Unable to find image" in stderr and "locally" in stderr:
-                return (
-                    False,
-                    f"Docker image '{self.image}' not found. "
-                    f"Run 'docker pull {self.image}' first.",
-                )
 
             if result.returncode == 0:
                 return True, "Jenkinsfile successfully validated"
