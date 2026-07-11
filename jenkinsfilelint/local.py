@@ -24,6 +24,7 @@ DEFAULT_IMAGE = "ghcr.io/jenkinsci/jenkinsfilelint-server:latest"
 DEFAULT_PORT = 18080
 CONTAINER_LABEL = "jenkinsfilelint-server"
 CONTAINER_NAME = "jenkinsfilelint-server"
+PULL_TIMEOUT = 60  # max seconds to wait for the initial image pull
 POLL_INTERVAL = 2  # seconds between readiness checks
 READY_TIMEOUT = 120  # max seconds to wait for Jenkins to start
 START_TIMEOUT = 30  # max seconds to wait for container create
@@ -98,9 +99,26 @@ def _start_container(
 ) -> str:
     """Start a new container and return its ID.
 
+    Pulls the image first (with a generous timeout) so that a slow first-time
+    pull does not trigger the shorter ``docker run`` timeout.
+
     Raises :exc:`RuntimeError` if the container cannot be started.
     """
     log.info("Starting Jenkins container (%s)…", image)
+
+    # Explicitly pull the image so a slow first-time download doesn't
+    # trip the much shorter docker-run timeout (START_TIMEOUT=30s).
+    log.info("Pulling image %s …", image)
+    try:
+        _run([runtime, "pull", image], timeout=PULL_TIMEOUT)
+    except subprocess.CalledProcessError as exc:
+        raise RuntimeError(f"Failed to pull image {image}:\n{exc.stderr}") from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"Timed out pulling image {image} after {PULL_TIMEOUT}s. "
+            f"Check your network connection or try pulling manually."
+        ) from exc
+
     cmd = [
         runtime,
         "run",
