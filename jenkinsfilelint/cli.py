@@ -210,7 +210,6 @@ def main():
     args = parser.parse_args()
 
     if args.local:
-                file=sys.stderr,
         _run_local_validation(args)
     else:
         _run_remote_validation(args)
