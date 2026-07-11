@@ -1,11 +1,129 @@
-# Extends the shared Jenkins Release Drafter configuration
-# but overrides versioning to use full semver (x.y.z) instead of (x.y).
-_extends: github:jenkinsci/.github:/.github/release-drafter.yml
+# vim: set commentstring=#%s:
+# Configuration for Release Drafter: https://github.com/release-drafter/release-drafter
+#
+# Based on the shared Jenkins config but overrides versioning to use full semver
+# (x.y.z) instead of (x.y), and adds version-resolver entries so that PR labels
+# (major, minor) are respected for version bumps.
+---
 name-template: v$RESOLVED_VERSION
 tag-template: $RESOLVED_VERSION
 version-template: $MAJOR.$MINOR.$PATCH
+
+# Emoji reference: https://gitmoji.carloscuesta.me/
+categories:
+  - title: 💥 Breaking changes
+    labels:
+      - breaking
+  - title: 🚨 Removed
+    labels:
+      - removed
+  - title: 🎉 Major features and improvements
+    labels:
+      - major-enhancement
+      - major-rfe
+  - title: 🐛 Major bug fixes
+    labels:
+      - major-bug
+  - title: ⚠️ Deprecated
+    labels:
+      - deprecated
+  - title: 🚀 New features and improvements
+    labels:
+      - enhancement
+      - feature
+      - rfe
+  - title: 🐛 Bug fixes
+    labels:
+      - bug
+      - fix
+      - bugfix
+      - regression
+      - regression-fix
+  - title: 🌐 Localization and translation
+    labels:
+      - localization
+  - title: 👷 Changes for plugin developers
+    labels:
+      - developer
+  - title: 📝 Documentation updates
+    labels:
+      - documentation
+  - title: 👻 Maintenance
+    labels:
+      - chore
+      - internal
+      - maintenance
+  - title: 🚦 Tests
+    labels:
+      - test
+      - tests
+  - title: ✍ Other changes
+  # Default label used by Dependabot
+  - title: 📦 Dependency updates
+    labels:
+      - dependencies
+    collapse-after: 15
+
+  # --------------------------------------------------------------------------
+  # Version-resolver entries – map PR labels to semver increments.
+  # When a merged PR carries a 'major' label the next version gets a major
+  # bump; a 'minor' label triggers a minor bump; otherwise patch is used.
+  # --------------------------------------------------------------------------
+  - type: version-resolver
+    semver-increment: major
+    when:
+      labels:
+        - major
+  - type: version-resolver
+    semver-increment: minor
+    when:
+      labels:
+        - minor
+
+exclude-labels:
+  - reverted
+  - no-changelog
+  - skip-changelog
+  - invalid
+
 template: |
   <!-- Optional: add a release summary here -->
   $CHANGES
 
   **Full Changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...$RESOLVED_VERSION
+
+replacers:
+  - search: '/\[*JENKINS-(\d+)\]*\s*-*\s*/g'
+    replace: '[JENKINS-$1](https://issue-redirect.jenkins.io/issue/$1) - '
+  - search: '/\[*HELPDESK-(\d+)\]*\s*-*\s*/g'
+    replace: '[HELPDESK-$1](https://github.com/jenkins-infra/helpdesk/issues/$1) - '
+  # TODO(oleg_nenashev): Find a better way to reference issues
+  - search: '/\[*SECURITY-(\d+)\]*\s*-*\s*/g'
+    replace: '[SECURITY-$1](https://jenkins.io/security/advisories/) - '
+  - search: '/\[*JEP-(\d+)\]*\s*-*\s*/g'
+    replace: '[JEP-$1](https://github.com/jenkinsci/jep/tree/master/jep/$1) - '
+  - search: '/CVE-(\d{4})-(\d+)/g'
+    replace: 'https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-$1-$2'
+  - search: 'JFR'
+    replace: 'Jenkinsfile Runner'
+  - search: 'CWP'
+    replace: 'Custom WAR Packager'
+  - search: '@dependabot-preview'
+    replace: '@dependabot'
+
+autolabeler:
+  - label: 'documentation'
+    files:
+      - '*.md'
+    branch:
+      - '/docs{0,1}\/.+/'
+  - label: 'bug'
+    branch:
+      - '/fix\/.+/'
+    title:
+      - '/fix/i'
+  - label: 'enhancement'
+    branch:
+      - '/feature\/.+/'
+    body:
+      - '/JENKINS-[0-9]{1,4}/'
