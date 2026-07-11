@@ -1,0 +1,19 @@
+.github/workflows/docker.yml
+  s_168d95edf71ce0::t_a832ad2e24adc3 63-66
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "b602a7f57f92c40507ed6757b000afd27d548ed0",
+  "prompts": {},
+  "sessions": {
+    "s_168d95edf71ce0": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "019f5360-3d34-7ffb-bf46-2949d4fa9759",
+        "model": "deepseek-v4-flash"
+      },
+      "human_author": "shenxianpeng <xianpeng.shen@gmail.com>"
+    }
+  }
+}
