@@ -2,6 +2,8 @@
 
 from importlib.metadata import version, PackageNotFoundError
 
+from . import local as local  # re-export for mock.patch
+
 try:
     __version__ = version("jenkinsfilelint")
 except PackageNotFoundError:
