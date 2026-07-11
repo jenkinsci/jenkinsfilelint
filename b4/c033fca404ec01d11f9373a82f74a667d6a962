@@ -1,0 +1,19 @@
+.github/workflows/main.yml
+  s_1777f60758d617::t_163d6f638370e9 42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "b4c033fca404ec01d11f9373a82f74a667d6a962",
+  "prompts": {},
+  "sessions": {
+    "s_1777f60758d617": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "019f52bf-55e2-7fd8-aeec-2d3d23707d18",
+        "model": "deepseek-v4-flash"
+      },
+      "human_author": "shenxianpeng <xianpeng.shen@gmail.com>"
+    }
+  }
+}
