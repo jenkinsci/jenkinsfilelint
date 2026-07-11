@@ -1,0 +1,19 @@
+README.md
+  s_6f6d72c2cc5c3c::t_35f0e839fb25e9 5,9-12,21-24,34-36,42,47-48,58,64,70-71,77-78,80,82-83,90,104,106-108,118,120-122,125-127,134-135,139,211-213,215-219
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "7510ebac0ff5a9a956f56e8d233ffc82651767fd",
+  "prompts": {},
+  "sessions": {
+    "s_6f6d72c2cc5c3c": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "019f5302-1b11-7ce5-bcd2-2b8ef6911766",
+        "model": "deepseek-v4-flash"
+      },
+      "human_author": "shenxianpeng <xianpeng.shen@gmail.com>"
+    }
+  }
+}
