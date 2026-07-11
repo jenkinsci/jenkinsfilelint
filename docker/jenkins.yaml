@@ -9,5 +9,4 @@ jenkins:
   numExecutors: 0
   mode: NORMAL
   crumbIssuer:
-    standard:
-      excludeClientIPFromCrumb: true
+    standard: {}

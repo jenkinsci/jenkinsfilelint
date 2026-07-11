@@ -55,6 +55,9 @@ addopts = [
     "--strict-markers",
     "--strict-config",
 ]
+markers = [
+    "docker: integration tests against a real Jenkins container (requires Docker)",
+]
 
 [tool.coverage.run]
 source = ["jenkinsfilelint"]

@@ -26,7 +26,7 @@ CONTAINER_LABEL = "jenkinsfilelint-server"
 CONTAINER_NAME = "jenkinsfilelint-server"
 PULL_TIMEOUT = 60  # max seconds to wait for the initial image pull
 POLL_INTERVAL = 2  # seconds between readiness checks
-READY_TIMEOUT = 120  # max seconds to wait for Jenkins to start
+READY_TIMEOUT = 180  # max seconds to wait for Jenkins to start (cold boot on slow CI)
 START_TIMEOUT = 30  # max seconds to wait for container create
 
 
@@ -108,16 +108,16 @@ def _start_container(
 
     # Explicitly pull the image so a slow first-time download doesn't
     # trip the much shorter docker-run timeout (START_TIMEOUT=30s).
+    # If the pull fails, the image may already exist locally (e.g. a
+    # locally-built image with a non-registry tag) — log a warning and
+    # let ``docker run`` fail later if the image truly isn't available.
     log.info("Pulling image %s …", image)
     try:
         _run([runtime, "pull", image], timeout=PULL_TIMEOUT)
-    except subprocess.CalledProcessError as exc:
-        raise RuntimeError(f"Failed to pull image {image}:\n{exc.stderr}") from exc
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(
-            f"Timed out pulling image {image} after {PULL_TIMEOUT}s. "
-            f"Check your network connection or try pulling manually."
-        ) from exc
+    except subprocess.CalledProcessError:
+        log.warning("Could not pull %s — trying local image…", image)
+    except subprocess.TimeoutExpired:
+        log.warning("Timed out pulling %s — trying local image…", image)
 
     # Remove any existing container with the same name (e.g. from a crash)
     # so we don't hit a "container name already in use" error on docker run.
@@ -164,7 +164,7 @@ def _stop_container(runtime: str, container_id: str, timeout: int = 15) -> None:
         pass
 
 
-def _container_logs(runtime: str, container_id: str, tail: int = 20) -> str:
+def _container_logs(runtime: str, container_id: str, tail: int = 100) -> str:
     """Return the last *tail* lines of container logs."""
     try:
         result = _run(
@@ -298,13 +298,15 @@ class LocalJenkins:
         # 3. Wait for Jenkins to be ready.
         url = f"http://127.0.0.1:{self.port}"
         if not _wait_for_jenkins(url):
+            container_still_running = _container_is_running(self.runtime, cid)
             logs = _container_logs(self.runtime, cid)
             # Stop the failed container so the user can retry cleanly
             _stop_container(self.runtime, cid, timeout=5)
             self._container_id = None
             raise RuntimeError(
                 f"Jenkins did not become ready within {READY_TIMEOUT}s.\n"
-                f"Container logs (last 20 lines):\n{logs}"
+                f"Container still running: {container_still_running}\n"
+                f"Container logs:\n{logs}"
             )
 
         return url
