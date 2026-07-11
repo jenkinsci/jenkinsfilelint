@@ -11,10 +11,14 @@ repos:
       - id: check-added-large-files
       - id: debug-statements
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.6
+    rev: v0.15.21
     hooks:
       - id: ruff-check
       - id: ruff-format
+  - repo: https://github.com/shenxianpeng/hadolint-pre-commit
+    rev: v2.14.0.1
+    hooks:
+      - id: hadolint
   - repo: local
     # This is a "local" hook to run jenkinsfilelint
     hooks:
