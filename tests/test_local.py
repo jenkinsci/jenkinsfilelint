@@ -143,15 +143,19 @@ class TestStartContainer:
         cid = _start_container("docker", "my-image:latest", port=18080)
         assert cid == "container-id-123"
 
-        # Called twice: once for docker pull, once for docker run
-        assert mock_run.call_count == 2
+        # Called three times: docker pull, docker rm, docker run
+        assert mock_run.call_count == 3
 
         # First call: docker pull
         pull_cmd = mock_run.call_args_list[0][0][0]
         assert pull_cmd == ["docker", "pull", "my-image:latest"]
 
-        # Second call: docker run
-        run_cmd = mock_run.call_args_list[1][0][0]
+        # Second call: docker rm --force (cleanup any stale container)
+        rm_cmd = mock_run.call_args_list[1][0][0]
+        assert rm_cmd == ["docker", "rm", "--force", CONTAINER_NAME]
+
+        # Third call: docker run
+        run_cmd = mock_run.call_args_list[2][0][0]
         assert run_cmd[:3] == ["docker", "run", "--detach"]
         assert "--name" in run_cmd
         assert CONTAINER_NAME in run_cmd
@@ -177,14 +181,37 @@ class TestStartContainer:
             _start_container("docker", "my-image")
 
     @patch("jenkinsfilelint.local._run")
+    def test_cleans_up_existing_container_with_same_name(self, mock_run):
+        """Should remove an existing container with the same name before starting."""
+        mock_pull_result = Mock()
+        mock_pull_result.stdout = ""
+        mock_rm_result = Mock()
+        mock_rm_result.stdout = ""
+        mock_run_result = Mock()
+        mock_run_result.stdout = "new-cid\n"
+        mock_run.side_effect = [mock_pull_result, mock_rm_result, mock_run_result]
+
+        cid = _start_container("docker", "my-image")
+        assert cid == "new-cid"
+
+        # Verify docker rm --force was called with CONTAINER_NAME
+        rm_cmd = mock_run.call_args_list[1][0][0]
+        assert rm_cmd == ["docker", "rm", "--force", CONTAINER_NAME]
+        # check=False so it doesn't raise when no container exists
+        assert mock_run.call_args_list[1].kwargs.get("check") is False
+
+    @patch("jenkinsfilelint.local._run")
     def test_raises_runtime_error_on_run_failure(self, mock_run):
         """Should raise RuntimeError when container fails to start after a
         successful pull."""
-        # First call (pull) succeeds, second (run) fails
+        # First call (pull) succeeds, second (rm) succeeds, third (run) fails
         mock_pull_result = Mock()
         mock_pull_result.stdout = ""
+        mock_rm_result = Mock()
+        mock_rm_result.stdout = ""
         mock_run.side_effect = [
             mock_pull_result,
+            mock_rm_result,
             subprocess.CalledProcessError(
                 1, cmd="docker", stderr="port already in use"
             ),
@@ -197,11 +224,14 @@ class TestStartContainer:
     def test_raises_runtime_error_on_run_timeout(self, mock_run):
         """Should raise RuntimeError when docker run times out after a
         successful pull."""
-        # First call (pull) succeeds, second (run) times out
+        # First call (pull) succeeds, second (rm) succeeds, third (run) times out
         mock_pull_result = Mock()
         mock_pull_result.stdout = ""
+        mock_rm_result = Mock()
+        mock_rm_result.stdout = ""
         mock_run.side_effect = [
             mock_pull_result,
+            mock_rm_result,
             subprocess.TimeoutExpired(cmd="docker", timeout=30),
         ]
 
@@ -211,12 +241,14 @@ class TestStartContainer:
     @patch("jenkinsfilelint.local._run")
     def test_raises_runtime_error_when_no_id_returned(self, mock_run):
         """Should raise RuntimeError when no container ID is returned."""
-        # First call (pull) succeeds, second (run) returns empty ID
+        # First call (pull) succeeds, second (rm) succeeds, third (run) returns empty ID
         mock_pull_result = Mock()
         mock_pull_result.stdout = ""
+        mock_rm_result = Mock()
+        mock_rm_result.stdout = ""
         mock_run_result = Mock()
         mock_run_result.stdout = "\n"
-        mock_run.side_effect = [mock_pull_result, mock_run_result]
+        mock_run.side_effect = [mock_pull_result, mock_rm_result, mock_run_result]
 
         with pytest.raises(RuntimeError, match="no ID was returned"):
             _start_container("docker", "my-image")
