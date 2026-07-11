@@ -39,7 +39,7 @@ Add the hook to your `.pre-commit-config.yaml`, then install.
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/jenkinsci/jenkinsfilelint
-    rev: v1.4.0   # or use the latest release
+    rev: # use the latest or a specific version, e.g. v1.4.0
     hooks:
       - id: jenkinsfilelint
 ```
@@ -61,7 +61,7 @@ pre-commit install
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/jenkinsci/jenkinsfilelint
-    rev: v1.4.0
+    rev: # use the latest or a specific version, e.g. v1.4.0
     hooks:
       - id: jenkinsfilelint
         args: ["--local"]
