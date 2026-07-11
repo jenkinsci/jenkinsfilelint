@@ -1,0 +1,23 @@
+.github/workflows/labeler.yml
+  s_e93722b825ae0b::t_b489fd2ff82d89 1-20
+.github/release-drafter.yml
+  s_e93722b825ae0b::t_a54850b8223667 3-4,10,13,18,20,23-26,32,36-40,46-62,65,67,69,72-98,100-102,104-106,108-127
+.github/workflows/release-drafter.yml
+  s_e93722b825ae0b::t_b5cd762fc0c251 21-22
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "8afb5d0bf42cea3400ab318570187ead5807a0ef",
+  "prompts": {},
+  "sessions": {
+    "s_e93722b825ae0b": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "019f5334-2306-7452-b684-919c6326edab",
+        "model": "deepseek-v4-flash"
+      },
+      "human_author": "shenxianpeng <xianpeng.shen@gmail.com>"
+    }
+  }
+}
