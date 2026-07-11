@@ -18,5 +18,5 @@ jobs:
 
     steps:
       - uses: release-drafter/release-drafter@v7
-        # Uses local .github/release-drafter.yml which extends the shared
-        # jenkinsci/.github config but overrides versioning to full semver (x.y.z).
+        # Uses local .github/release-drafter.yml with version-resolver
+        # entries for semver bumping based on PR labels.

@@ -1,148 +1,127 @@
 # Configuration for Release Drafter: https://github.com/release-drafter/release-drafter
-#
-# NOTE: We define everything locally instead of using _extends from the shared
-# jenkinsci/.github config because we need to add version-resolver entries to
-# the categories list. Release-drafter (up to v7.5.1) does shallow merge with
-# _extends, so defining categories locally would replace (not extend) inherited
-# categories anyway.
-#
-# Once release-drafter v7.6.0+ is released (PR #1642, merged 2026-07-11), we
-# can switch back to _extends with merge strategy:
-#
-#   _extends:
-#     from: github:jenkinsci/.github:/.github/release-drafter.yml
-#     strategy:
-#       categories: append
-#   categories:
-#     - type: version-resolver
-#       semver-increment: major
-#       when:
-#         labels:
-#           - major
-#     - type: version-resolver
-#       semver-increment: minor
-#       when:
-#         labels:
-#           - minor
 ---
-name-template: v$RESOLVED_VERSION
-tag-template: $RESOLVED_VERSION
-version-template: $MAJOR.$MINOR.$PATCH
+name-template: 'v$RESOLVED_VERSION'
+tag-template: 'v$RESOLVED_VERSION'
 
-# Emoji reference: https://gitmoji.carloscuesta.me/
 categories:
   - title: 💥 Breaking changes
     labels:
       - breaking
-  - title: 🚨 Removed
+  - title: 🚀 Features
     labels:
-      - removed
-  - title: 🎉 Major features and improvements
-    labels:
-      - major-enhancement
-      - major-rfe
-  - title: 🐛 Major bug fixes
-    labels:
-      - major-bug
-  - title: ⚠️ Deprecated
-    labels:
-      - deprecated
-  - title: 🚀 New features and improvements
-    labels:
-      - enhancement
       - feature
-      - rfe
+      - enhancement
   - title: 🐛 Bug fixes
     labels:
       - bug
-      - fix
       - bugfix
+      - fix
       - regression
-      - regression-fix
-  - title: 🌐 Localization and translation
-    labels:
-      - localization
-  - title: 👷 Changes for plugin developers
-    labels:
-      - developer
-  - title: 📝 Documentation updates
+  - title: 📝 Documentation
     labels:
       - documentation
+  - title: 🚦 Tests
+    labels:
+      - test
+      - tests
   - title: 👻 Maintenance
     labels:
       - chore
       - internal
       - maintenance
-  - title: 🚦 Tests
-    labels:
-      - test
-      - tests
-  - title: ✍ Other changes
-  # Default label used by Dependabot
-  - title: 📦 Dependency updates
+  - title: 📦 Dependencies
     labels:
       - dependencies
     collapse-after: 15
-
-  # ---------------------------------------------------------------------------
-  # Version-resolver entries – map PR labels to semver increments.
-  # Without these, $RESOLVED_VERSION defaults to always bumping patch.
-  # ---------------------------------------------------------------------------
-  - type: version-resolver
-    semver-increment: major
-    when:
-      labels:
-        - major
-  - type: version-resolver
-    semver-increment: minor
-    when:
-      labels:
-        - minor
+  - title: 🗑 Removed
+    labels:
+      - removed
+      - deprecated
+  - title: ✍ Other changes
 
 exclude-labels:
-  - reverted
   - no-changelog
   - skip-changelog
   - invalid
+  - duplicate
+  - question
+  - wontfix
+
+change-template: '- $TITLE by @$AUTHOR in #$NUMBER'
+
+version-resolver:
+  major:
+    labels:
+      - major
+  minor:
+    labels:
+      - minor
+  patch:
+    labels:
+      - patch
+  default: patch
 
 template: |
-  <!-- Optional: add a release summary here -->
+  ## What's Changed
+
   $CHANGES
 
-  **Full Changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...$RESOLVED_VERSION
-
-replacers:
-  # Copied from jenkinsci/.github/.github/release-drafter.yml
-  - search: '/\[*JENKINS-(\d+)\]*\s*-*\s*/g'
-    replace: '[JENKINS-$1](https://issue-redirect.jenkins.io/issue/$1) - '
-  - search: '/\[*HELPDESK-(\d+)\]*\s*-*\s*/g'
-    replace: '[HELPDESK-$1](https://github.com/jenkins-infra/helpdesk/issues/$1) - '
-  - search: '/\[*SECURITY-(\d+)\]*\s*-*\s*/g'
-    replace: '[SECURITY-$1](https://jenkins.io/security/advisories/) - '
-  - search: '/\[*JEP-(\d+)\]*\s*-*\s*/g'
-    replace: '[JEP-$1](https://github.com/jenkinsci/jep/tree/master/jep/$1) - '
-  - search: '/CVE-(\d{4})-(\d+)/g'
-    replace: 'https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-$1-$2'
-  - search: 'JFR'
-    replace: 'Jenkinsfile Runner'
-  - search: 'CWP'
-    replace: 'Custom WAR Packager'
-  - search: '@dependabot-preview'
-    replace: '@dependabot'
+  **Full Changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...v$RESOLVED_VERSION
 
 autolabeler:
-  - label: 'documentation'
+  # ── Title-based (conventional commit prefix) ──────────────
+  - label: enhancement
+    title:
+      - /^feat(\(.*\))?:.*/
+      - /^feature(\(.*\))?:.*/
+      - /^perf(\(.*\))?:.*/
+  - label: bug
+    title:
+      - /^fix(\(.*\))?:.*/
+      - /^bugfix(\(.*\))?:.*/
+  - label: documentation
+    title:
+      - /^docs(\(.*\))?:.*/
+  - label: chore
+    title:
+      - /^chore(\(.*\))?:.*/
+      - /^refactor(\(.*\))?:.*/
+      - /^style(\(.*\))?:.*/
+      - /^build(\(.*\))?:.*/
+      - /^revert(\(.*\))?:.*/
+  - label: tests
+    title:
+      - /^test(\(.*\))?:.*/
+      - /^tests(\(.*\))?:.*/
+
+  # ── Branch-based ──────────────────────────────────────────
+  - label: enhancement
+    branch:
+      - /^feature\/.+/
+      - /^feat\/.+/
+  - label: bug
+    branch:
+      - /^fix\/.+/
+      - /^bugfix\/.+/
+  - label: chore
+    branch:
+      - /^chore\/.+/
+  - label: tests
+    branch:
+      - /^test\/.+/
+  - label: dependencies
+    branch:
+      - /^pre-commit-ci-update-config/
+
+  # ── File-based ────────────────────────────────────────────
+  - label: documentation
     files:
       - '*.md'
-    branch:
-      - '/docs{0,1}\/.+/'
-  - label: 'bug'
-    branch:
-      - '/fix\/.+/'
-    title:
-      - '/fix/i'
-  - label: 'enhancement'
-    branch:
-      - '/feature\/.+/'
-    body:
-      - '/JENKINS-[0-9]{1,4}/'
+      - '*.rst'
+      - '*.adoc'
+  - label: tests
+    files:
+      - 'test/**'
+      - 'tests/**'
+      - '__tests__/**'
+      - '*.test.*'
