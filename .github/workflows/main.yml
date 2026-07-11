@@ -46,3 +46,38 @@ jobs:
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         files: ./coverage.xml
+
+  integration-docker:
+    runs-on: ubuntu-latest
+    # These tests start a real Jenkins container (Docker-in-Docker),
+    # so they only run on Linux where GitHub Actions has Docker.
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Set up Python 3.13
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
+
+      - name: Build the server image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7.3.0
+        with:
+          context: docker/
+          tags: ghcr.io/jenkinsci/jenkinsfilelint-server:test
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run Docker integration tests
+        run: |
+          pytest tests/test_docker_linter.py -v -m docker
+        env:
+          JENKINSFILELINT_SERVER_IMAGE: ghcr.io/jenkinsci/jenkinsfilelint-server:test
