@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Command-line interface for jenkinsfilelint."""
 
-import os
 import sys
 import argparse
 import io
