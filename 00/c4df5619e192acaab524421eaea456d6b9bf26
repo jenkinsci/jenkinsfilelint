@@ -1,0 +1,21 @@
+tests/test_local.py
+  s_2622589d75d6dd::t_2ea4c4c7e60c93 19
+  s_2622589d75d6dd::t_210d4aea6b7b48 164-171,213-252,547-562
+  s_2622589d75d6dd::t_40dd7fe61597aa 563
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "00c4df5619e192acaab524421eaea456d6b9bf26",
+  "prompts": {},
+  "sessions": {
+    "s_2622589d75d6dd": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "019f51ba-d04f-7416-8ef4-5d7d2c1a3456",
+        "model": "deepseek-v4-flash"
+      },
+      "human_author": "shenxianpeng <xianpeng.shen@gmail.com>"
+    }
+  }
+}
