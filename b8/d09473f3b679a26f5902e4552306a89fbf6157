@@ -1,0 +1,22 @@
+jenkinsfilelint/local.py
+  s_408e2d0f5ed089::t_68e561d23fdfe6 102-104,108-121
+  s_408e2d0f5ed089::t_4331f7a36c1a00 27
+tests/test_local.py
+  s_408e2d0f5ed089::t_907512ace6c4d7 146-159,162-163,165,168-190,195-204,212-217
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "b8d09473f3b679a26f5902e4552306a89fbf6157",
+  "prompts": {},
+  "sessions": {
+    "s_408e2d0f5ed089": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "019f52aa-daa3-765b-812d-035655895648",
+        "model": "deepseek-v4-flash"
+      },
+      "human_author": "shenxianpeng <xianpeng.shen@gmail.com>"
+    }
+  }
+}
