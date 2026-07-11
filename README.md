@@ -20,7 +20,6 @@ works as a standalone CLI tool.
 - [Quick Start](#quick-start)
 - [Pre-commit Hook](#pre-commit-hook)
 - [CLI](#cli)
-- [Local mode (no remote Jenkins required)](#local-mode-no-remote-jenkins-required)
 - [Filtering files](#filtering-files)
 - [Configuration](#configuration)
 - [Security](#security)
@@ -86,6 +85,21 @@ pre-commit install
 > The first commit pulls a minimal Jenkins container (~20–40s cold start).
 > Subsequent commits reuse the running container and complete in milliseconds.
 
+> [!IMPORTANT]
+> Local mode validates **vanilla Declarative Pipeline syntax only**. If your
+> production Jenkins has plugins that provide custom options, agents, or steps
+> (e.g., custom shared libraries), local mode may not catch errors related to
+> those plugins. For authoritative validation, use remote mode pointing at your
+> real Jenkins server.
+>
+> In short: `--local` = fast syntax gate, remote = authoritative validation.
+
+When you're done, stop the container:
+
+```bash
+jenkinsfilelint server stop
+```
+
 ### What happens on commit
 
 A valid file passes silently:
@@ -122,27 +136,6 @@ jenkinsfilelint Jenkinsfile
 jenkinsfilelint Jenkinsfile Jenkinsfile.prod tests/Jenkinsfile
 jenkinsfilelint --local Jenkinsfile
 ```
-
-## Local mode (no remote Jenkins required)
-
-Pass `--local` to validate using a lightweight Jenkins container that the tool
-manages for you. The container runs in unsecured mode on `127.0.0.1` and is
-automatically pulled from GitHub Container Registry on first use.
-
-```bash
-jenkinsfilelint --local Jenkinsfile          # First run starts the container (~20–40s)
-jenkinsfilelint --local Jenkinsfile          # Subsequent runs reuse it (milliseconds)
-jenkinsfilelint server stop                  # Stop the container when you're done
-```
-
-> [!IMPORTANT]
-> Local mode validates **vanilla Declarative Pipeline syntax only**. If your
-> production Jenkins has plugins that provide custom options, agents, or steps
-> (e.g., custom shared libraries), local mode may not catch errors related to
-> those plugins. For authoritative validation, use remote mode pointing at your
-> real Jenkins server.
->
-> In short: `--local` = fast syntax gate, remote = authoritative validation.
 
 ## Filtering files
 
