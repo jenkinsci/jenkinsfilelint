@@ -782,7 +782,15 @@ class TestMainServerDispatch:
 
     def test_regular_args_runs_linter(self):
         """Non-server args should run the linter (server dispatch)."""
-        with patch("sys.argv", ["jenkinsfilelint", "--jenkins-url", "http://jenkins.example.com", "Jenkinsfile"]):
+        with patch(
+            "sys.argv",
+            [
+                "jenkinsfilelint",
+                "--jenkins-url",
+                "http://jenkins.example.com",
+                "Jenkinsfile",
+            ],
+        ):
             # main() will parse args and try to validate
             # the file doesn't exist → SystemExit 1
             with pytest.raises(SystemExit) as exc:

@@ -24,9 +24,9 @@ DEFAULT_IMAGE = "ghcr.io/jenkinsci/jenkinsfilelint-server:latest"
 DEFAULT_PORT = 18080
 CONTAINER_LABEL = "jenkinsfilelint-server"
 CONTAINER_NAME = "jenkinsfilelint-server"
-POLL_INTERVAL = 2           # seconds between readiness checks
-READY_TIMEOUT = 120         # max seconds to wait for Jenkins to start
-START_TIMEOUT = 30          # max seconds to wait for container create
+POLL_INTERVAL = 2  # seconds between readiness checks
+READY_TIMEOUT = 120  # max seconds to wait for Jenkins to start
+START_TIMEOUT = 30  # max seconds to wait for container create
 
 
 def _find_runtime() -> Optional[str]:
@@ -62,6 +62,7 @@ def _run(
 # ---------------------------------------------------------------------------
 # Container helpers
 # ---------------------------------------------------------------------------
+
 
 def _container_id(runtime: str, label: str = CONTAINER_LABEL) -> Optional[str]:
     """Return the container ID of the running container with *label*, or *None*."""
@@ -101,19 +102,23 @@ def _start_container(
     """
     log.info("Starting Jenkins container (%s)…", image)
     cmd = [
-        runtime, "run", "--detach",
-        "--name", name,
-        "--label", label,
-        "--publish", f"127.0.0.1:{port}:8080",
-        "--restart", "no",
+        runtime,
+        "run",
+        "--detach",
+        "--name",
+        name,
+        "--label",
+        label,
+        "--publish",
+        f"127.0.0.1:{port}:8080",
+        "--restart",
+        "no",
         image,
     ]
     try:
         result = _run(cmd, timeout=START_TIMEOUT)
     except subprocess.CalledProcessError as exc:
-        raise RuntimeError(
-            f"Failed to start container:\n{exc.stderr}"
-        ) from exc
+        raise RuntimeError(f"Failed to start container:\n{exc.stderr}") from exc
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError("Timed out waiting for container to start") from exc
 
@@ -153,6 +158,7 @@ def _container_logs(runtime: str, container_id: str, tail: int = 20) -> str:
 # Readiness probe
 # ---------------------------------------------------------------------------
 
+
 def _wait_for_jenkins(url: str, timeout: int = READY_TIMEOUT) -> bool:
     """Poll *url*/login until Jenkins responds (HTTP 200) or *timeout* expires.
 
@@ -175,6 +181,7 @@ def _wait_for_jenkins(url: str, timeout: int = READY_TIMEOUT) -> bool:
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
+
 
 class LocalJenkins:
     """Manages a local Jenkins container for Declarative Pipeline validation.

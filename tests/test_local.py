@@ -2,10 +2,9 @@
 """Tests for the local Docker lifecycle manager."""
 
 import os
-import json
 import subprocess
 import sys
-from unittest.mock import patch, Mock, call, PropertyMock
+from unittest.mock import patch, Mock
 
 import pytest
 
@@ -18,10 +17,8 @@ from jenkinsfilelint.local import (
     _start_container,
     _stop_container,
     _wait_for_jenkins,
-    CONTAINER_LABEL,
     CONTAINER_NAME,
     DEFAULT_PORT,
-    READY_TIMEOUT,
 )
 
 
