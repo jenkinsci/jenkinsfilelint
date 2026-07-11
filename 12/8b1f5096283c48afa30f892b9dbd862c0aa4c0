@@ -1,0 +1,23 @@
+tests/test_local.py
+  s_1777f60758d617::t_1680e0aa2dcf3d 166-176,179-189
+.github/workflows/main.yml
+  s_1777f60758d617::t_f7bedd634f5724 67-70,75
+jenkinsfilelint/local.py
+  s_1777f60758d617::t_b80af44979f415 111-113,117-120
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "128b1f5096283c48afa30f892b9dbd862c0aa4c0",
+  "prompts": {},
+  "sessions": {
+    "s_1777f60758d617": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "019f52bf-55e2-7fd8-aeec-2d3d23707d18",
+        "model": "deepseek-v4-flash"
+      },
+      "human_author": "shenxianpeng <xianpeng.shen@gmail.com>"
+    }
+  }
+}
