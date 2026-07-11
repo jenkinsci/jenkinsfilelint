@@ -143,28 +143,67 @@ class TestStartContainer:
         cid = _start_container("docker", "my-image:latest", port=18080)
         assert cid == "container-id-123"
 
-        mock_run.assert_called_once()
-        cmd = mock_run.call_args[0][0]
-        assert cmd[:3] == ["docker", "run", "--detach"]
-        assert "--name" in cmd
-        assert CONTAINER_NAME in cmd
-        assert "127.0.0.1:18080:8080" in " ".join(cmd)
-        assert "my-image:latest" in cmd
+        # Called twice: once for docker pull, once for docker run
+        assert mock_run.call_count == 2
+
+        # First call: docker pull
+        pull_cmd = mock_run.call_args_list[0][0][0]
+        assert pull_cmd == ["docker", "pull", "my-image:latest"]
+
+        # Second call: docker run
+        run_cmd = mock_run.call_args_list[1][0][0]
+        assert run_cmd[:3] == ["docker", "run", "--detach"]
+        assert "--name" in run_cmd
+        assert CONTAINER_NAME in run_cmd
+        assert "127.0.0.1:18080:8080" in " ".join(run_cmd)
+        assert "my-image:latest" in run_cmd
 
     @patch("jenkinsfilelint.local._run")
-    def test_raises_runtime_error_on_failure(self, mock_run):
-        """Should raise RuntimeError when container fails to start."""
+    def test_raises_runtime_error_on_pull_failure(self, mock_run):
+        """Should raise RuntimeError when image pull fails."""
         mock_run.side_effect = subprocess.CalledProcessError(
-            1, cmd="docker", stderr="port already in use"
+            1, cmd="docker", stderr="manifest not found"
         )
+
+        with pytest.raises(RuntimeError, match="Failed to pull image"):
+            _start_container("docker", "my-image")
+
+    @patch("jenkinsfilelint.local._run")
+    def test_raises_runtime_error_on_pull_timeout(self, mock_run):
+        """Should raise RuntimeError when image pull times out."""
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd="docker", timeout=180)
+
+        with pytest.raises(RuntimeError, match="Timed out pulling image"):
+            _start_container("docker", "my-image")
+
+    @patch("jenkinsfilelint.local._run")
+    def test_raises_runtime_error_on_run_failure(self, mock_run):
+        """Should raise RuntimeError when container fails to start after a
+        successful pull."""
+        # First call (pull) succeeds, second (run) fails
+        mock_pull_result = Mock()
+        mock_pull_result.stdout = ""
+        mock_run.side_effect = [
+            mock_pull_result,
+            subprocess.CalledProcessError(
+                1, cmd="docker", stderr="port already in use"
+            ),
+        ]
 
         with pytest.raises(RuntimeError, match="Failed to start container"):
             _start_container("docker", "my-image")
 
     @patch("jenkinsfilelint.local._run")
-    def test_raises_runtime_error_on_timeout(self, mock_run):
-        """Should raise RuntimeError when container start times out."""
-        mock_run.side_effect = subprocess.TimeoutExpired(cmd="docker", timeout=30)
+    def test_raises_runtime_error_on_run_timeout(self, mock_run):
+        """Should raise RuntimeError when docker run times out after a
+        successful pull."""
+        # First call (pull) succeeds, second (run) times out
+        mock_pull_result = Mock()
+        mock_pull_result.stdout = ""
+        mock_run.side_effect = [
+            mock_pull_result,
+            subprocess.TimeoutExpired(cmd="docker", timeout=30),
+        ]
 
         with pytest.raises(RuntimeError, match="Timed out waiting for container"):
             _start_container("docker", "my-image")
@@ -172,9 +211,12 @@ class TestStartContainer:
     @patch("jenkinsfilelint.local._run")
     def test_raises_runtime_error_when_no_id_returned(self, mock_run):
         """Should raise RuntimeError when no container ID is returned."""
-        mock_result = Mock()
-        mock_result.stdout = "\n"
-        mock_run.return_value = mock_result
+        # First call (pull) succeeds, second (run) returns empty ID
+        mock_pull_result = Mock()
+        mock_pull_result.stdout = ""
+        mock_run_result = Mock()
+        mock_run_result.stdout = "\n"
+        mock_run.side_effect = [mock_pull_result, mock_run_result]
 
         with pytest.raises(RuntimeError, match="no ID was returned"):
             _start_container("docker", "my-image")
