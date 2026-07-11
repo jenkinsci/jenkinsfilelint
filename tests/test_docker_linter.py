@@ -126,7 +126,8 @@ class TestDockerEndToEnd:
         ), f"Message doesn't look like a Jenkins error: {message}"
 
     def test_validate_endpoint_works_without_crumb(
-        self, local_jenkins_url: str,
+        self,
+        local_jenkins_url: str,
     ) -> None:
         """Verify the ``/pipeline-model-converter/validate`` endpoint responds
         successfully **without** a crumb header.
@@ -165,6 +166,4 @@ class TestDockerEndToEnd:
             f"Expected HTTP 200, got {resp.status_code}: {resp.text}"
         )
         body = resp.json()
-        assert body.get("status") == "ok", (
-            f"Expected status 'ok', got: {body}"
-        )
+        assert body.get("status") == "ok", f"Expected status 'ok', got: {body}"
