@@ -1,0 +1,19 @@
+tests/test_docker_linter.py
+  s_1777f60758d617::t_cef928cfab174c 168-175
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "f06ae924a968dfa9c9fb6c59b46041bba03f6af8",
+  "prompts": {},
+  "sessions": {
+    "s_1777f60758d617": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "019f52bf-55e2-7fd8-aeec-2d3d23707d18",
+        "model": "deepseek-v4-flash"
+      },
+      "human_author": "shenxianpeng <xianpeng.shen@gmail.com>"
+    }
+  }
+}
