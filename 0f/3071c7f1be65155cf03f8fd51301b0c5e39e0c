@@ -1,0 +1,14 @@
+.pre-commit-config.yaml
+  h_95e33fbd4ab2d9 14,18-21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "0f3071c7f1be65155cf03f8fd51301b0c5e39e0c",
+  "prompts": {},
+  "humans": {
+    "h_95e33fbd4ab2d9": {
+      "author": "shenxianpeng <xianpeng.shen@gmail.com>"
+    }
+  }
+}
