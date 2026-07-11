@@ -185,7 +185,9 @@ class TestStartContainer:
         mock_pull_result.stdout = ""
         mock_run.side_effect = [
             mock_pull_result,
-            subprocess.CalledProcessError(1, cmd="docker", stderr="port already in use"),
+            subprocess.CalledProcessError(
+                1, cmd="docker", stderr="port already in use"
+            ),
         ]
 
         with pytest.raises(RuntimeError, match="Failed to start container"):
