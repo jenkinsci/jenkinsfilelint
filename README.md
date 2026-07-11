@@ -2,11 +2,14 @@
 
 [![CI](https://github.com/jenkinsci/jenkinsfilelint/actions/workflows/main.yml/badge.svg)](https://github.com/jenkinsci/jenkinsfilelint/actions/workflows/main.yml)
 [![codecov](https://codecov.io/gh/jenkinsci/jenkinsfilelint/graph/badge.svg?token=nGrwXORFtI)](https://codecov.io/gh/jenkinsci/jenkinsfilelint)
-[![PyPI version](https://img.shields.io/pypi/v/jenkinsfilelint)](https://pypi.org/project/jenkinsfilelint/)
+[![PyPI version](https://img.shields.io/pypi/v/jenkinsfilelint)](https://pypi.org/project/jenkinsfilelint)
 
 Catch Jenkinsfile syntax errors before they break your CI.
 
-`jenkinsfilelint` sends your Jenkinsfiles to your Jenkins server's `/pipeline-model-converter/validate` endpoint for real syntax validation. It's primarily a [pre-commit](https://pre-commit.com/) hook, but also works as a CLI tool.
+`jenkinsfilelint` validates your Declarative Pipeline syntax via Jenkins's
+[`/pipeline-model-converter/validate`](https://www.jenkins.io/doc/book/pipeline/development/#linter)
+endpoint. It's primarily a [pre-commit](https://pre-commit.com/) hook, but also
+works as a standalone CLI tool.
 
 > 📖 Read the [official blog post](https://www.jenkins.io/blog/2026/06/08/jenkinsfilelint-pre-commit/) for the story behind this tool.
 
@@ -15,11 +18,10 @@ Catch Jenkinsfile syntax errors before they break your CI.
 ## Table of Contents
 
 - [Quick Start](#quick-start)
-- [Usage](#usage)
-  - [Pre-commit Hook](#pre-commit-hook)
-  - [CLI](#cli)
-  - [Local mode (no remote Jenkins required)](#local-mode-no-remote-jenkins-required)
-  - [Filtering files](#filtering-files)
+- [Pre-commit Hook](#pre-commit-hook)
+- [CLI](#cli)
+- [Local mode (no remote Jenkins required)](#local-mode-no-remote-jenkins-required)
+- [Filtering files](#filtering-files)
 - [Configuration](#configuration)
 - [Security](#security)
 - [How It Works](#how-it-works)
@@ -29,16 +31,20 @@ Catch Jenkinsfile syntax errors before they break your CI.
 
 ## Quick Start
 
-### With a remote Jenkins server
+Add the hook to your `.pre-commit-config.yaml`, then install.
+
+### Remote mode (with a Jenkins server)
 
 ```yaml
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/jenkinsci/jenkinsfilelint
-    rev: # use the latest or a specific version, e.g. v1.4.0
+    rev: v1.4.0   # or use the latest release
     hooks:
       - id: jenkinsfilelint
 ```
+
+Set credentials via environment variables:
 
 ```bash
 export JENKINS_URL=https://jenkins.example.com
@@ -49,42 +55,39 @@ pip install pre-commit
 pre-commit install
 ```
 
-### With local Docker (no remote Jenkins required)
+### Local mode (with Docker, no Jenkins server needed)
 
 ```yaml
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/jenkinsci/jenkinsfilelint
-    rev: # use the latest or a specific version, e.g. v1.4.0
+    rev: v1.4.0
     hooks:
       - id: jenkinsfilelint
         args: ["--local"]
 ```
 
+Docker (or Podman) is the only requirement — no credentials needed:
+
 ```bash
-# Docker (or Podman) is the only requirement — no env vars needed
 pip install pre-commit
 pre-commit install
 ```
 
-The first commit will pull the container image and start Jenkins (~20–40s cold
-start). Subsequent commits reuse the running container and complete in
-milliseconds.
+> The first commit pulls a minimal Jenkins container (~20–40s cold start).
+> Subsequent commits reuse the running container and complete in milliseconds.
 
-## Usage
+## Pre-commit Hook
 
-### Pre-commit Hook
-
-Once installed, every commit that touches a Jenkinsfile is validated.
-
-**Remote mode** (default — requires ``JENKINS_URL``):
+Once installed, every commit that touches a Jenkinsfile is validated. A valid
+file passes silently:
 
 ```bash
 git commit -m "Update Jenkinsfile"
 jenkinsfilelint..........................................................Passed
 ```
 
-If the file has a syntax error the commit is blocked:
+A syntax error blocks the commit with a clear message:
 
 ```bash
 git commit -m "Update Jenkinsfile"
@@ -98,55 +101,42 @@ WorkflowScript: 17: Expected a step @ line 17, column 11.
              ^
 ```
 
-Fix the error, re-commit, and it passes.
+Fix the error and re-commit.
 
-### CLI
+## CLI
+
+You can also run `jenkinsfilelint` directly on any file:
 
 ```bash
 pip install jenkinsfilelint
 
 jenkinsfilelint Jenkinsfile
 jenkinsfilelint Jenkinsfile Jenkinsfile.prod tests/Jenkinsfile
+jenkinsfilelint --local Jenkinsfile
 ```
 
-### Local mode (no remote Jenkins required)
+## Local mode (no remote Jenkins required)
 
-If you have Docker (or Podman) installed, you can validate without any remote
-Jenkins server. The tool automatically manages a minimal Jenkins container on
-your machine:
-
-```bash
-# First run: starts a Jenkins container (~20–40s cold start)
-jenkinsfilelint --local Jenkinsfile
-
-# Subsequent runs: reuses the running container (milliseconds)
-jenkinsfilelint --local Jenkinsfile
-
-# Stop the container when you're done
-jenkinsfilelint server stop
-```
-
-The container runs in unsecured mode, listening only on ``127.0.0.1`` so it is
-safe for local use. The image is hosted on GitHub Container Registry and is
-automatically pulled on first use.
-
-**Server lifecycle commands:**
+Pass `--local` to validate using a lightweight Jenkins container that the tool
+manages for you. The container runs in unsecured mode on `127.0.0.1` and is
+automatically pulled from GitHub Container Registry on first use.
 
 ```bash
-jenkinsfilelint server status   # Check if the container is running
-jenkinsfilelint server restart  # Restart the container
+jenkinsfilelint --local Jenkinsfile          # First run starts the container (~20–40s)
+jenkinsfilelint --local Jenkinsfile          # Subsequent runs reuse it (milliseconds)
+jenkinsfilelint server stop                  # Stop the container when you're done
 ```
 
 > [!IMPORTANT]
 > Local mode validates **vanilla Declarative Pipeline syntax only**. If your
 > production Jenkins has plugins that provide custom options, agents, or steps
 > (e.g., custom shared libraries), local mode may not catch errors related to
-> those plugins. For authoritative validation, use the regular remote mode
-> pointing at your real Jenkins server.
+> those plugins. For authoritative validation, use remote mode pointing at your
+> real Jenkins server.
 >
 > In short: `--local` = fast syntax gate, remote = authoritative validation.
 
-### Filtering files
+## Filtering files
 
 Use `--include` (whitelist) and `--skip` (blacklist) to control which files are validated:
 
@@ -218,29 +208,15 @@ custom build.
 
 ## How It Works
 
-`jenkinsfilelint` is a **syntax gate** — it checks that your Declarative Pipeline syntax is valid.
+`jenkinsfilelint` POSTs your Jenkinsfile to Jenkins's
+`/pipeline-model-converter/validate` endpoint and reports whether the syntax is
+valid. That's it — it only answers: **"Will Jenkins accept this syntax?"**
 
-### Remote mode (default)
-
-1. Reads the local Jenkinsfile.
-2. POSTs it to `<JENKINS_URL>/pipeline-model-converter/validate`.
-3. Jenkins parses the Pipeline and returns `"ok"` or errors.
-4. Errors are printed and the tool exits non-zero.
-
-It only answers: **"Will Jenkins accept this syntax?"**
-
-### Local mode (`--local`)
-
-Same validation, zero infrastructure:
-
-1. Checks if a local Jenkins container is already running (identified by label).
-2. If not, starts one with ``docker run -d`` (or ``podman``).
-3. Waits for Jenkins to become ready by polling ``/login``.
-4. Uses the **exact same** validate endpoint at ``http://127.0.0.1:<port>``.
-5. Container stays running — subsequent invocations are near-instant.
-
-This gives you 100% validation fidelity without maintaining a remote Jenkins
-server. The only requirement is Docker or Podman on your machine.
+- **Remote mode**: validates against your existing Jenkins server using the URL
+  and credentials you configure.
+- **Local mode** (`--local`): automatically starts a lightweight Jenkins
+  container (via Docker or Podman) and validates against it. The container is
+  reused across runs for near-instant validation.
 
 ## Requirements
 
