@@ -82,10 +82,7 @@ def local_jenkins_url(server_image: str) -> str:
     The container is started once before any test in the module and
     torn down after all tests finish.
     """
-    lj = LocalJenkins(
-        image=server_image,
-        config_path=os.path.join(_DOCKER_DIR, "jenkins.yaml"),
-    )
+    lj = LocalJenkins(image=server_image)
     try:
         url = lj.ensure_running()
         yield url

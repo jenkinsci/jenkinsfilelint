@@ -96,7 +96,6 @@ def _start_container(
     port: int = DEFAULT_PORT,
     name: str = CONTAINER_NAME,
     label: str = CONTAINER_LABEL,
-    extra_mounts: Optional[list[str]] = None,
 ) -> str:
     """Start a new container and return its ID.
 
@@ -136,11 +135,8 @@ def _start_container(
         f"127.0.0.1:{port}:8080",
         "--restart",
         "no",
+        image,
     ]
-    if extra_mounts:
-        for mount in extra_mounts:
-            cmd.extend(["--mount", mount])
-    cmd.append(image)
     try:
         result = _run(cmd, timeout=START_TIMEOUT)
     except subprocess.CalledProcessError as exc:
@@ -224,15 +220,11 @@ class LocalJenkins:
         self,
         image: Optional[str] = None,
         port: Optional[int] = None,
-        config_path: Optional[str] = None,
     ):
         self.image = image or os.environ.get(
             "JENKINSFILELINT_SERVER_IMAGE", DEFAULT_IMAGE
         )
         self.port = port or DEFAULT_PORT
-        self.config_path = config_path or os.environ.get(
-            "JENKINSFILELINT_SERVER_CONFIG"
-        )
         self._runtime: Optional[str] = None
         self._container_id: Optional[str] = None
 
@@ -296,16 +288,10 @@ class LocalJenkins:
             log.info("Reusing existing container %s", cid[:12])
         else:
             # 2. Start a new container.
-            mounts = []
-            if self.config_path:
-                mounts.append(
-                    f"type=bind,source={self.config_path},target=/usr/share/jenkins/ref/jenkins.yaml"
-                )
             cid = _start_container(
                 self.runtime,
                 self.image,
                 port=self.port,
-                extra_mounts=mounts or None,
             )
             self._container_id = cid
 
