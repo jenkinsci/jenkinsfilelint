@@ -108,16 +108,16 @@ def _start_container(
 
     # Explicitly pull the image so a slow first-time download doesn't
     # trip the much shorter docker-run timeout (START_TIMEOUT=30s).
+    # If the pull fails, the image may already exist locally (e.g. a
+    # local-only tag) — log a warning and let ``docker run`` fail later
+    # if the image truly isn't available.
     log.info("Pulling image %s …", image)
     try:
         _run([runtime, "pull", image], timeout=PULL_TIMEOUT)
-    except subprocess.CalledProcessError as exc:
-        raise RuntimeError(f"Failed to pull image {image}:\n{exc.stderr}") from exc
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(
-            f"Timed out pulling image {image} after {PULL_TIMEOUT}s. "
-            f"Check your network connection or try pulling manually."
-        ) from exc
+    except subprocess.CalledProcessError:
+        log.warning("Could not pull %s — trying local image…", image)
+    except subprocess.TimeoutExpired:
+        log.warning("Timed out pulling %s — trying local image…", image)
 
     # Remove any existing container with the same name (e.g. from a crash)
     # so we don't hit a "container name already in use" error on docker run.
