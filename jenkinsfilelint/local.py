@@ -119,6 +119,10 @@ def _start_container(
             f"Check your network connection or try pulling manually."
         ) from exc
 
+    # Remove any existing container with the same name (e.g. from a crash)
+    # so we don't hit a "container name already in use" error on docker run.
+    _run([runtime, "rm", "--force", name], check=False)
+
     cmd = [
         runtime,
         "run",
