@@ -1,0 +1,12 @@
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "e3103faabce3808ded2d60481b1fbc6cd3755835",
+  "prompts": {},
+  "humans": {
+    "h_95e33fbd4ab2d9": {
+      "author": "shenxianpeng <xianpeng.shen@gmail.com>"
+    }
+  }
+}
