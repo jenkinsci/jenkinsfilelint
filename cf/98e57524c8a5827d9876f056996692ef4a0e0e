@@ -1,0 +1,20 @@
+jenkinsfilelint/__init__.py
+  s_2622589d75d6dd::t_72bb97857ab6ac 5
+  s_2622589d75d6dd::t_16907f7ebc457c 6
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "cf98e57524c8a5827d9876f056996692ef4a0e0e",
+  "prompts": {},
+  "sessions": {
+    "s_2622589d75d6dd": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "019f51ba-d04f-7416-8ef4-5d7d2c1a3456",
+        "model": "deepseek-v4-flash"
+      },
+      "human_author": null
+    }
+  }
+}
