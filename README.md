@@ -19,9 +19,13 @@ works as a standalone CLI tool.
 
 - [Quick Start](#quick-start)
 - [Pre-commit Hook](#pre-commit-hook)
+  - [Remote mode (with a Jenkins server)](#remote-mode-with-a-jenkins-server)
+  - [Local mode (with Docker, no Jenkins server needed)](#local-mode-with-docker-no-jenkins-server-needed)
+  - [What happens on commit](#what-happens-on-commit)
 - [CLI](#cli)
 - [Filtering files](#filtering-files)
 - [Configuration](#configuration)
+  - [Local Docker image](#local-docker-image)
 - [Security](#security)
 - [How It Works](#how-it-works)
 - [Requirements](#requirements)
