@@ -31,7 +31,16 @@ works as a standalone CLI tool.
 
 ## Quick Start
 
-Add the hook to your `.pre-commit-config.yaml`, then install.
+```bash
+pip install jenkinsfilelint
+```
+
+Then add the pre-commit hook (see [below](#pre-commit-hook)) or use the [CLI](#cli) directly.
+
+## Pre-commit Hook
+
+Add the hook to your `.pre-commit-config.yaml` and install. Once configured,
+every commit that touches a Jenkinsfile is automatically validated.
 
 ### Remote mode (with a Jenkins server)
 
@@ -44,7 +53,7 @@ repos:
       - id: jenkinsfilelint
 ```
 
-Set credentials via environment variables:
+Set credentials via environment variables, then install:
 
 ```bash
 export JENKINS_URL=https://jenkins.example.com
@@ -77,10 +86,9 @@ pre-commit install
 > The first commit pulls a minimal Jenkins container (~20–40s cold start).
 > Subsequent commits reuse the running container and complete in milliseconds.
 
-## Pre-commit Hook
+### What happens on commit
 
-Once installed, every commit that touches a Jenkinsfile is validated. A valid
-file passes silently:
+A valid file passes silently:
 
 ```bash
 git commit -m "Update Jenkinsfile"
