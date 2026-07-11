@@ -51,7 +51,6 @@ jobs:
     runs-on: ubuntu-latest
     # These tests start a real Jenkins container (Docker-in-Docker),
     # so they only run on Linux where GitHub Actions has Docker.
-    # Uses the published image from ghcr.io — no local build needed.
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
@@ -65,8 +64,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
+      - name: Build the server image with local config
+        run: |
+          docker build -t ghcr.io/jenkinsci/jenkinsfilelint-server:test docker/
+
       - name: Run Docker integration tests
         run: |
           pytest tests/test_docker_linter.py -v -m docker
         env:
-          JENKINSFILELINT_SERVER_IMAGE: ghcr.io/jenkinsci/jenkinsfilelint-server:latest
+          JENKINSFILELINT_SERVER_IMAGE: ghcr.io/jenkinsci/jenkinsfilelint-server:test

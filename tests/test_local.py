@@ -163,22 +163,30 @@ class TestStartContainer:
         assert "my-image:latest" in run_cmd
 
     @patch("jenkinsfilelint.local._run")
-    def test_raises_runtime_error_on_pull_failure(self, mock_run):
-        """Should raise RuntimeError when image pull fails."""
-        mock_run.side_effect = subprocess.CalledProcessError(
-            1, cmd="docker", stderr="manifest not found"
-        )
+    def test_pull_failure_is_non_fatal(self, mock_run):
+        """Should warn on pull failure and continue if image is local."""
+        # First call (pull) fails, second (rm) succeeds, third (run) succeeds
+        mock_run.side_effect = [
+            subprocess.CalledProcessError(1, "docker pull", stderr="not found"),
+            Mock(stdout=""),
+            Mock(stdout="abc123\n"),
+        ]
 
-        with pytest.raises(RuntimeError, match="Failed to pull image"):
-            _start_container("docker", "my-image")
+        cid = _start_container("docker", "my-image")
+        assert cid == "abc123"
 
     @patch("jenkinsfilelint.local._run")
-    def test_raises_runtime_error_on_pull_timeout(self, mock_run):
-        """Should raise RuntimeError when image pull times out."""
-        mock_run.side_effect = subprocess.TimeoutExpired(cmd="docker", timeout=180)
+    def test_pull_timeout_is_non_fatal(self, mock_run):
+        """Should warn on pull timeout and continue if image is local."""
+        # First call (pull) times out, second (rm) succeeds, third (run) succeeds
+        mock_run.side_effect = [
+            subprocess.TimeoutExpired("docker pull", timeout=60),
+            Mock(stdout=""),
+            Mock(stdout="abc123\n"),
+        ]
 
-        with pytest.raises(RuntimeError, match="Timed out pulling image"):
-            _start_container("docker", "my-image")
+        cid = _start_container("docker", "my-image")
+        assert cid == "abc123"
 
     @patch("jenkinsfilelint.local._run")
     def test_cleans_up_existing_container_with_same_name(self, mock_run):
