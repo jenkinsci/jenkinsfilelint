@@ -1,0 +1,20 @@
+.github/release-drafter.yml
+  s_6f6d72c2cc5c3c::t_2cbefbf0f185bf 4-5
+  s_6f6d72c2cc5c3c::t_82ef7426647f24 11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "a1a73f25a4bf2fc1f6aba0e09d7177689d2bb90f",
+  "prompts": {},
+  "sessions": {
+    "s_6f6d72c2cc5c3c": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "019f5302-1b11-7ce5-bcd2-2b8ef6911766",
+        "model": "deepseek-v4-flash"
+      },
+      "human_author": "shenxianpeng <xianpeng.shen@gmail.com>"
+    }
+  }
+}
