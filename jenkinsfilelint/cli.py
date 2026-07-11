@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Command-line interface for jenkinsfilelint."""
 
+import os
 import sys
 import argparse
 import io
@@ -210,6 +211,11 @@ def main():
     args = parser.parse_args()
 
     if args.local:
+        if args.jenkins_url or os.environ.get("JENKINS_URL"):
+            print(
+                "⚠ --local takes precedence, --jenkins-url / JENKINS_URL is ignored",
+                file=sys.stderr,
+            )
         _run_local_validation(args)
     else:
         _run_remote_validation(args)

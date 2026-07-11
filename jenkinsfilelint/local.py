@@ -47,8 +47,8 @@ def _run(
 ) -> subprocess.CompletedProcess:
     """Run *cmd* and return the result.
 
-    Wraps :func:`subprocess.run` with sensible defaults (text mode, merged
-    stderr so error messages are visible).
+    Wraps :func:`subprocess.run` with sensible defaults (text mode, stdout and
+    stderr captured separately).
     """
     return subprocess.run(
         cmd,
