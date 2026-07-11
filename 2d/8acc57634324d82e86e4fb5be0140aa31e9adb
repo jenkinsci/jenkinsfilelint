@@ -1,0 +1,22 @@
+tests/test_docker_linter.py
+  s_1777f60758d617::t_ea342538bb866e 85-88
+jenkinsfilelint/local.py
+  s_1777f60758d617::t_b5d644b4f3a6b4 227,233-235,299-303,308
+  s_1777f60758d617::t_e8fe4ddecaa95a 99,140-143
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "2d8acc57634324d82e86e4fb5be0140aa31e9adb",
+  "prompts": {},
+  "sessions": {
+    "s_1777f60758d617": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "019f52bf-55e2-7fd8-aeec-2d3d23707d18",
+        "model": "deepseek-v4-flash"
+      },
+      "human_author": "shenxianpeng <xianpeng.shen@gmail.com>"
+    }
+  }
+}
