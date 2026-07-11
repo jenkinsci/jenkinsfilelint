@@ -1,0 +1,60 @@
+tests/test_cli.py
+  s_8f85b8abd74ec7::t_fecfb1c2494fd6 668-771,774-778,780-782,791,794
+  s_8f85b8abd74ec7::t_6412ce0c5bb5f7 783-790
+  s_8f85b8abd74ec7::t_6c13da55849ea7 772-773,779,792-793,795-798
+  s_8f85b8abd74ec7::t_4642b500b96312 799-800
+.github/dependabot.yml
+  s_8f85b8abd74ec7::t_4a7e54d48883e4 24-31
+tests/test_local.py
+  s_8f85b8abd74ec7::t_3eef63f70123f4 1-507
+README.md
+  s_8f85b8abd74ec7::t_556d07bc521aa8 188-193,195-196,203-209,223-224,232-243
+  s_8f85b8abd74ec7::t_b5f32a8eb6d566 21,112-148,248-249
+  s_8f85b8abd74ec7::t_0af4fc9106a371 32-33,52-73,78-80
+  s_8f85b8abd74ec7::t_bd87e584914d64 244
+docker/jenkins.yaml
+  s_8f85b8abd74ec7::t_7522e664ea1cd6 1,3-4,6,8-13
+  s_1034fc33c36462::t_bef16c88f05829 2
+  s_1034fc33c36462::t_8202e1c6831064 5,7
+docker/plugins.txt
+  s_8f85b8abd74ec7::t_651fe0c493a24d 1-5
+jenkinsfilelint/local.py
+  s_8f85b8abd74ec7::t_589d4c3951055e 1-348
+.github/workflows/docker.yml
+  s_8f85b8abd74ec7::t_c382ab442eb1da 1-62
+jenkinsfilelint/cli.py
+  s_8f85b8abd74ec7::t_8600a68a277bb1 8,10,57-124,179-185,212-215
+  s_8f85b8abd74ec7::t_60572f7135afa7 126-134
+docker/Dockerfile
+  s_1034fc33c36462::t_4ce6d4e787fb1f 38-41
+  s_8f85b8abd74ec7::t_0527f8e1647ada 1-37,42-46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.12",
+  "base_commit_sha": "22d5ceac51ed58cab3bf35d5e2a651b7f934d925",
+  "prompts": {},
+  "humans": {
+    "h_95e33fbd4ab2d9": {
+      "author": "shenxianpeng <xianpeng.shen@gmail.com>"
+    }
+  },
+  "sessions": {
+    "s_1034fc33c36462": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "019f51a1-1b66-7a83-9388-7976624ce208",
+        "model": "deepseek-v4-flash"
+      },
+      "human_author": "shenxianpeng <xianpeng.shen@gmail.com>"
+    },
+    "s_8f85b8abd74ec7": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "019f5170-72ca-7dfe-991b-2bab01c87e90",
+        "model": "deepseek-v4-flash"
+      },
+      "human_author": "shenxianpeng <xianpeng.shen@gmail.com>"
+    }
+  }
+}
