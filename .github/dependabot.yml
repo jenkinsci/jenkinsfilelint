@@ -21,3 +21,11 @@ updates:
       pip:
         patterns:
           - "*"
+  - package-ecosystem: docker
+    directory: /docker/
+    schedule:
+      interval: "monthly"
+    groups:
+      docker:
+        patterns:
+          - "*"

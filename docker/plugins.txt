@@ -1,0 +1,5 @@
+# Core plugin for Declarative Pipeline validation (/pipeline-model-converter/validate)
+pipeline-model-definition
+
+# JCasC for zero-config unsecured setup
+configuration-as-code

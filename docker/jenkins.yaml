@@ -1,0 +1,13 @@
+# Jenkins Configuration-as-Code for jenkinsfilelint-server
+# Unsecured mode — safe for local-only use (Docker binds to 127.0.0.1 on the host).
+jenkins:
+  authorizationStrategy:
+    unsecured: {}
+  securityRealm:
+    none: {}
+  disableRememberMe: true
+  numExecutors: 0
+  mode: NORMAL
+  crumbIssuer:
+    standard:
+      excludeClientIPFromCrumb: true

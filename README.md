@@ -18,6 +18,7 @@ Catch Jenkinsfile syntax errors before they break your CI.
 - [Usage](#usage)
   - [Pre-commit Hook](#pre-commit-hook)
   - [CLI](#cli)
+  - [Local mode (no remote Jenkins required)](#local-mode-no-remote-jenkins-required)
   - [Filtering files](#filtering-files)
 - [Configuration](#configuration)
 - [Security](#security)
@@ -27,6 +28,8 @@ Catch Jenkinsfile syntax errors before they break your CI.
 - [License](#license)
 
 ## Quick Start
+
+### With a remote Jenkins server
 
 ```yaml
 # .pre-commit-config.yaml
@@ -46,11 +49,35 @@ pip install pre-commit
 pre-commit install
 ```
 
+### With local Docker (no remote Jenkins required)
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/jenkinsci/jenkinsfilelint
+    rev: # use the latest or a specific version, e.g. v1.4.0
+    hooks:
+      - id: jenkinsfilelint
+        args: ["--local"]
+```
+
+```bash
+# Docker (or Podman) is the only requirement — no env vars needed
+pip install pre-commit
+pre-commit install
+```
+
+The first commit will pull the container image and start Jenkins (~20–40s cold
+start). Subsequent commits reuse the running container and complete in
+milliseconds.
+
 ## Usage
 
 ### Pre-commit Hook
 
-Once installed, every commit that touches a Jenkinsfile is validated:
+Once installed, every commit that touches a Jenkinsfile is validated.
+
+**Remote mode** (default — requires ``JENKINS_URL``):
 
 ```bash
 git commit -m "Update Jenkinsfile"
@@ -81,6 +108,43 @@ pip install jenkinsfilelint
 jenkinsfilelint Jenkinsfile
 jenkinsfilelint Jenkinsfile Jenkinsfile.prod tests/Jenkinsfile
 ```
+
+### Local mode (no remote Jenkins required)
+
+If you have Docker (or Podman) installed, you can validate without any remote
+Jenkins server. The tool automatically manages a minimal Jenkins container on
+your machine:
+
+```bash
+# First run: starts a Jenkins container (~20–40s cold start)
+jenkinsfilelint --local Jenkinsfile
+
+# Subsequent runs: reuses the running container (milliseconds)
+jenkinsfilelint --local Jenkinsfile
+
+# Stop the container when you're done
+jenkinsfilelint server stop
+```
+
+The container runs in unsecured mode, listening only on ``127.0.0.1`` so it is
+safe for local use. The image is hosted on GitHub Container Registry and is
+automatically pulled on first use.
+
+**Server lifecycle commands:**
+
+```bash
+jenkinsfilelint server status   # Check if the container is running
+jenkinsfilelint server restart  # Restart the container
+```
+
+> [!IMPORTANT]
+> Local mode validates **vanilla Declarative Pipeline syntax only**. If your
+> production Jenkins has plugins that provide custom options, agents, or steps
+> (e.g., custom shared libraries), local mode may not catch errors related to
+> those plugins. For authoritative validation, use the regular remote mode
+> pointing at your real Jenkins server.
+>
+> In short: `--local` = fast syntax gate, remote = authoritative validation.
 
 ### Filtering files
 
@@ -121,18 +185,27 @@ You can also combine both — `--include` narrows first, then `--skip` removes f
 
 Supply credentials via environment variables (recommended) or CLI flags:
 
-| Env Variable    | CLI Flag       | Required |
-|-----------------|----------------|----------|
-| `JENKINS_URL`   | `--jenkins-url`| Yes      |
-| `JENKINS_USER`  | `--username`   | No *     |
-| `JENKINS_TOKEN` | `--token`      | No *     |
+| Env Variable               | CLI Flag        | Required |
+|----------------------------|-----------------|----------|
+| `JENKINS_URL`              | `--jenkins-url` | Yes *    |
+| `JENKINS_USER`             | `--username`    | No **    |
+| `JENKINS_TOKEN`            | `--token`       | No **    |
+| `JENKINSFILELINT_SERVER_IMAGE` | —          | No       |
 
-\* Only required if your Jenkins requires authentication.
+\* Not required in ``--local`` mode.
+\*\* Only required if your Jenkins requires authentication (not used in ``--local`` mode).
 
 > [!TIP]
 > Even if your Jenkins allows anonymous access for validation, using an API token is recommended for production setups.
 
 CLI flags override env vars. There is no config file.
+
+### Local Docker image
+
+By default, ``--local`` mode uses the official image
+``ghcr.io/jenkinsci/jenkinsfilelint-server:latest``. You can override this with
+the ``JENKINSFILELINT_SERVER_IMAGE`` environment variable if you maintain a
+custom build.
 
 ## Security
 
@@ -147,6 +220,8 @@ CLI flags override env vars. There is no config file.
 
 `jenkinsfilelint` is a **syntax gate** — it checks that your Declarative Pipeline syntax is valid.
 
+### Remote mode (default)
+
 1. Reads the local Jenkinsfile.
 2. POSTs it to `<JENKINS_URL>/pipeline-model-converter/validate`.
 3. Jenkins parses the Pipeline and returns `"ok"` or errors.
@@ -154,10 +229,24 @@ CLI flags override env vars. There is no config file.
 
 It only answers: **"Will Jenkins accept this syntax?"**
 
+### Local mode (`--local`)
+
+Same validation, zero infrastructure:
+
+1. Checks if a local Jenkins container is already running (identified by label).
+2. If not, starts one with ``docker run -d`` (or ``podman``).
+3. Waits for Jenkins to become ready by polling ``/login``.
+4. Uses the **exact same** validate endpoint at ``http://127.0.0.1:<port>``.
+5. Container stays running — subsequent invocations are near-instant.
+
+This gives you 100% validation fidelity without maintaining a remote Jenkins
+server. The only requirement is Docker or Podman on your machine.
+
 ## Requirements
 
 - Python 3.10+
-- Jenkins server with the Pipeline plugin
+- For remote mode: a Jenkins server with the Pipeline plugin installed
+- For ``--local`` mode: [Docker](https://docker.com) or [Podman](https://podman.io)
 
 ## Contributing
 
