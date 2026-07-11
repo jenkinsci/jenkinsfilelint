@@ -16,6 +16,7 @@ from jenkinsfilelint.local import (
     _container_is_running,
     _start_container,
     _stop_container,
+    _container_logs,
     _wait_for_jenkins,
     CONTAINER_NAME,
     DEFAULT_PORT,
@@ -161,6 +162,14 @@ class TestStartContainer:
             _start_container("docker", "my-image")
 
     @patch("jenkinsfilelint.local._run")
+    def test_raises_runtime_error_on_timeout(self, mock_run):
+        """Should raise RuntimeError when container start times out."""
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd="docker", timeout=30)
+
+        with pytest.raises(RuntimeError, match="Timed out waiting for container"):
+            _start_container("docker", "my-image")
+
+    @patch("jenkinsfilelint.local._run")
     def test_raises_runtime_error_when_no_id_returned(self, mock_run):
         """Should raise RuntimeError when no container ID is returned."""
         mock_result = Mock()
@@ -199,6 +208,46 @@ class TestStopContainer:
 
         # Should not raise
         _stop_container("docker", "abc123")
+
+
+# ---------------------------------------------------------------------------
+# _container_logs
+# ---------------------------------------------------------------------------
+
+
+class TestContainerLogs:
+    """Test container log retrieval."""
+
+    @patch("jenkinsfilelint.local._run")
+    def test_returns_stdout_plus_stderr(self, mock_run):
+        """Should return combined stdout and stderr."""
+        mock_result = Mock()
+        mock_result.stdout = "line1\nline2\n"
+        mock_result.stderr = "warn: something\n"
+        mock_run.return_value = mock_result
+
+        logs = _container_logs("docker", "abc123", tail=10)
+        assert logs == "line1\nline2\nwarn: something\n"
+        mock_run.assert_called_once_with(
+            ["docker", "logs", "--tail", "10", "abc123"],
+            check=False,
+        )
+
+    @patch("jenkinsfilelint.local._run")
+    def test_returns_fallback_on_timeout(self, mock_run):
+        """Should return fallback message on TimeoutExpired."""
+        mock_run.side_effect = subprocess.TimeoutExpired(cmd="docker", timeout=5)
+
+        logs = _container_logs("docker", "abc123")
+        assert logs == "<unable to read logs>"
+
+    @patch("jenkinsfilelint.local._run")
+    def test_returns_fallback_on_file_not_found(self, mock_run):
+        """Should return fallback message on FileNotFoundError."""
+        mock_run.side_effect = FileNotFoundError("docker not found")
+
+        logs = _container_logs("docker", "abc123")
+        assert logs == "<unable to read logs>"
 
 
 # ---------------------------------------------------------------------------
@@ -494,6 +543,23 @@ class TestHandleServerCommand:
             handle_server_command(["start"])
 
         assert exc.value.code == 1
+
+    @patch("jenkinsfilelint.local.LocalJenkins")
+    def test_server_status_not_running(self, mock_local_cls):
+        """'server status' should show not-running message when container is down."""
+        mock_instance = Mock()
+        mock_instance.status.return_value = {
+            "running": False,
+            "container_id": None,
+            "port": 18080,
+            "url": None,
+        }
+        mock_local_cls.return_value = mock_instance
+
+        with patch.object(sys, "stderr"):
+            handle_server_command(["status"])
+
+        mock_instance.status.assert_called_once()
 
     def test_server_invalid_action(self):
         """Should exit with code 2 on invalid action."""
