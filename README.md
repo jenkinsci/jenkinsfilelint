@@ -90,17 +90,12 @@ pre-commit install
 > Subsequent commits reuse the running container and complete in milliseconds.
 
 > [!IMPORTANT]
-> The pre-built image includes the most common plugins (Docker agents, Git,
-> credentials binding, timestamps, workspace cleanup, and pipeline utilities).
-> If your production Jenkins has additional plugins that provide custom
-> options, agents, or steps (e.g., ``kubernetes``, ``pipeline-github-lib``,
-> ``email-ext``), local mode may still report false positives for those
-> constructs. For full fidelity, either use remote mode pointing at your real
-> Jenkins server, or [build a custom image](#custom-image-for-higher-fidelity)
+> The pre-built image includes plugins for the most common Declarative
+> Pipeline patterns (see [full list](#local-docker-image)). If your production
+> Jenkins has additional plugins (e.g., ``kubernetes``), local mode may still
+> report false positives for those constructs. For full fidelity, use remote
+> mode pointing at your real Jenkins, or [build a custom image](#custom-image)
 > that mirrors your production plugin set.
->
-> In short: `--local` = fast syntax gate with common plugins,
-> remote / [custom image](#custom-image-for-higher-fidelity) = authoritative validation.
 
 When you're done, stop the container:
 
@@ -203,83 +198,41 @@ CLI flags override env vars. There is no config file.
 
 By default, ``--local`` mode uses the official image
 ``ghcr.io/jenkinsci/jenkinsfilelint-server:latest``, which includes the
-following plugins:
+following plugins to cover common Declarative Pipeline constructs:
 
-| Plugin | Provides | Common Jenkinsfile pattern
-|--------|----------|---------------------------
-| `pipeline-model-definition` | Declarative Pipeline validation endpoint | ``pipeline { … }``
-| `configuration-as-code` | Unsecured bootstrapping (no setup wizard) | *(internal)*
-| `docker-workflow` | Docker agent & steps | ``agent { docker 'maven:3-jdk-11' }``, ``docker.image('…').inside()``
-| `git` | Git SCM step | ``git url: 'https://…'``, ``checkout scm``
-| `credentials-binding` | Secret injection | ``withCredentials([…]) { … }``
-| `timestamps` | Timestamp logging | ``options { timestamps() }``, ``timestamps { … }``
-| `ws-cleanup` | Workspace cleanup | ``post { always { cleanWs() } }``
-| `pipeline-utility-steps` | File/JSON/YAML utilities | ``readJSON``, ``readYAML``, ``findFiles``, ``writeJSON``, etc.
+| Plugin | Common pattern enabled |
+|--------|------------------------|
+| `docker-workflow` | ``agent { docker '…' }``, ``docker.image('…')`` |
+| `git` | ``git url: '…'`` |
+| `credentials-binding` | ``withCredentials([…]) { … }`` |
+| `timestamps` | ``options { timestamps() }`` |
+| `ws-cleanup` | ``post { always { cleanWs() } }`` |
+| `pipeline-utility-steps` | ``readJSON``, ``readYAML``, ``findFiles`` |
 
-> [!NOTE]
-> Adding these plugins reduces false positives for the most common
-> Declarative Pipeline patterns. If your Jenkinsfile uses a plugin not listed
-> here (e.g. ``kubernetes``, ``pipeline-github-lib``, ``email-ext``),
-> consider building a [custom image](#custom-image-for-higher-fidelity) that
-> includes it.
+> This list is a curated starting point — not exhaustive. If your Jenkinsfile
+> uses a plugin not listed here (e.g. ``kubernetes``, ``pipeline-github-lib``),
+> please [open an issue](https://github.com/jenkinsci/jenkinsfilelint/issues/new)
+> to propose adding it, or use a custom image (see below).
 
-#### Custom image for higher fidelity
+#### Custom image
 
-For authoritative validation that matches your production Jenkins setup, build a
-custom image with your own plugin set and point to it via
-``JENKINSFILELINT_SERVER_IMAGE``:
+Build a custom image matching your production Jenkins setup and point to it
+via ``JENKINSFILELINT_SERVER_IMAGE``:
 
 ```bash
-# Build a custom image with your plugins
-JENKINSFILELINT_SERVER_IMAGE=my-registry/jenkinsfilelint-server:custom \
-  jenkinsfilelint --local Jenkinsfile
-```
-
-##### Recipe: Export plugins from a real Jenkins
-
-The most reliable way to build a high-fidelity image is to replicate your
-production Jenkins plugin set:
-
-```bash
-# 1. Export the plugin list from your production Jenkins
-#    (requires an admin token — Script Console at /script in the Jenkins UI)
-curl -s -u "user:token" "$JENKINS_URL/script" \
-  --data-urlencode 'script=Jenkins.instance.pluginManager.plugins.each{println("${it.shortName}")}' \
-  | grep -oP '(?<=<pre>)[^<]+' \
-  > plugins.txt 2>/dev/null
-
-# Also works via the Jenkins CLI:
-# java -jar jenkins-cli.jar -s $JENKINS_URL -auth user:token list-plugins | awk '{print $1}' > plugins.txt
-```
-
-```dockerfile
-# 2. Create a Dockerfile that inherits from jenkinsfilelint-server or from
-#    jenkins/jenkins:lts-jdk21 directly
-FROM ghcr.io/jenkinsci/jenkinsfilelint-server:latest
-
-# (Optional) Override the plugin list entirely instead of inheriting
-COPY plugins.txt /usr/share/jenkins/ref/plugins.txt
-RUN jenkins-plugin-cli --plugin-file /usr/share/jenkins/ref/plugins.txt
-```
-
-```bash
-# 3. Build and use your custom image
-#    (Tag it whatever you like — it doesn't need to be pushed to a registry)
+# Export plugin list from your Jenkins (Script Console or Jenkins CLI)
+# and generate plugins.txt + a Dockerfile, then:
 docker build -t my-company/jenkinsfilelint-server:custom .
-
-# Use it
 JENKINSFILELINT_SERVER_IMAGE=my-company/jenkinsfilelint-server:custom \
   jenkinsfilelint --local Jenkinsfile
 ```
 
-> [!TIP]
-> A full production plugin list can be large (~100+ plugins). Every plugin
-> increases image build time and size. The pre-built image provides a balanced
-> set of common plugins. Use a custom image only when you need to validate
-> constructs from less common plugins.
+> The [existing Dockerfile](docker/Dockerfile) and [plugins.txt](docker/plugins.txt)
+> are a good starting template — fork them and adjust the plugin list to match
+> your production Jenkins.
 >
-> The ``kubernetes`` plugin is a common addition for teams using
-> ``agent { kubernetes { … } }`` — add it to your custom image if needed.
+> A full Jenkins plugin list can be 100+ entries, which increases build time
+> and image size. Only add what you need.
 
 ## Security
 
