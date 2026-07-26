@@ -3,3 +3,12 @@ pipeline-model-definition
 
 # JCasC for zero-config unsecured setup
 configuration-as-code
+
+# Common steps that reduce false positives in real-world Jenkinsfiles
+# (agent, SCM, credentials, timestamps, workspace cleanup, utilities)
+docker-workflow
+git
+credentials-binding
+timestamps
+ws-cleanup
+pipeline-utility-steps
