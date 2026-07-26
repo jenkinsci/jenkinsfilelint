@@ -1,0 +1,21 @@
+docker/plugins.txt
+  s_cb30495b11e11c::t_b12a71bcb46c0d 12
+README.md
+  s_cb30495b11e11c::t_691cb607509c69 208
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.16",
+  "base_commit_sha": "a49cebc305addb1b11c85cf0f078220c3d48d297",
+  "prompts": {},
+  "sessions": {
+    "s_cb30495b11e11c": {
+      "agent_id": {
+        "tool": "pi",
+        "id": "019f9f32-6036-7b48-a28c-d370137c5e3c",
+        "model": "deepseek-v4-flash"
+      },
+      "human_author": "shenxianpeng <xianpeng.shen@gmail.com>"
+    }
+  }
+}
