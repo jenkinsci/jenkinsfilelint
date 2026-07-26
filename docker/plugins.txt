@@ -9,6 +9,6 @@ configuration-as-code
 docker-workflow
 git
 credentials-binding
-timestamps
+timestamper
 ws-cleanup
 pipeline-utility-steps

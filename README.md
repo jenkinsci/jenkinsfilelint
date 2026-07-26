@@ -205,7 +205,7 @@ following plugins to cover common Declarative Pipeline constructs:
 | `docker-workflow` | ``agent { docker '…' }``, ``docker.image('…')`` |
 | `git` | ``git url: '…'`` |
 | `credentials-binding` | ``withCredentials([…]) { … }`` |
-| `timestamps` | ``options { timestamps() }`` |
+| `timestamper` | ``options { timestamps() }`` |
 | `ws-cleanup` | ``post { always { cleanWs() } }`` |
 | `pipeline-utility-steps` | ``readJSON``, ``readYAML``, ``findFiles`` |
 
