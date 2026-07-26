@@ -90,13 +90,12 @@ pre-commit install
 > Subsequent commits reuse the running container and complete in milliseconds.
 
 > [!IMPORTANT]
-> Local mode validates **vanilla Declarative Pipeline syntax only**. If your
-> production Jenkins has plugins that provide custom options, agents, or steps
-> (e.g., custom shared libraries), local mode may not catch errors related to
-> those plugins. For authoritative validation, use remote mode pointing at your
-> real Jenkins server.
->
-> In short: `--local` = fast syntax gate, remote = authoritative validation.
+> The pre-built image includes plugins for the most common Declarative
+> Pipeline patterns (see [full list](#local-docker-image)). If your production
+> Jenkins has additional plugins (e.g., ``kubernetes``), local mode may still
+> report false positives for those constructs. For full fidelity, use remote
+> mode pointing at your real Jenkins, or [build a custom image](#custom-image)
+> that mirrors your production plugin set.
 
 When you're done, stop the container:
 
@@ -198,9 +197,42 @@ CLI flags override env vars. There is no config file.
 ### Local Docker image
 
 By default, ``--local`` mode uses the official image
-``ghcr.io/jenkinsci/jenkinsfilelint-server:latest``. You can override this with
-the ``JENKINSFILELINT_SERVER_IMAGE`` environment variable if you maintain a
-custom build.
+``ghcr.io/jenkinsci/jenkinsfilelint-server:latest``, which includes the
+following plugins to cover common Declarative Pipeline constructs:
+
+| Plugin | Common pattern enabled |
+|--------|------------------------|
+| `docker-workflow` | ``agent { docker '…' }``, ``docker.image('…')`` |
+| `git` | ``git url: '…'`` |
+| `credentials-binding` | ``withCredentials([…]) { … }`` |
+| `timestamper` | ``options { timestamps() }`` |
+| `ws-cleanup` | ``post { always { cleanWs() } }`` |
+| `pipeline-utility-steps` | ``readJSON``, ``readYAML``, ``findFiles`` |
+
+> This list is a curated starting point — not exhaustive. If your Jenkinsfile
+> uses a plugin not listed here (e.g. ``kubernetes``, ``pipeline-github-lib``),
+> please [open an issue](https://github.com/jenkinsci/jenkinsfilelint/issues/new)
+> to propose adding it, or use a custom image (see below).
+
+#### Custom image
+
+Build a custom image matching your production Jenkins setup and point to it
+via ``JENKINSFILELINT_SERVER_IMAGE``:
+
+```bash
+# Export plugin list from your Jenkins (Script Console or Jenkins CLI)
+# and generate plugins.txt + a Dockerfile, then:
+docker build -t my-company/jenkinsfilelint-server:custom .
+JENKINSFILELINT_SERVER_IMAGE=my-company/jenkinsfilelint-server:custom \
+  jenkinsfilelint --local Jenkinsfile
+```
+
+> The [existing Dockerfile](docker/Dockerfile) and [plugins.txt](docker/plugins.txt)
+> are a good starting template — fork them and adjust the plugin list to match
+> your production Jenkins.
+>
+> A full Jenkins plugin list can be 100+ entries, which increases build time
+> and image size. Only add what you need.
 
 ## Security
 
