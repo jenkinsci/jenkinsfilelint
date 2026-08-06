@@ -45,6 +45,7 @@ CURSOR = (200, 202, 205)
 
 PROMPT = "sxp@Mac demo % "
 
+
 # A segment is (text, fg, bg-or-None, bold). A line is a list of segments.
 def seg(text, fg=FG, bg=None, bold=False):
     return (text, fg, bg, bold)
@@ -132,8 +133,12 @@ FAIL_OUTPUT = [
     [],
     [seg("Errors encountered validating Jenkinsfile:")],
     # terminal hard-wrap of one long error line at COLS characters
-    [seg('WorkflowScript: 2: Not a valid section definition: "agent". Some extra configuration is required. @ ')],
-    [seg('line 2, column 5.')],
+    [
+        seg(
+            'WorkflowScript: 2: Not a valid section definition: "agent". Some extra configuration is required. @ '
+        )
+    ],
+    [seg("line 2, column 5.")],
     [seg("       agent")],
     [seg("       ^")],
     [],
@@ -172,10 +177,10 @@ def build():
     rec.type_text("vi Jenkinsfile")
     rec.snap(500)
 
-    shell_lines = [list(l) for l in rec.lines]
+    shell_lines = [list(line) for line in rec.lines]
     vi = Recorder()
     vi.frames, vi.durations = rec.frames, rec.durations
-    vi.lines = [[seg(l)] for l in BROKEN_JENKINSFILE]
+    vi.lines = [[seg(line)] for line in BROKEN_JENKINSFILE]
     vi.lines += [[seg("~", BLUE)] for _ in range(ROWS - len(BROKEN_JENKINSFILE) - 1)]
     vi.lines.append([seg('"Jenkinsfile" 13L, 248B')])
     agent_row, agent_col = 1, len("    agent")
@@ -225,8 +230,10 @@ def main():
         loop=0,
         optimize=True,
     )
-    print(f"wrote {out} ({out.stat().st_size // 1024} KiB, "
-          f"{len(frames)} frames, {WIDTH}x{HEIGHT})")
+    print(
+        f"wrote {out} ({out.stat().st_size // 1024} KiB, "
+        f"{len(frames)} frames, {WIDTH}x{HEIGHT})"
+    )
 
 
 if __name__ == "__main__":
