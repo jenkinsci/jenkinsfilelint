@@ -1,0 +1,23 @@
+jenkinsfilelint/linter.py
+  s_66212c309e21f0::t_19186b9c8ddcce 5,9-23
+  s_66212c309e21f0::t_9639509e61d774 127-129
+  s_66212c309e21f0::t_1efa9caba8f16b 24
+tests/test_linter.py
+  s_66212c309e21f0::t_0b289b2f1a92f4 9,11,757-835
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "9e213342137a17ae535601bdcafd87466356f24c",
+  "prompts": {},
+  "sessions": {
+    "s_66212c309e21f0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8763d161-5362-48a1-ae9b-11f7bcd83469",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Xianpeng Shen <xianpeng.shen@gmail.com>"
+    }
+  }
+}
