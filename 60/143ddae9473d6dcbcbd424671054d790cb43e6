@@ -1,0 +1,22 @@
+jenkinsfilelint/cli.py
+  s_66212c309e21f0::t_c7b909a5075327 157-160
+tests/test_cli.py
+  s_66212c309e21f0::t_5058d96a531fad 4,8
+  s_66212c309e21f0::t_afac2de041ce01 50-69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "60143ddae9473d6dcbcbd424671054d790cb43e6",
+  "prompts": {},
+  "sessions": {
+    "s_66212c309e21f0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8763d161-5362-48a1-ae9b-11f7bcd83469",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Xianpeng Shen <xianpeng.shen@gmail.com>"
+    }
+  }
+}
