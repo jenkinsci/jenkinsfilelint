@@ -1,0 +1,25 @@
+docker/Dockerfile
+  s_66212c309e21f0::t_e247032fd4942e 36
+  s_66212c309e21f0::t_96c75ba6415321 23-24
+  s_66212c309e21f0::t_997c7007399372 49-50
+.pre-commit-config.yaml
+  s_66212c309e21f0::t_c7498b85850dd8 14,19
+pyproject.toml
+  s_66212c309e21f0::t_e6f1961c918dd2 21
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.4",
+  "base_commit_sha": "a68dbe73e8a49f8d5830f88513f9d3b1ed0842ca",
+  "prompts": {},
+  "sessions": {
+    "s_66212c309e21f0": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "8763d161-5362-48a1-ae9b-11f7bcd83469",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Xianpeng Shen <xianpeng.shen@gmail.com>"
+    }
+  }
+}
