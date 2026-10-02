@@ -4,6 +4,9 @@
 import os
 import tempfile
 from unittest.mock import patch, Mock
+
+import pytest
+
 from jenkinsfilelint.linter import JenkinsfileLinter
 
 
@@ -699,3 +702,54 @@ class TestJenkinsfileLinterValidate:
             assert "jenkins url not provided" in message.lower()
         finally:
             os.unlink(temp_path)
+
+
+class TestJenkinsfileLinterRequest:
+    """Test how the validation request is sent to Jenkins."""
+
+    @patch("requests.post")
+    def test_request_targets_validate_endpoint_with_timeout_and_tls(
+        self, mock_post, tmp_path
+    ):
+        """The POST goes to the validate endpoint with a timeout and TLS checks on."""
+        mock_post.return_value.json.return_value = {"status": "ok"}
+        jenkinsfile = tmp_path / "Jenkinsfile"
+        jenkinsfile.write_text("pipeline { agent any }")
+
+        # A trailing slash on the base URL must not produce "//" in the path.
+        linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com/")
+        assert linter.validate(str(jenkinsfile)) == (
+            True,
+            "Jenkinsfile successfully validated",
+        )
+
+        args, kwargs = mock_post.call_args
+        assert args == (
+            "https://jenkins.example.com/pipeline-model-converter/validate",
+        )
+        assert kwargs["data"] == {"jenkinsfile": "pipeline { agent any }"}
+        assert kwargs["timeout"] == 30
+        # Certificate verification must never be turned off.
+        assert kwargs.get("verify", True) is True
+
+    @pytest.mark.parametrize(
+        ("username", "token"), [("alice", None), (None, "secret-token")]
+    )
+    @patch("requests.post")
+    def test_partial_credentials_send_no_auth(
+        self, mock_post, tmp_path, username, token
+    ):
+        """Basic auth is only used when both username and token are set."""
+        mock_post.return_value.json.return_value = {"status": "ok"}
+        jenkinsfile = tmp_path / "Jenkinsfile"
+        jenkinsfile.write_text("pipeline { agent any }")
+
+        linter = JenkinsfileLinter(
+            jenkins_url="https://jenkins.example.com",
+            username=username,
+            token=token,
+        )
+        is_valid, _ = linter.validate(str(jenkinsfile))
+
+        assert is_valid is True
+        assert mock_post.call_args.kwargs["auth"] is None
