@@ -3,9 +3,26 @@
 
 import os
 import pytest
+import requests
 import tempfile
 from unittest.mock import patch, Mock
+from jenkinsfilelint import cli as cli_module
 from jenkinsfilelint.cli import main, should_skip_file, should_include_file
+
+
+def _http_response(status_code, body=b'{"status": "ok"}', url=None):
+    """Build a real ``requests.Response`` so error messages match production."""
+    response = requests.Response()
+    response.status_code = status_code
+    response.reason = {200: "OK", 401: "Unauthorized", 500: "Internal Server Error"}[
+        status_code
+    ]
+    response.url = (
+        url or "https://jenkins.example.com/pipeline-model-converter/validate"
+    )
+    response._content = body
+    response.encoding = "utf-8"
+    return response
 
 
 class TestCLIMain:
@@ -17,6 +34,20 @@ class TestCLIMain:
             with pytest.raises(SystemExit) as exc_info:
                 main()
             assert exc_info.value.code == 0
+
+    def test_version_flag(self, capsys):
+        """-V/--version prints the package version and exits 0."""
+        with patch("sys.argv", ["jenkinsfilelint", "--version"]):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+        assert exc_info.value.code == 0
+        # Only the end is compared: argparse derives the program name from how
+        # Python was started, which differs between platforms and versions.
+        assert (
+            capsys.readouterr()
+            .out.strip()
+            .endswith(f"jenkinsfilelint {cli_module.__version__}")
+        )
 
     def test_validate_single_valid_file(self, capsys):
         """Test validation of a single valid file requires credentials."""
@@ -768,6 +799,72 @@ class TestCLILocalMode:
         finally:
             os.unlink(temp_path)
 
+    def test_local_mode_is_quiet_on_success(self, tmp_path, capsys):
+        """Without --verbose, a valid file in --local mode prints nothing."""
+        jenkinsfile = tmp_path / "Jenkinsfile"
+        jenkinsfile.write_text("pipeline { agent any }")
+
+        with (
+            patch("sys.argv", ["jenkinsfilelint", "--local", str(jenkinsfile)]),
+            patch("jenkinsfilelint.cli.LocalJenkins") as mock_local_cls,
+            patch("jenkinsfilelint.linter.requests.post") as mock_post,
+        ):
+            mock_local_cls.return_value.ensure_running.return_value = (
+                "http://127.0.0.1:18080"
+            )
+            mock_post.return_value.json.return_value = {"status": "ok"}
+
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+
+        assert exc_info.value.code == 0
+        assert mock_post.call_args.args == (
+            "http://127.0.0.1:18080/pipeline-model-converter/validate",
+        )
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == ""
+
+
+class TestCLICredentialHandling:
+    """The Jenkins API token must never be echoed to the console."""
+
+    TOKEN = "11a2b3c4d5e6f708192a3b4c5d6e7f8091"
+
+    @pytest.mark.parametrize("status_code", [200, 401, 500])
+    def test_token_is_not_printed(self, tmp_path, capsys, status_code):
+        """Neither success nor HTTP errors print the token, even with --verbose."""
+        jenkinsfile = tmp_path / "Jenkinsfile"
+        jenkinsfile.write_text("pipeline { agent any }")
+        argv = [
+            "jenkinsfilelint",
+            "--verbose",
+            "--jenkins-url",
+            "https://jenkins.example.com",
+            "--username",
+            "alice",
+            "--token",
+            self.TOKEN,
+            str(jenkinsfile),
+        ]
+
+        with (
+            patch("sys.argv", argv),
+            patch(
+                "jenkinsfilelint.linter.requests.post",
+                return_value=_http_response(status_code),
+            ) as mock_post,
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+
+        assert exc_info.value.code == (0 if status_code == 200 else 1)
+        # The token is only ever handed to requests as HTTP basic auth.
+        assert mock_post.call_args.kwargs["auth"] == ("alice", self.TOKEN)
+        captured = capsys.readouterr()
+        assert self.TOKEN not in captured.out
+        assert self.TOKEN not in captured.err
+
 
 class TestMainServerDispatch:
     """Test the server subcommand dispatch in main()."""
@@ -797,13 +894,20 @@ class TestMainServerDispatch:
                 main()
             assert exc.value.code == 1
 
-    def test_local_flag_not_dispatched_as_server(self):
+    def test_local_flag_not_dispatched_as_server(self, capsys):
         """--local should not be treated as a server subcommand."""
-        with patch("sys.argv", ["jenkinsfilelint", "--local", "Jenkinsfile"]):
+        # Simulate a machine without Docker/Podman so the test never talks to a
+        # real container runtime (no image pull, no container left running).
+        with (
+            patch("sys.argv", ["jenkinsfilelint", "--local", "Jenkinsfile"]),
+            patch("jenkinsfilelint.local._find_runtime", return_value=None),
+        ):
             with pytest.raises(SystemExit) as exc:
                 main()
             # Should exit 1 (no Docker), not 2 (bad server action)
             assert exc.value.code == 1
+
+        assert "Neither 'docker' nor 'podman'" in capsys.readouterr().err
 
 
 class TestWindowsUTF8Encoding:

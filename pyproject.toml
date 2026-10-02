@@ -61,6 +61,7 @@ markers = [
 
 [tool.coverage.run]
 source = ["jenkinsfilelint"]
+branch = true
 omit = ["*/tests/*", "*/__pycache__/*"]
 
 [tool.coverage.report]

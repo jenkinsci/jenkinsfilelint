@@ -370,7 +370,7 @@ def handle_server_command(argv: list[str]) -> None:
             else:
                 print("ℹ Jenkins is not running", file=sys.stderr)
 
-        elif args.action == "restart":
+        elif args.action == "restart":  # pragma: no branch (argparse limits choices)
             url = local.restart()
             print(f"✓ Jenkins restarted and ready at {url}", file=sys.stderr)
 
