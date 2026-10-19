@@ -20,7 +20,7 @@ import subprocess
 
 import pytest
 
-from jenkinsfilelint.linter import JenkinsfileLinter
+from jenkinsfilelint.linter import JenkinsfileLinter, NOT_DECLARATIVE_MESSAGE
 from jenkinsfilelint.local import LocalJenkins
 
 pytestmark = pytest.mark.docker
@@ -124,6 +124,25 @@ class TestDockerEndToEnd:
             indicator in message
             for indicator in ("error", "Error", "WorkflowScript", "Expected")
         ), f"Message doesn't look like a Jenkins error: {message}"
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "node {\n    stage('Build') {\n        sh 'make'\n    }\n}\n",
+            "node {\n    stage('Build') {\n        sh 'make || error \"failed\"'\n    }\n}\n",
+            "",
+        ],
+        ids=["scripted", "scripted-with-error-word", "empty"],
+    )
+    def test_non_declarative_file_is_skipped(
+        self, local_jenkins_url: str, tmp_path, source: str
+    ) -> None:
+        """Files without a pipeline block are skipped whatever they contain."""
+        jenkinsfile = tmp_path / "Jenkinsfile"
+        jenkinsfile.write_text(source)
+
+        linter = JenkinsfileLinter(jenkins_url=local_jenkins_url)
+        assert linter.validate(str(jenkinsfile)) == (True, NOT_DECLARATIVE_MESSAGE)
 
     def test_validate_endpoint_works_without_crumb(
         self,

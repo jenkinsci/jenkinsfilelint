@@ -826,6 +826,68 @@ class TestCLILocalMode:
         assert captured.err == ""
 
 
+def _validate_reply(post_kwargs):
+    """Answer like Jenkins's validate endpoint does for the posted file."""
+    source = post_kwargs["data"]["jenkinsfile"]
+    if source.lstrip().startswith("pipeline"):
+        body = "Jenkinsfile successfully validated."
+    else:
+        body = f"Jenkinsfile content '{source}' did not contain the 'pipeline' step"
+    return _http_response(200, body=f"{body}\n".encode("utf-8"))
+
+
+class TestCLINonDeclarativeFiles:
+    """Files without a pipeline block are skipped, not passed or failed by content."""
+
+    SCRIPTED_WITH_ERROR_WORD = "node {\n    sh 'make || error \"failed\"'\n}\n"
+
+    def _run(self, argv):
+        with (
+            patch("sys.argv", ["jenkinsfilelint", "--jenkins-url", "https://j", *argv]),
+            patch("jenkinsfilelint.linter.requests.post") as mock_post,
+        ):
+            mock_post.side_effect = lambda url, **kwargs: _validate_reply(kwargs)
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+        return exc_info.value.code
+
+    def test_scripted_file_passes_quietly(self, tmp_path, capsys):
+        """The word 'error' in a scripted file no longer fails the hook."""
+        scripted = tmp_path / "Jenkinsfile"
+        scripted.write_text(self.SCRIPTED_WITH_ERROR_WORD)
+
+        assert self._run([str(scripted)]) == 0
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == ""
+
+    def test_verbose_says_skipped_without_echoing_content(self, tmp_path, capsys):
+        """--verbose names the skip and does not print the file back."""
+        scripted = tmp_path / "Jenkinsfile"
+        scripted.write_text(self.SCRIPTED_WITH_ERROR_WORD)
+
+        assert self._run(["--verbose", str(scripted)]) == 0
+        captured = capsys.readouterr()
+        assert f"⊘ {scripted}: Skipped (not a Declarative Pipeline)" in captured.out
+        assert ": Valid" not in captured.out
+        assert "make || error" not in captured.out + captured.err
+
+    def test_mixed_files_list_each_outcome(self, tmp_path, capsys):
+        """With several files, skipped ones are listed apart from valid ones."""
+        declarative = tmp_path / "Jenkinsfile"
+        declarative.write_text("pipeline { agent any }")
+        library = tmp_path / "notify.groovy"
+        library.write_text("def call() { error 'boom' }\n")
+        empty = tmp_path / "empty.groovy"
+        empty.write_text("")
+
+        assert self._run([str(declarative), str(library), str(empty)]) == 0
+        out = capsys.readouterr().out
+        assert f"✓ {declarative}: Valid" in out
+        assert f"⊘ {library}: Skipped (not a Declarative Pipeline)" in out
+        assert f"⊘ {empty}: Skipped (not a Declarative Pipeline)" in out
+
+
 class TestCLICredentialHandling:
     """The Jenkins API token must never be echoed to the console."""
 

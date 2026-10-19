@@ -5,6 +5,44 @@ import os
 import requests
 from typing import Tuple, Optional
 
+# Jenkins's /pipeline-model-converter/validate endpoint answers in plain text
+# with one of these fixed shapes (ModelConverterAction#doValidate in the
+# pipeline-model-definition plugin).
+_VALIDATED_PREFIX = "Jenkinsfile successfully validated"
+_ERRORS_PREFIX = "Errors encountered validating Jenkinsfile:"
+_NO_JENKINSFILE = "No Jenkinsfile specified"
+_COMPILE_ERROR_PREFIX = "WorkflowScript:"
+# Sent when the Groovy parses but has no top-level ``pipeline`` block. Jenkins
+# echoes the whole file between the quotes, so only the ends are matched.
+_NOT_DECLARATIVE_PREFIX = "Jenkinsfile content '"
+_NOT_DECLARATIVE_SUFFIX = "' did not contain the 'pipeline' step"
+
+NOT_DECLARATIVE_MESSAGE = "Skipped: not a Declarative Pipeline (no 'pipeline' block)"
+
+
+def _parse_text_response(text: str) -> Tuple[bool, str]:
+    """Map a plain-text validate response to (is_valid, message).
+
+    The file content echoed back by Jenkins is never searched or returned.
+    """
+    result = text.strip()
+
+    if result.startswith(_NOT_DECLARATIVE_PREFIX) and result.endswith(
+        _NOT_DECLARATIVE_SUFFIX
+    ):
+        return True, NOT_DECLARATIVE_MESSAGE
+
+    if result.startswith(_VALIDATED_PREFIX):
+        return True, result
+
+    if result.startswith((_ERRORS_PREFIX, _NO_JENKINSFILE, _COMPILE_ERROR_PREFIX)):
+        return False, result
+
+    # Anything else (an HTML login page from a proxy, an empty body, ...) means
+    # the file was not validated, so don't report it as valid.
+    first_line = result.splitlines()[0][:200] if result else "<empty response>"
+    return False, f"Unexpected response from Jenkins validate endpoint: {first_line}"
+
 
 class JenkinsfileLinter:
     """Linter for validating Jenkinsfiles using Jenkins API."""
@@ -87,24 +125,7 @@ class JenkinsfileLinter:
                     return True, str(result_json)
             except ValueError:
                 # Not JSON, fall back to text parsing
-                result = response.text.strip()
-
-                # Check if there are errors in the response
-                # Common error patterns from Jenkins
-                error_indicators = [
-                    "Errors",
-                    "error",
-                    "No Jenkinsfile specified",
-                    "WorkflowScript:",  # Groovy compilation errors
-                    "Expected",  # Syntax error patterns
-                    "unexpected token",
-                    "unable to resolve class",
-                ]
-
-                if any(indicator in result for indicator in error_indicators):
-                    return False, result
-                else:
-                    return True, result
+                return _parse_text_response(response.text)
 
         except requests.exceptions.RequestException as e:
             return False, f"Error connecting to Jenkins: {e}"
