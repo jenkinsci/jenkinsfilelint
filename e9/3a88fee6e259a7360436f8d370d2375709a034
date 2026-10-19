@@ -1,0 +1,275 @@
+crates/jenkinsfilelint/tests/jenkins/s19_bad_for_header.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-12
+crates/jenkinsfilelint/tests/jenkins/s08_else_without_if.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-12
+crates/jenkinsfilelint/tests/jenkins/v39_double_quoted_stage_name.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-6
+crates/jenkinsfilelint/src/validate.rs
+  s_07769c4e15f487::t_dfcc2fd02557ec 133-142,1060
+  s_07769c4e15f487::t_8d17be463ad5d5 403,406-408,410,415-420,431,502,1033
+crates/jenkinsfilelint/tests/jenkins/v14_post_in_parallel_and_matrix.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-22
+crates/jenkinsfilelint/tests/jenkins/x09_scripted_with_error_word.groovy
+  s_07769c4e15f487::t_4d8d6ad3515c27 1-5
+crates/jenkinsfilelint/tests/jenkins/e14_bad_agent_type.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-6
+crates/jenkinsfilelint/tests/jenkins/v23_multi_assign.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-12
+crates/jenkinsfilelint/tests/jenkins/p10_plugin_parameter.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-11
+crates/jenkinsfilelint/tests/jenkins/v37_axis_name_bare_word.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-19
+crates/jenkinsfilelint/tests/jenkins/x01_scripted_pipeline.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-5
+crates/jenkinsfilelint/tests/jenkins/x08_tabs_minimal.groovy
+  s_07769c4e15f487::t_4d8d6ad3515c27 1-10
+crates/jenkinsfilelint/tests/jenkins/e02_missing_stages.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-3
+crates/jenkinsfilelint/tests/jenkins/v07_crlf.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-10
+crates/jenkinsfilelint/tests/jenkins/s05_unclosed_gstring_expr.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-10
+crates/jenkinsfilelint/tests/jenkins/e20_input_without_message.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-11
+crates/jenkinsfilelint/tests/jenkins/e11_empty_stages.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-5
+crates/jenkinsfilelint/tests/jenkins/e43_axis_name_invalid_identifier.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-19
+crates/jenkinsfilelint/tests/jenkins/v12_env_expressions.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-14
+crates/jenkinsfilelint/tests/jenkins/v18_same_name_under_two_parents.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-11
+crates/jenkinsfilelint/tests/jenkins/v29_newline_in_if_condition.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-15
+crates/jenkinsfilelint/tests/jenkins/e12_env_list_value.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-11
+crates/jenkinsfilelint/tests/jenkins/v26_multi_assign_typed.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-12
+crates/jenkinsfilelint/tests/jenkins/s07_map_missing_comma.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-12
+crates/jenkinsfilelint/tests/jenkins/e34_when_all_of_empty.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-11
+crates/jenkinsfilelint/tests/jenkins/s06_bad_token.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-10
+crates/jenkinsfilelint/tests/jenkins/e42_axis_values_bare_words.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-19
+crates/jenkinsfilelint/tests/jenkins/s16_unclosed_list_in_method.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-8
+crates/jenkinsfilelint/tests/jenkins/v02_full_featured.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-106
+crates/jenkinsfilelint/tests/jenkins/v15_input_top_options.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-15
+crates/jenkinsfilelint/tests/jenkins/v22_same_name_parallel_and_parent.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-10
+crates/jenkinsfilelint/tests/jenkins/v24_multi_assign_multiline.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-14
+crates/jenkinsfilelint/tests/jenkins/e13_unknown_option.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-11
+crates/jenkinsfilelint/tests/jenkins/v34_newline_in_index.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-14
+crates/jenkinsfilelint/tests/jenkins/p01_kubernetes_agent.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-10
+crates/jenkinsfilelint/tests/jenkins/expected.txt
+  s_07769c4e15f487::t_4d8d6ad3515c27 1-473
+crates/jenkinsfilelint/tests/jenkins/v01_minimal.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-10
+crates/jenkinsfilelint/tests/jenkins/v05_groovy_heavy.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-91
+crates/jenkinsfilelint/tests/jenkins/e46_gstring_stage_name_semicolons.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-7
+crates/jenkinsfilelint/tests/jenkins/s12_bad_method_def.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-12
+crates/jenkinsfilelint/tests/jenkins/x05_plain_groovy_class.groovy
+  s_07769c4e15f487::t_4d8d6ad3515c27 1-7
+crates/jenkinsfilelint/tests/jenkins/e18_stage_without_name.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-8
+crates/jenkinsfilelint/tests/jenkins/p11_plugin_step_in_steps.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-11
+crates/jenkinsfilelint/tests/jenkins/s04_extra_closing_brace.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-11
+crates/jenkinsfilelint/tests/jenkins/v08_agent_variants.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-38
+crates/jenkinsfilelint/tests/jenkins/v35_newline_between_named_args.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-13
+crates/jenkinsfilelint/tests/jenkins/s13_newline_before_and_at_statement_level.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-13
+crates/jenkinsfilelint/tests/jenkins/e32_env_no_value.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-11
+crates/jenkinsfilelint/src/parser.rs
+  s_07769c4e15f487::t_88f5cc26513bad 1111-1114
+  s_07769c4e15f487::t_16df7212a675ea 14-18,45-47,92-99,223-225,238,342-381,657,789-795,797-798,824-827,886,937-940,1030
+  s_07769c4e15f487::t_4cce5ceb83eb75 1099-1102
+crates/jenkinsfilelint/tests/jenkins/v28_newline_before_and_in_parens.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-14
+crates/jenkinsfilelint/tests/jenkins/v09_when_variants.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-17
+crates/jenkinsfilelint/tests/jenkins/v32_newline_ternary_in_parens.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-14
+crates/jenkinsfilelint/tests/jenkins/e23_unknown_stage_directive.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-9
+crates/jenkinsfilelint/tests/jenkins/s14_newline_before_and_in_closure_body.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-15
+crates/jenkinsfilelint/tests/jenkins/e25_properties_step.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-10
+crates/jenkinsfilelint/tests/jenkins/x07_bom_minimal.groovy
+  s_07769c4e15f487::t_4d8d6ad3515c27 1-10
+crates/jenkinsfilelint/tests/jenkins/v04_nested_stages.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-22
+crates/jenkinsfilelint/tests/jenkins/s17_bad_token_in_class_body.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-7
+crates/jenkinsfilelint/tests/jenkins/v19_same_name_parent_child.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-8
+crates/jenkinsfilelint/tests/jenkins/e45_gstring_stage_name.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-7
+crates/jenkinsfilelint/tests/jenkins/p08_plugin_trigger.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-11
+crates/jenkinsfilelint/tests/jenkins/v03_matrix.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-37
+crates/jenkinsfilelint/tests/jenkins/e19_matrix_without_axes.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-12
+crates/jenkinsfilelint/tests/jenkins/s11_missing_closing_bracket.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-12
+crates/jenkinsfilelint/tests/jenkins/p02_tools.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-12
+crates/jenkinsfilelint/tests/jenkins/e24_stage_step_in_steps.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-12
+crates/jenkinsfilelint/tests/jenkins/v20_same_name_in_parallel_branches.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-11
+crates/jenkinsfilelint/tests/jenkins/v11_libraries_directive.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-11
+crates/jenkinsfilelint/tests/jenkins/p07_timeout_missing_param.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-11
+crates/jenkinsfilelint/tests/jenkins/p05_bad_step_param.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-10
+crates/jenkinsfilelint/tests/jenkins/s10_unclosed_triple_quote.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-12
+crates/jenkinsfilelint/tests/jenkins/e30_agent_label_no_arg.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-6
+crates/jenkinsfilelint/tests/jenkins/s09_unclosed_block_comment.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-11
+crates/jenkinsfilelint/tests/jenkins/v33_closure_in_call_args.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-14
+crates/jenkinsfilelint/tests/jenkins/v38_axis_name_double_quoted.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-19
+crates/jenkinsfilelint/tests/jenkins/x03_comment_only.groovy
+  s_07769c4e15f487::t_4d8d6ad3515c27 1
+crates/jenkinsfilelint/tests/jenkins/s02_unclosed_string.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-10
+crates/jenkinsfilelint/tests/jenkins/v10_stage_level_directives.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-17
+crates/jenkinsfilelint/tests/jenkins/e08_bad_when_condition.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-9
+crates/jenkinsfilelint/tests/jenkins/p12_retry_string.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-11
+crates/jenkinsfilelint/tests/jenkins/p06_timeout_bad_unit.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-11
+crates/jenkinsfilelint/tests/jenkins/x06_build_plugin.groovy
+  s_07769c4e15f487::t_4d8d6ad3515c27 1-4
+crates/jenkinsfilelint/tests/jenkins/e36_dup_parallel_siblings.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-11
+crates/jenkinsfilelint/tests/jenkins/p03_plugin_options.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-12
+crates/jenkinsfilelint/tests/jenkins/v31_newline_in_list.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-13
+crates/jenkinsfilelint/tests/jenkins/e09_nested_parallel.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-14
+crates/jenkinsfilelint/tests/jenkins/e38_dup_nested_siblings.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-11
+crates/jenkinsfilelint/tests/jenkins/e40_axis_name_number.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-19
+crates/jenkinsfilelint/tests/jenkins/e04_step_typo.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-10
+crates/jenkinsfilelint/tests/jenkins/e44_axis_name_duplicate_bare_word.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-23
+crates/jenkinsfilelint/tests/jenkins/s03_unclosed_paren.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-10
+crates/jenkinsfilelint/tests/jenkins/e29_post_empty.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-10
+crates/jenkinsfilelint/tests/jenkins/e07_bad_post_condition.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-11
+crates/jenkinsfilelint/tests/jenkins/s15_expression_continued_by_if.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-13
+crates/jenkinsfilelint/tests/jenkins/e35_parameters_string_no_name.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-11
+crates/jenkinsfilelint/tests/jenkins/e37_dup_matrix_siblings.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-14
+crates/jenkinsfilelint/tests/jenkins/e39_axis_name_gstring.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-19
+crates/jenkinsfilelint/tests/jenkins/p04_unknown_step.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-10
+crates/jenkinsfilelint/tests/jenkins/e26_unknown_trigger.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-11
+crates/jenkinsfilelint/tests/jenkins/e27_empty_steps.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-9
+crates/jenkinsfilelint/README.md
+  s_07769c4e15f487::t_a381b43a0bd926 85-88
+crates/jenkinsfilelint/tests/jenkins/e22_stages_without_stage.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-6
+crates/jenkinsfilelint/tests/jenkins/v36_newline_before_comma.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-13
+crates/jenkinsfilelint/tests/jenkins/.gitattributes
+  s_07769c4e15f487::t_50ee209da2e555 1-2
+crates/jenkinsfilelint/tests/jenkins/e21_duplicate_stage_names.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-7
+crates/jenkinsfilelint/tests/jenkins/e03_stage_without_steps.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-8
+crates/jenkinsfilelint/tests/jenkins/e31_parallel_and_stages.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-13
+crates/jenkinsfilelint/tests/jenkins/e17_pipeline_in_node.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-12
+crates/jenkinsfilelint/tests/jenkins/e28_when_empty.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-10
+crates/jenkinsfilelint/tests/jenkins/s18_bad_token_in_switch.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-17
+crates/jenkinsfilelint/tests/jenkins/v06_comments_unicode.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-16
+crates/jenkinsfilelint/tests/jenkins/v21_same_name_matrix_and_top.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-12
+crates/jenkinsfilelint/tests/jenkins/e06_unknown_top_section.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-11
+crates/jenkinsfilelint/tests/jenkins/x04_shared_lib_vars.groovy
+  s_07769c4e15f487::t_4d8d6ad3515c27 1-5
+crates/jenkinsfilelint/tests/jenkins/s01_unclosed_brace.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-10
+crates/jenkinsfilelint/src/main.rs
+  s_07769c4e15f487::t_7705540b8b37fb 158-218
+  s_07769c4e15f487::t_78d78f7ea6c4be 115-117,119
+crates/jenkinsfilelint/tests/jenkins/e10_steps_and_parallel.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-11
+crates/jenkinsfilelint/tests/jenkins/e05_duplicate_agent.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-7
+crates/jenkinsfilelint/tests/jenkins/e33_stage_outside_stages.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-6
+crates/jenkinsfilelint/tests/jenkins/e41_axis_name_property.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-19
+crates/jenkinsfilelint/tests/jenkins/p09_plugin_when.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-9
+crates/jenkinsfilelint/tests/jenkins/v30_newline_in_call_args.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-13
+crates/jenkinsfilelint/tests/jenkins/e15_bad_parameter_type.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-11
+crates/jenkinsfilelint/tests/jenkins/e16_two_pipelines.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-21
+crates/jenkinsfilelint/tests/jenkins/v25_multi_assign_def.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-12
+crates/jenkinsfilelint/tests/jenkins/v27_paren_expression_statement.groovy
+  s_07769c4e15f487::t_aa3be27c72c37e 1-12
+crates/jenkinsfilelint/tests/jenkins/e01_missing_agent.groovy
+  s_07769c4e15f487::t_e4b5c55e564947 1-7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e93a88fee6e259a7360436f8d370d2375709a034",
+  "prompts": {},
+  "sessions": {
+    "s_07769c4e15f487": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f76fed07-40ec-41fe-a366-4b4bfa9ca877",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Xianpeng Shen <xianpeng.shen@gmail.com>"
+    }
+  }
+}
