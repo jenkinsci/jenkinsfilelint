@@ -117,9 +117,7 @@ def main() -> int:
     here = Path(__file__).resolve().parent.parent
     ap = argparse.ArgumentParser()
     ap.add_argument("--plugin-dir", type=Path)
-    ap.add_argument(
-        "--binary", default=str(here / "target/release/jenkinsfilelint")
-    )
+    ap.add_argument("--binary", default=str(here / "target/release/jenkinsfilelint"))
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
 
