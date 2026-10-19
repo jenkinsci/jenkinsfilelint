@@ -19,6 +19,15 @@ pub struct Diagnostic {
     pub message: String,
 }
 
+/// The result of checking one file.
+#[derive(Debug, Clone, Default)]
+pub struct Report {
+    pub diagnostics: Vec<Diagnostic>,
+    /// A `pipeline { }` block was found and checked. False for scripted
+    /// Pipelines, plain Groovy and files that do not parse.
+    pub declarative: bool,
+}
+
 impl Diagnostic {
     pub fn error(pos: Pos, message: impl Into<String>) -> Self {
         Diagnostic {

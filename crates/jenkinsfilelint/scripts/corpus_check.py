@@ -102,22 +102,29 @@ def expected_errors(test: Path, messages: dict) -> dict:
 
 
 def lint(binary: str, path: Path) -> list:
+    """Diagnostics for one file."""
     r = subprocess.run(
-        [binary, "--format", "json", str(path)],
+        [binary, "--format", "json", "--", str(path)],
         capture_output=True,
         text=True,
+        encoding="utf-8",
         check=False,
     )
     if r.returncode == 2:
         raise SystemExit(r.stderr)
-    return json.loads(r.stdout or "[]")
+    (report,) = json.loads(r.stdout)
+    if "error" in report:
+        raise SystemExit(f"{path}: {report['error']}")
+    return report["diagnostics"]
 
 
 def main() -> int:
     here = Path(__file__).resolve().parent.parent
     ap = argparse.ArgumentParser()
     ap.add_argument("--plugin-dir", type=Path)
-    ap.add_argument("--binary", default=str(here / "target/release/jenkinsfilelint"))
+    ap.add_argument(
+        "--binary", default=str(here / "target/release/jenkinsfilelint-engine")
+    )
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
 

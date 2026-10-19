@@ -9,24 +9,37 @@ mod validate;
 
 use std::process::ExitCode;
 
-use diag::{Diagnostic, Severity};
+use diag::{Report, Severity};
 
 /// Lint one file's source text.
-pub fn lint(src: &str) -> Vec<Diagnostic> {
+pub fn lint(src: &str) -> Report {
     let tokens = match lexer::tokenize(src) {
         Ok(t) => t,
-        Err(d) => return vec![d],
+        Err(d) => {
+            return Report {
+                diagnostics: vec![d],
+                declarative: false,
+            }
+        }
     };
     match parser::parse(tokens) {
         Ok(stmts) => validate::validate(&stmts),
-        Err(d) => vec![d],
+        Err(d) => Report {
+            diagnostics: vec![d],
+            declarative: false,
+        },
     }
 }
 
-const USAGE: &str = "Usage: jenkinsfilelint [--format text|json] <Jenkinsfile>...
+const USAGE: &str = "Usage: jenkinsfilelint-engine [--format text|json] [--] <Jenkinsfile>...
 
 Checks Groovy syntax and Declarative Pipeline structure without a Jenkins
-controller. Exits with 1 when any file has an error.";
+controller. Exits with 1 when any file has an error.
+
+--format json prints a JSON array with one object per file: \"file\",
+\"declarative\" (false when there is no pipeline block, as in a scripted
+Pipeline), and \"diagnostics\" with \"line\", \"column\", \"severity\" and
+\"message\"; or \"file\" and \"error\" when the file cannot be read.";
 
 fn json_escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
@@ -42,18 +55,43 @@ fn json_escape(s: &str) -> String {
     out
 }
 
+fn json_report(path: &str, report: &Report) -> String {
+    let diags: Vec<String> = report
+        .diagnostics
+        .iter()
+        .map(|d| {
+            format!(
+                "{{\"line\":{},\"column\":{},\"severity\":\"{}\",\"message\":\"{}\"}}",
+                d.pos.line,
+                d.pos.col,
+                d.severity,
+                json_escape(&d.message)
+            )
+        })
+        .collect();
+    format!(
+        "{{\"file\":\"{}\",\"declarative\":{},\"diagnostics\":[{}]}}",
+        json_escape(path),
+        report.declarative,
+        diags.join(",")
+    )
+}
+
 fn main() -> ExitCode {
     let mut files = Vec::new();
     let mut json = false;
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
+            "--" => {
+                files.extend(args.by_ref());
+            }
             "-h" | "--help" => {
                 println!("{USAGE}");
                 return ExitCode::SUCCESS;
             }
             "-V" | "--version" => {
-                println!("jenkinsfilelint {}", env!("CARGO_PKG_VERSION"));
+                println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
                 return ExitCode::SUCCESS;
             }
             "--format" => match args.next().as_deref() {
@@ -78,24 +116,25 @@ fn main() -> ExitCode {
         let src = match std::fs::read_to_string(path) {
             Ok(s) => s,
             Err(e) => {
-                eprintln!("{path}: {e}");
+                if json {
+                    json_items.push(format!(
+                        "{{\"file\":\"{}\",\"error\":\"{}\"}}",
+                        json_escape(path),
+                        json_escape(&e.to_string())
+                    ));
+                } else {
+                    eprintln!("{path}: {e}");
+                }
                 failed = true;
                 continue;
             }
         };
-        let diags = lint(&src);
-        failed |= diags.iter().any(|d| d.severity == Severity::Error);
-        for d in &diags {
-            if json {
-                json_items.push(format!(
-                    "{{\"file\":\"{}\",\"line\":{},\"column\":{},\"severity\":\"{}\",\"message\":\"{}\"}}",
-                    json_escape(path),
-                    d.pos.line,
-                    d.pos.col,
-                    d.severity,
-                    json_escape(&d.message)
-                ));
-            } else {
+        let report = lint(&src);
+        failed |= report.diagnostics.iter().any(|d| d.severity == Severity::Error);
+        if json {
+            json_items.push(json_report(path, &report));
+        } else {
+            for d in &report.diagnostics {
                 println!("{path}:{}:{}: {}: {}", d.pos.line, d.pos.col, d.severity, d.message);
             }
         }
@@ -120,6 +159,7 @@ mod tests {
 
     fn messages(src: &str) -> Vec<String> {
         lint(src)
+            .diagnostics
             .into_iter()
             .map(|d| format!("{}:{} {}", d.pos.line, d.pos.col, d.message))
             .collect()
@@ -168,9 +208,11 @@ mod tests {
             if let Some(name) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
                 current = Some(name);
                 cases.insert(name, Vec::new());
-            } else if !line.is_empty() && !line.starts_with('#') {
-                let name = current.expect("expectation before the first [case]");
+            } else if let Some(name) = current.filter(|_| !line.is_empty()) {
+                // Comments stay: "# Jenkins: ..." lines are checked below.
                 cases.get_mut(name).unwrap().push(line);
+            } else {
+                assert!(line.is_empty() || line.starts_with('#'), "expectation before the first [case]");
             }
         }
 
@@ -187,7 +229,8 @@ mod tests {
                 failures.push(format!("{name}: no [{name}] in expected.txt"));
                 continue;
             };
-            let diags = lint(&std::fs::read_to_string(&path).unwrap());
+            let report = lint(&std::fs::read_to_string(&path).unwrap());
+            let diags = &report.diagnostics;
             let errors: BTreeSet<&str> = diags
                 .iter()
                 .filter(|d| d.severity == Severity::Error)
@@ -207,9 +250,14 @@ mod tests {
             } else {
                 errors == want_errors
             };
-            if !errors_ok || warnings != want_warnings {
+            // Jenkins answers "did not contain the 'pipeline' step" for
+            // files with no pipeline block; those must not count as checked.
+            let no_pipeline = want.iter().any(|l| l.contains("did not contain the 'pipeline' step"));
+            let declarative_ok = !errors.is_empty() || report.declarative != no_pipeline;
+            if !errors_ok || !declarative_ok || warnings != want_warnings {
                 failures.push(format!(
-                    "{name}:\n  expected {want:?}\n  got errors {errors:?}, warnings {warnings:?}"
+                    "{name}:\n  expected {want:?}\n  got errors {errors:?}, warnings {warnings:?}, declarative {}",
+                    report.declarative
                 ));
             }
         }

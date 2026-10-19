@@ -1,0 +1,33 @@
+# The offline engine of jenkinsfilelint, published to PyPI as prebuilt wheels
+# that put the jenkinsfilelint-engine binary on PATH. The jenkinsfilelint
+# package depends on it, so its users never need a Rust toolchain.
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "jenkinsfilelint-engine"
+# Taken from Cargo.toml. jenkinsfilelint pins this version exactly.
+dynamic = ["version"]
+authors = [
+    {name = "Xianpeng Shen", email = "xianpeng.shen@gmail.com"},
+]
+description = "Offline engine of jenkinsfilelint: checks Jenkinsfile syntax and Declarative Pipeline structure without a Jenkins controller"
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.10"
+keywords = ["jenkins", "jenkinsfile", "lint", "pipeline", "groovy"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Rust",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/jenkinsci/jenkinsfilelint"
+
+[tool.maturin]
+bindings = "bin"
+python-source = "python"
+module-name = "jenkinsfilelint_engine"

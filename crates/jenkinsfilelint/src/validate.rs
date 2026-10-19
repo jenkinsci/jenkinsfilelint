@@ -10,7 +10,7 @@
 use std::collections::HashSet;
 
 use crate::ast::{Arg, Expr, Section, Stmt};
-use crate::diag::{Diagnostic, Pos};
+use crate::diag::{Diagnostic, Pos, Report};
 
 const TOP_SECTIONS: &[&str] = &[
     "agent",
@@ -82,7 +82,7 @@ const WHEN_CONDITIONS: &[&str] = &[
 const WHEN_FLAGS: &[&str] = &["beforeAgent", "beforeInput", "beforeOptions"];
 const INPUT_FIELDS: &[&str] = &["message", "id", "ok", "submitter", "submitterParameter", "parameters"];
 
-pub fn validate(stmts: &[Stmt]) -> Vec<Diagnostic> {
+pub fn validate(stmts: &[Stmt]) -> Report {
     let mut v = Validator::default();
     let mut seen_pipeline = false;
     for stmt in stmts {
@@ -102,12 +102,17 @@ pub fn validate(stmts: &[Stmt]) -> Vec<Diagnostic> {
         }
     }
     v.diags.sort_by_key(|d| d.pos);
-    v.diags
+    Report {
+        diagnostics: v.diags,
+        declarative: v.declarative,
+    }
 }
 
 #[derive(Default)]
 struct Validator {
     diags: Vec<Diagnostic>,
+    /// A `pipeline` block was checked.
+    declarative: bool,
     stage: String,
 }
 
@@ -255,6 +260,7 @@ impl Validator {
     }
 
     fn pipeline(&mut self, sec: &Section) {
+        self.declarative = true;
         let Some(body) = sec.body else {
             self.err(sec.pos, "Expected a block with the \"pipeline\" step");
             return;
