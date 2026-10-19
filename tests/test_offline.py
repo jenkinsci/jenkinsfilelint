@@ -155,7 +155,9 @@ class TestLintFiles:
         report = {
             "file": str(f),
             "declarative": True,
-            "diagnostics": [{"line": 1, "column": 1, "severity": "warning", "message": "W"}],
+            "diagnostics": [
+                {"line": 1, "column": 1, "severity": "warning", "message": "W"}
+            ],
         }
         with patch(
             "jenkinsfilelint.offline.subprocess.run",
@@ -215,7 +217,13 @@ class TestOfflineCLI:
     """--offline options, with the engine mocked."""
 
     @pytest.mark.parametrize(
-        "other", [["--local"], ["--jenkins-url", "https://j"], ["--username", "u"], ["--token", "t"]]
+        "other",
+        [
+            ["--local"],
+            ["--jenkins-url", "https://j"],
+            ["--username", "u"],
+            ["--token", "t"],
+        ],
     )
     def test_not_allowed_with_other_modes(self, other, capsys):
         assert run_cli(["--offline", *other, "Jenkinsfile"]) == 2
@@ -341,9 +349,7 @@ class TestAgainstJenkinsVerdicts:
         code = run_cli(["--offline", "--verbose", path])
         captured = capsys.readouterr()
 
-        diagnostic = re.compile(
-            rf"{re.escape(path)}:\d+:\d+: (error|warning): (.*)"
-        )
+        diagnostic = re.compile(rf"{re.escape(path)}:\d+:\d+: (error|warning): (.*)")
         found = {"error": set(), "warning": set()}
         for line in captured.err.splitlines():
             match = diagnostic.fullmatch(line)

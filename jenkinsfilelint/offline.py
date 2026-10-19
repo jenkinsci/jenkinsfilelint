@@ -97,9 +97,7 @@ def lint_files(
         reports = json.loads(proc.stdout)
     except ValueError:
         detail = (proc.stderr or proc.stdout).strip() or f"exit code {proc.returncode}"
-        raise OfflineEngineError(
-            f"Unexpected output from {engine}: {detail}"
-        ) from None
+        raise OfflineEngineError(f"Unexpected output from {engine}: {detail}") from None
 
     for report in reports:
         path = report["file"]
