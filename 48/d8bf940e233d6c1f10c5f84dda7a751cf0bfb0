@@ -1,0 +1,21 @@
+crates/jenkinsfilelint/scripts/corpus_check.py
+  s_07769c4e15f487::t_8a91e3736da85b 120
+.pre-commit-config.yaml
+  s_07769c4e15f487::t_7031a03fe9b090 4-7
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "48d8bf940e233d6c1f10c5f84dda7a751cf0bfb0",
+  "prompts": {},
+  "sessions": {
+    "s_07769c4e15f487": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f76fed07-40ec-41fe-a366-4b4bfa9ca877",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Xianpeng Shen <xianpeng.shen@gmail.com>"
+    }
+  }
+}
