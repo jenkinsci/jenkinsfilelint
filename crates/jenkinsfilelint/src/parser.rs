@@ -11,7 +11,11 @@ use crate::diag::{Diagnostic, Pos};
 use crate::lexer::{TokKind, Token};
 
 pub fn parse(tokens: Vec<Token>) -> Result<Vec<Stmt>, Diagnostic> {
-    let mut p = Parser { toks: tokens, i: 0 };
+    let mut p = Parser {
+        toks: tokens,
+        i: 0,
+        in_group: false,
+    };
     let stmts = p.stmts_until(None)?;
     Ok(stmts)
 }
@@ -38,6 +42,9 @@ const NON_ARG_IDENTS: &[&str] = &["in", "instanceof", "as", "else", "catch", "fi
 struct Parser {
     toks: Vec<Token>,
     i: usize,
+    /// Inside `( )` or `[ ]`, where a newline does not end an expression
+    /// (a closure body inside them starts a fresh statement context).
+    in_group: bool,
 }
 
 type PResult<T> = Result<T, Diagnostic>;
@@ -82,6 +89,14 @@ impl Parser {
             Diagnostic::error(t.pos, format!("Unexpected {}, expected {wanted}", t.describe()))
         }
     }
+    /// Parse with `in_group` set to `value`, restoring it afterwards.
+    fn grouped<T>(&mut self, value: bool, f: impl FnOnce(&mut Self) -> PResult<T>) -> PResult<T> {
+        let saved = std::mem::replace(&mut self.in_group, value);
+        let r = f(self);
+        self.in_group = saved;
+        r
+    }
+
     fn ident_name(&self) -> Option<String> {
         match &self.peek().kind {
             TokKind::Ident(n) => Some(n.clone()),
@@ -205,6 +220,9 @@ impl Parser {
             let e = self.closure()?;
             return Ok(Stmt::Expr(e));
         }
+        if t.is_punct("(") && self.looks_like_multi_assign() {
+            return self.multi_assign();
+        }
         let Some(word) = self.ident_name() else {
             return Ok(Stmt::Expr(self.expr_stmt()?));
         };
@@ -217,7 +235,7 @@ impl Parser {
             "if" => {
                 self.next();
                 self.expect("(")?;
-                self.expr()?;
+                self.grouped(true, |p| p.expr())?;
                 self.expect(")")?;
                 let mut bodies = vec![self.body()?];
                 if self.peek().is_ident("else") {
@@ -319,6 +337,46 @@ impl Parser {
             }
             _ => Ok(Stmt::Expr(self.expr_stmt()?)),
         }
+    }
+
+    /// `(a, b) = expr`: Groovy multiple assignment to existing variables.
+    fn looks_like_multi_assign(&self) -> bool {
+        let mut k = 1;
+        loop {
+            if !matches!(self.peek_at(k).kind, TokKind::Ident(_)) {
+                return false;
+            }
+            k += 1;
+            if self.peek_at(k).is_punct(",") {
+                k += 1;
+            } else {
+                break;
+            }
+        }
+        self.peek_at(k).is_punct(")") && self.peek_at(k + 1).is_punct("=")
+    }
+
+    fn multi_assign(&mut self) -> PResult<Stmt> {
+        let pos = self.expect("(")?.pos;
+        let mut items = Vec::new();
+        loop {
+            let t = self.next();
+            if let TokKind::Ident(name) = t.kind {
+                items.push(Expr::Ident { name, pos: t.pos });
+            }
+            if !self.eat(",") {
+                break;
+            }
+        }
+        self.expect(")")?;
+        self.expect("=")?;
+        let value = self.expr_stmt()?;
+        Ok(Stmt::Expr(Expr::Assign {
+            op: "=",
+            target: Box::new(Expr::List { items, pos }),
+            value: Box::new(value),
+            pos,
+        }))
     }
 
     fn type_decl(&mut self, pos: Pos) -> PResult<Stmt> {
@@ -596,7 +654,7 @@ impl Parser {
 
     fn binary_op(&self) -> Option<(String, u8, usize)> {
         let t = self.peek();
-        if t.nl_before {
+        if t.nl_before && !self.in_group {
             return None;
         }
         let (op, prec, len) = match &t.kind {
@@ -728,13 +786,16 @@ impl Parser {
                 }
                 TokKind::Punct("[") if !t.nl_before => {
                     self.next();
-                    let mut index = Vec::new();
-                    while !self.peek().is_punct("]") {
-                        index.push(self.expr()?);
-                        if !self.eat(",") {
-                            break;
+                    let index = self.grouped(true, |p| {
+                        let mut index = Vec::new();
+                        while !p.peek().is_punct("]") {
+                            index.push(p.expr()?);
+                            if !p.eat(",") {
+                                break;
+                            }
                         }
-                    }
+                        Ok(index)
+                    })?;
                     self.expect("]")?;
                     e = Expr::Index {
                         obj: Box::new(e),
@@ -760,6 +821,10 @@ impl Parser {
     }
 
     fn call_args(&mut self) -> PResult<Vec<Arg>> {
+        self.grouped(true, Self::call_args_inner)
+    }
+
+    fn call_args_inner(&mut self) -> PResult<Vec<Arg>> {
         self.expect("(")?;
         let mut args = Vec::new();
         while !self.peek().is_punct(")") {
@@ -818,7 +883,7 @@ impl Parser {
                     }
                 }
                 self.next();
-                let inner = self.expr()?;
+                let inner = self.grouped(true, |p| p.expr())?;
                 self.expect(")")?;
                 Ok(Expr::Paren {
                     inner: Box::new(inner),
@@ -869,6 +934,10 @@ impl Parser {
     }
 
     fn list_or_map(&mut self) -> PResult<Expr> {
+        self.grouped(true, Self::list_or_map_inner)
+    }
+
+    fn list_or_map_inner(&mut self) -> PResult<Expr> {
         let pos = self.expect("[")?.pos;
         if self.peek().is_punct(":") && self.peek_at(1).is_punct("]") {
             self.next();
@@ -958,7 +1027,7 @@ impl Parser {
             }
             self.expect("->")?;
         }
-        let body = self.stmts_until(Some(open))?;
+        let body = self.grouped(false, |p| p.stmts_until(Some(open)))?;
         self.expect("}")?;
         Ok(Expr::Closure { params, body, pos: open })
     }
@@ -1027,6 +1096,10 @@ mod tests {
         ok("x = foo\n  .bar()\n  .baz()");
         ok("assert m, \"not found\"\nassert x : 'y'");
         ok("MY_VERSION = readFile 'Version'\ndef v = readFile file: 'x'");
+        ok("(a, b) = [1, 2]\n(a,\n  b) = f()");
+        ok("def ok = (a != 'x'\n  &&\n  (b == null || b == 'y'))");
+        ok("if (a\n  || b) { c() }");
+        ok("echo(a\n  + b)\nl = [a\n  + 'x']");
     }
 
     #[test]
@@ -1035,5 +1108,9 @@ mod tests {
         fails("sh 'x' 'y'");
         fails("stage('a') { sh 'x' }}");
         fails("sh \"unterminated");
+        // A newline still ends the statement outside brackets, and inside
+        // a closure body even when the closure sits in brackets.
+        fails("def x = a\n  && b");
+        fails("f({ ->\n  def z = a\n  && b\n})");
     }
 }

@@ -108,7 +108,6 @@ pub fn validate(stmts: &[Stmt]) -> Vec<Diagnostic> {
 #[derive(Default)]
 struct Validator {
     diags: Vec<Diagnostic>,
-    stage_names: HashSet<String>,
     stage: String,
 }
 
@@ -127,6 +126,16 @@ fn plain_string(arg: &Arg) -> Option<&str> {
         Arg::Pos(Expr::Str { value, interp: false, .. }) => Some(value),
         Arg::Pos(Expr::Num { text, .. }) => Some(text),
         Arg::Pos(Expr::Ident { name, .. }) if name == "true" || name == "false" => Some(name),
+        _ => None,
+    }
+}
+
+/// An axis name: a plain string, or a bare word, which Jenkins reads as
+/// the same string (`name compiler` is `name 'compiler'`).
+fn axis_name(arg: &Arg) -> Option<&str> {
+    match arg {
+        Arg::Pos(Expr::Str { value, interp: false, .. }) => Some(value),
+        Arg::Pos(Expr::Ident { name, .. }) => Some(name),
         _ => None,
     }
 }
@@ -391,16 +400,24 @@ impl Validator {
             self.err(s.pos, "Expected a block for stages");
             return;
         };
-        self.stage_list(s.pos, body, in_nested, false);
+        self.stage_list(s.pos, body, in_nested);
     }
 
-    fn stage_list(&mut self, pos: Pos, body: &[Stmt], in_nested: bool, in_matrix: bool) {
+    /// The stages of one `stages`, `parallel` or matrix `stages` block.
+    /// Like Jenkins, stage names only have to be unique among siblings.
+    fn stage_list(&mut self, pos: Pos, body: &[Stmt], in_nested: bool) {
         let mut count = 0;
+        let mut names = HashSet::new();
         for stmt in body {
             match stmt.section() {
                 Some(st) if st.name == "stage" => {
                     count += 1;
-                    self.stage(&st, in_nested, in_matrix);
+                    if let [Arg::Pos(Expr::Str { value, .. })] = st.args.as_slice() {
+                        if !names.insert(value.as_str()) {
+                            self.err(st.pos, format!("Duplicate stage name: \"{value}\""));
+                        }
+                    }
+                    self.stage(&st, in_nested);
                 }
                 Some(st) if st.name == "failFast" => {}
                 _ => self.err(stmt.pos(), "Expected a stage"),
@@ -411,7 +428,7 @@ impl Validator {
         }
     }
 
-    fn stage(&mut self, s: &Section, in_nested: bool, in_matrix: bool) {
+    fn stage(&mut self, s: &Section, in_nested: bool) {
         let name = match s.args.as_slice() {
             [Arg::Pos(Expr::Str { value, .. })] => value.clone(),
             [] => {
@@ -423,9 +440,6 @@ impl Validator {
                 return;
             }
         };
-        if !in_matrix && !self.stage_names.insert(name.clone()) {
-            self.err(s.pos, format!("Duplicate stage name: \"{name}\""));
-        }
         let Some(body) = s.body else {
             self.err(s.pos, "Stage does not have a block");
             return;
@@ -485,7 +499,7 @@ impl Validator {
                     None => self.err(x.pos, "Expected a block for steps"),
                 },
                 "parallel" => match x.body {
-                    Some(b) => self.stage_list(x.pos, b, true, in_matrix),
+                    Some(b) => self.stage_list(x.pos, b, true),
                     None => self.err(x.pos, "Expected a block for parallel"),
                 },
                 "matrix" => self.matrix(x),
@@ -1016,7 +1030,7 @@ impl Validator {
                     }
                 }
                 "stages" => match x.body {
-                    Some(b) => self.stage_list(x.pos, b, true, true),
+                    Some(b) => self.stage_list(x.pos, b, true),
                     None => self.err(x.pos, "Expected a block for stages"),
                 },
                 _ => self.section(x, true),
@@ -1043,7 +1057,7 @@ impl Validator {
                     "name" => {
                         has_name = true;
                         match field.args.as_slice() {
-                            [a] => match plain_string(a) {
+                            [a] => match axis_name(a) {
                                 Some(n) => {
                                     if !is_valid_identifier(n) {
                                         self.err(field.pos, format!("\"{n}\" is not a valid identifier and cannot be used for an environment variable. Identifiers must start with a letter or underscore and can contain only letters, numbers or underscores."));

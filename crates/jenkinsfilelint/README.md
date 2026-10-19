@@ -82,3 +82,7 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 python3 scripts/corpus_check.py
 ```
+
+`cargo test` also lints every case in `tests/jenkins/` and compares the
+result with `tests/jenkins/expected.txt`, which records what Jenkins's own
+validator said about the same file and explains each known difference.

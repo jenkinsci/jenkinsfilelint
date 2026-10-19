@@ -112,7 +112,11 @@ fn main() -> ExitCode {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::{BTreeMap, BTreeSet};
+    use std::path::Path;
+
     use super::lint;
+    use crate::diag::Severity;
 
     fn messages(src: &str) -> Vec<String> {
         lint(src)
@@ -150,5 +154,66 @@ mod tests {
         let m = messages("pipeline {\n  agent any\n  stages {\n    stage('A') {\n      steps { sh 'x' 'y' }\n    }\n  }\n}\n");
         assert_eq!(m.len(), 1);
         assert!(m[0].starts_with("5:22"), "{m:?}");
+    }
+
+    /// Lint every case in tests/jenkins/ and compare with expected.txt,
+    /// which records what Jenkins's own validator said about each file.
+    #[test]
+    fn agrees_with_jenkins_validator() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/jenkins");
+        let expected = std::fs::read_to_string(dir.join("expected.txt")).unwrap();
+        let mut cases: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+        let mut current = None;
+        for line in expected.lines() {
+            if let Some(name) = line.strip_prefix('[').and_then(|l| l.strip_suffix(']')) {
+                current = Some(name);
+                cases.insert(name, Vec::new());
+            } else if !line.is_empty() && !line.starts_with('#') {
+                let name = current.expect("expectation before the first [case]");
+                cases.get_mut(name).unwrap().push(line);
+            }
+        }
+
+        let mut seen = 0;
+        let mut failures = Vec::new();
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().is_none_or(|e| e != "groovy") {
+                continue;
+            }
+            seen += 1;
+            let name = path.file_stem().unwrap().to_str().unwrap();
+            let Some(want) = cases.get(name) else {
+                failures.push(format!("{name}: no [{name}] in expected.txt"));
+                continue;
+            };
+            let diags = lint(&std::fs::read_to_string(&path).unwrap());
+            let errors: BTreeSet<&str> = diags
+                .iter()
+                .filter(|d| d.severity == Severity::Error)
+                .map(|d| d.message.as_str())
+                .collect();
+            let warnings: BTreeSet<&str> = diags
+                .iter()
+                .filter(|d| d.severity != Severity::Error)
+                .map(|d| d.message.as_str())
+                .collect();
+            let want_errors: BTreeSet<&str> = want.iter().filter_map(|l| l.strip_prefix("error: ")).collect();
+            let want_warnings: BTreeSet<&str> = want.iter().filter_map(|l| l.strip_prefix("warning: ")).collect();
+            let errors_ok = if want.contains(&"valid") {
+                errors.is_empty()
+            } else if want.contains(&"error") {
+                !errors.is_empty()
+            } else {
+                errors == want_errors
+            };
+            if !errors_ok || warnings != want_warnings {
+                failures.push(format!(
+                    "{name}:\n  expected {want:?}\n  got errors {errors:?}, warnings {warnings:?}"
+                ));
+            }
+        }
+        assert_eq!(seen, cases.len(), "every [case] in expected.txt needs a .groovy file");
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
     }
 }
