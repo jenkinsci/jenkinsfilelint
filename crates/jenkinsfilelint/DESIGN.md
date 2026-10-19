@@ -47,6 +47,7 @@ src/lexer.rs     tokens; all Groovy string forms; newline tracking
 src/parser.rs    recursive-descent parser -> small AST (ast.rs)
 src/validate.rs  declarative structure checks, official message wording
 src/main.rs      CLI: text or JSON output, exit codes
+python/          jenkinsfilelint_engine: finds the binary installed by the wheel
 scripts/corpus_check.py  agreement test against the plugin's own samples
 ```
 
@@ -77,12 +78,16 @@ mistakes in them are all caught.
    parameters from the public Pipeline Steps Reference, ship it inside the
    binary, and warn on unknown steps or parameters. Let users declare
    shared-library steps in a config file.
-2. **Distribution.** GitHub Releases for Linux, macOS and Windows; a
-   `maturin` wheel so `pip install jenkinsfilelint` includes the engine;
-   `jenkinsfilelint --offline` calls it. The Python package already owns
-   the `jenkinsfilelint` command, so the wheel either loads the engine as a
-   PyO3 extension module, or the remote and `--local` modes move to Rust
-   too and the wheel ships the single binary, as ruff does. Homebrew later.
+2. **Distribution.** Done: this crate is published to PyPI as
+   `jenkinsfilelint-engine`, maturin binary wheels (`bindings = "bin"`,
+   like ruff) for Linux, macOS and Windows plus an sdist. `jenkinsfilelint`
+   stays pure Python, depends on the engine pinned to the exact version, and
+   runs it for `--offline` and the `jenkinsfilelint-offline` pre-commit
+   hook. Keeping the root package pure Python matters because pre-commit
+   installs hooks from source: a maturin-built root package would make every
+   pre-commit user compile Rust. The dependency is limited to platforms with
+   a wheel, so other platforms keep the remote and Docker modes. GitHub
+   Releases and Homebrew later.
 3. **Editor and web.** JSON output already exists for editors; add a
    WebAssembly build for a web playground.
 4. **Groovy coverage.** Keep adding real-world Jenkinsfiles to the test set
