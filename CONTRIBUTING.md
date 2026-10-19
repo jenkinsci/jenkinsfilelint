@@ -41,8 +41,20 @@ same PR. Otherwise the next release keeps the engine already on PyPI.
 Publishing a GitHub release runs `.github/workflows/release.yml`. It builds
 the engine wheels and the `jenkinsfilelint` package, installs them on each
 platform, then uploads `jenkinsfilelint-engine` (skipping files already on
-PyPI) and only then `jenkinsfilelint`. Pull requests that touch `crates/` or
+PyPI) and only then `jenkinsfilelint`, and finally installs both from PyPI on
+Linux, macOS and Windows. Pull requests that touch `crates/` or
 `pyproject.toml` run the same workflow without uploading.
+
+To rehearse a release, run it by hand with `publish: testpypi`:
+
+```bash
+gh workflow run release.yml --ref <branch> -f publish=testpypi
+```
+
+The same jobs then upload to TestPyPI (environment `testpypi`, which needs a
+TestPyPI trusted publisher for each of the two projects) and install from
+there. `jenkinsfilelint` gets a development version such as
+`1.5.1.post1.dev18`, so every commit can be uploaded once.
 
 ## Conventions
 
