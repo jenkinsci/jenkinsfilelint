@@ -1,0 +1,31 @@
+.pre-commit-hooks.yaml
+  s_53c88f0a58f49f::t_db983f84c9d929 9-15
+pyproject.toml
+  s_53c88f0a58f49f::t_032ed5fb89fed1 11,22-28
+jenkinsfilelint/cli.py
+  s_53c88f0a58f49f::t_83ced2dee7d6e8 159-160
+  s_53c88f0a58f49f::t_fbe46085cd1f92 11,58-68,75-76,78,135-158,161-175,180,205,230-231,238-244,271-277
+tests/test_offline.py
+  s_53c88f0a58f49f::t_158fd6d379d767 242-243,245-254
+  s_53c88f0a58f49f::t_74c85501093a5b 1-8,10-11,13-93,97-98,105-239,255-411
+  s_53c88f0a58f49f::t_6554d02f790922 9,12,94-96,99-104
+  s_53c88f0a58f49f::t_12e2e06885fa7f 240-241,244
+jenkinsfilelint/offline.py
+  s_53c88f0a58f49f::t_c8b79222f1a165 1-126
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "298342b7fc2263e838892b93de79515a37c1e689",
+  "prompts": {},
+  "sessions": {
+    "s_53c88f0a58f49f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e79ac66c-264f-4f88-8350-d54a10715e0f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Xianpeng Shen <xianpeng.shen@gmail.com>"
+    }
+  }
+}
