@@ -1,0 +1,21 @@
+.github/workflows/release.yml
+  s_53c88f0a58f49f::t_50da67bd052140 8-9,21-26,187,191,194-195,204,207,215,218-219,227,229-288
+CONTRIBUTING.md
+  s_53c88f0a58f49f::t_71072c393d1754 44-45,48-58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d1445bbc0a9037d56d2bb4fad312f684cf5ea8e4",
+  "prompts": {},
+  "sessions": {
+    "s_53c88f0a58f49f": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "e79ac66c-264f-4f88-8350-d54a10715e0f",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "Xianpeng Shen <xianpeng.shen@gmail.com>"
+    }
+  }
+}
