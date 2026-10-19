@@ -255,6 +255,14 @@ valid. That's it — it only answers: **"Will Jenkins accept this syntax?"**
   container (via Docker or Podman) and validates against it. The container is
   reused across runs for near-instant validation.
 
+**Scripted Pipelines and other Groovy files.** The endpoint only checks
+Declarative syntax. For a file with no `pipeline { … }` block (a Scripted
+Pipeline, a shared-library `vars/*.groovy` step, an empty file) Jenkins still
+parses the Groovy, so syntax errors such as an unclosed brace fail as usual.
+If it parses, the file is reported as skipped and does not fail the run
+(`⊘ vars/notify.groovy: Skipped (not a Declarative Pipeline)` with `--verbose`).
+To keep such files from being sent at all, use [`--skip` / `--include`](#filtering-files).
+
 ## Requirements
 
 - Python 3.10+

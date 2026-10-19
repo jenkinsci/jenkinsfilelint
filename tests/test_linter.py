@@ -7,7 +7,9 @@ from unittest.mock import patch, Mock
 
 import pytest
 
-from jenkinsfilelint.linter import JenkinsfileLinter
+import requests
+
+from jenkinsfilelint.linter import JenkinsfileLinter, NOT_DECLARATIVE_MESSAGE
 
 
 class TestJenkinsfileLinterInit:
@@ -186,7 +188,10 @@ class TestJenkinsfileLinterValidateWithJenkins:
         """Test validation with errors in text response."""
         mock_response = Mock()
         mock_response.status_code = 200
-        mock_response.text = "Errors encountered in validation"
+        mock_response.text = (
+            "Errors encountered validating Jenkinsfile:\n"
+            'WorkflowScript: 2: Not a valid section definition: "invalid".'
+        )
         mock_response.json.side_effect = ValueError("Not JSON")
         mock_response.raise_for_status = Mock()
         mock_post.return_value = mock_response
@@ -613,7 +618,10 @@ class TestJenkinsfileLinterFileScenarios:
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.side_effect = ValueError("Not JSON")
-        mock_response.text = ""
+        # What Jenkins sends back for an empty ``jenkinsfile`` form field.
+        mock_response.text = (
+            "Jenkinsfile content '' did not contain the 'pipeline' step\n"
+        )
         mock_response.raise_for_status = Mock()
         mock_post.return_value = mock_response
 
@@ -625,9 +633,9 @@ class TestJenkinsfileLinterFileScenarios:
         try:
             linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com")
             is_valid, message = linter._validate_with_jenkins(temp_path)
-            # Empty file with no error indicators → valid with empty result
+            # No pipeline block → skipped like any non-Declarative file
             assert is_valid is True
-            assert message == ""
+            assert message == NOT_DECLARATIVE_MESSAGE
         finally:
             os.unlink(temp_path)
 
@@ -753,3 +761,142 @@ class TestJenkinsfileLinterRequest:
 
         assert is_valid is True
         assert mock_post.call_args.kwargs["auth"] is None
+
+
+def _jenkins_text_response(body):
+    """Build a plain-text ``requests.Response`` like the validate endpoint sends."""
+    response = requests.Response()
+    response.status_code = 200
+    response.headers["Content-Type"] = "text/plain;charset=utf-8"
+    response._content = body.encode("utf-8")
+    return response
+
+
+def _not_declarative_reply(source):
+    """The reply Jenkins sends when the file has no top-level pipeline block."""
+    return f"Jenkinsfile content '{source}' did not contain the 'pipeline' step\n"
+
+
+SCRIPTED = "node {\n    stage('Build') {\n        sh 'make'\n    }\n}\n"
+SCRIPTED_WITH_ERROR_WORD = (
+    "node {\n    stage('Build') {\n        sh 'make || error \"failed\"'\n    }\n}\n"
+)
+# A shared-library step whose text contains every marker the parser looks for.
+SHARED_LIBRARY_STEP = (
+    "def call(String msg) {\n"
+    '    echo "Errors encountered validating Jenkinsfile: ${msg}"\n'
+    "    echo 'WorkflowScript: 1: Expected a step'\n"
+    "    echo 'Jenkinsfile successfully validated'\n"
+    "}\n"
+)
+
+
+class TestJenkinsfileLinterTextResponses:
+    """Plain-text replies from /pipeline-model-converter/validate."""
+
+    @pytest.mark.parametrize(
+        "source",
+        [SCRIPTED, SCRIPTED_WITH_ERROR_WORD, SHARED_LIBRARY_STEP, "", "   \n"],
+        ids=[
+            "scripted",
+            "scripted-with-error-word",
+            "shared-library",
+            "empty",
+            "blank",
+        ],
+    )
+    @patch("requests.post")
+    def test_non_declarative_file_is_skipped(self, mock_post, tmp_path, source):
+        """Files without a pipeline block get the same verdict whatever they say."""
+        mock_post.return_value = _jenkins_text_response(_not_declarative_reply(source))
+        jenkinsfile = tmp_path / "Jenkinsfile"
+        jenkinsfile.write_text(source)
+
+        linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com")
+        is_valid, message = linter.validate(str(jenkinsfile))
+
+        assert is_valid is True
+        assert message == NOT_DECLARATIVE_MESSAGE
+        # The file content echoed back by Jenkins is not passed on.
+        assert "did not contain" not in message
+
+    @patch("requests.post")
+    def test_declarative_error_fails(self, mock_post, tmp_path):
+        """A real Declarative syntax error is reported verbatim."""
+        reply = (
+            "Errors encountered validating Jenkinsfile:\n"
+            "WorkflowScript: 6: Expected a step @ line 6, column 17.\n"
+            "                   test\n"
+            "                   ^\n"
+            "\n"
+        )
+        mock_post.return_value = _jenkins_text_response(reply)
+        jenkinsfile = tmp_path / "Jenkinsfile"
+        jenkinsfile.write_text(
+            "pipeline { agent any stages { stage('B') { steps { test } } } }"
+        )
+
+        linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com")
+        is_valid, message = linter.validate(str(jenkinsfile))
+
+        assert is_valid is False
+        assert message == reply.strip()
+
+    @patch("requests.post")
+    def test_scripted_groovy_syntax_error_fails(self, mock_post, tmp_path):
+        """Jenkins parses the Groovy first, so broken scripted files still fail."""
+        reply = (
+            "Errors encountered validating Jenkinsfile:\n"
+            "WorkflowScript: 5: expecting '}', found '' @ line 5, column 1.\n"
+        )
+        mock_post.return_value = _jenkins_text_response(reply)
+        jenkinsfile = tmp_path / "Jenkinsfile"
+        jenkinsfile.write_text(
+            "node {\n    stage('Build') {\n        sh 'make'\n    }\n"
+        )
+
+        linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com")
+        is_valid, message = linter.validate(str(jenkinsfile))
+
+        assert is_valid is False
+        assert "expecting '}'" in message
+
+    @patch("requests.post")
+    def test_successful_validation(self, mock_post, tmp_path):
+        """The success reply is valid even when the file mentions errors."""
+        mock_post.return_value = _jenkins_text_response(
+            "Jenkinsfile successfully validated.\n"
+        )
+        jenkinsfile = tmp_path / "Jenkinsfile"
+        jenkinsfile.write_text(
+            "pipeline { agent any stages { stage('B') { steps {"
+            " sh 'make || echo \"error: Expected failure\"' } } } }"
+        )
+
+        linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com")
+        is_valid, message = linter.validate(str(jenkinsfile))
+
+        assert is_valid is True
+        assert message == "Jenkinsfile successfully validated."
+
+    @pytest.mark.parametrize(
+        ("body", "detail"),
+        [
+            ("<html><head><title>Sign in [Jenkins]</title>", "<html>"),
+            ("", "<empty response>"),
+        ],
+        ids=["html-login-page", "empty-body"],
+    )
+    @patch("requests.post")
+    def test_unrecognised_reply_fails(self, mock_post, tmp_path, body, detail):
+        """A reply that is none of Jenkins's known shapes is not treated as valid."""
+        mock_post.return_value = _jenkins_text_response(body)
+        jenkinsfile = tmp_path / "Jenkinsfile"
+        jenkinsfile.write_text("pipeline { agent any }")
+
+        linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com")
+        is_valid, message = linter.validate(str(jenkinsfile))
+
+        assert is_valid is False
+        assert message.startswith("Unexpected response from Jenkins validate endpoint")
+        assert detail in message

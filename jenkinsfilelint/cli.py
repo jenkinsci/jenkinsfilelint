@@ -6,7 +6,7 @@ import argparse
 import io
 from pathlib import Path
 from typing import List, Optional, Set
-from .linter import JenkinsfileLinter
+from .linter import JenkinsfileLinter, NOT_DECLARATIVE_MESSAGE
 from .local import LocalJenkins, handle_server_command
 from . import __version__
 
@@ -77,7 +77,11 @@ def _validate_files(linter: JenkinsfileLinter, args: argparse.Namespace) -> None
 
         is_valid, message = linter.validate(jenkinsfile)
 
-        if is_valid:
+        if is_valid and message == NOT_DECLARATIVE_MESSAGE:
+            # The Groovy parsed, but there is no Declarative syntax to check.
+            if args.verbose or len(args.jenkinsfile) > 1:
+                print(f"⊘ {jenkinsfile}: Skipped (not a Declarative Pipeline)")
+        elif is_valid:
             # Show valid status for multiple files or when verbose
             if args.verbose or len(args.jenkinsfile) > 1:
                 print(f"✓ {jenkinsfile}: Valid")
