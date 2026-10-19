@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import List, Optional, Set
 from .linter import JenkinsfileLinter, NOT_DECLARATIVE_MESSAGE
 from .local import LocalJenkins, handle_server_command
+from .offline import OfflineEngineError, find_engine, lint_files
 from . import __version__
 
 
@@ -54,22 +55,27 @@ def should_include_file(filepath: str, include_patterns: Optional[List[str]]) ->
     return False
 
 
+def _skip_reason(jenkinsfile: str, args: argparse.Namespace) -> Optional[str]:
+    """Why --include/--skip leave a file out, or None to check it."""
+    # Check if file should be included (whitelist)
+    if not should_include_file(jenkinsfile, args.include):
+        return "does not match include pattern"
+    # Check if file should be skipped (blacklist)
+    if should_skip_file(jenkinsfile, args.skip):
+        return "matches skip pattern"
+    return None
+
+
 def _validate_files(linter: JenkinsfileLinter, args: argparse.Namespace) -> None:
     """Shared validation loop used by both remote and local modes."""
     all_valid = True
     printed_messages: Set[str] = set()
 
     for jenkinsfile in args.jenkinsfile:
-        # Check if file should be included (whitelist)
-        if not should_include_file(jenkinsfile, args.include):
+        reason = _skip_reason(jenkinsfile, args)
+        if reason:
             if args.verbose:
-                print(f"⊘ {jenkinsfile}: Skipped (does not match include pattern)")
-            continue
-
-        # Check if file should be skipped (blacklist)
-        if should_skip_file(jenkinsfile, args.skip):
-            if args.verbose:
-                print(f"⊘ {jenkinsfile}: Skipped (matches skip pattern)")
+                print(f"⊘ {jenkinsfile}: Skipped ({reason})")
             continue
 
         if args.verbose:
@@ -126,11 +132,52 @@ def _run_local_validation(args: argparse.Namespace) -> None:
     # shut it down explicitly.
 
 
+def _run_offline_validation(args: argparse.Namespace) -> None:
+    """Validate files with the offline engine, without a Jenkins server."""
+    selected = [f for f in args.jenkinsfile if _skip_reason(f, args) is None]
+    try:
+        engine = find_engine() if selected else None
+        if engine and args.verbose:
+            print(f"✓ Offline engine: {engine}")
+        results = lint_files(selected, engine) if selected else {}
+    except OfflineEngineError as exc:
+        print(f"✗ {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    all_valid = True
+    for jenkinsfile in args.jenkinsfile:
+        reason = _skip_reason(jenkinsfile, args)
+        if reason:
+            if args.verbose:
+                print(f"⊘ {jenkinsfile}: Skipped ({reason})")
+            continue
+
+        if args.verbose:
+            print(f"Validating {jenkinsfile}...")
+
+        result = results[jenkinsfile]
+        if result.lines:
+            sys.stdout.flush()  # keep the output in file order when piped
+        for line in result.lines:
+            print(line, file=sys.stderr)
+
+        if not result.is_valid:
+            all_valid = False
+        elif not result.declarative:
+            # The Groovy parsed, but there is no Declarative syntax to check.
+            if args.verbose or len(args.jenkinsfile) > 1:
+                print(f"⊘ {jenkinsfile}: Skipped (not a Declarative Pipeline)")
+        elif args.verbose or len(args.jenkinsfile) > 1:
+            print(f"✓ {jenkinsfile}: Valid")
+
+    sys.exit(0 if all_valid else 1)
+
+
 def main():
     """Main entry point for jenkinsfilelint.
 
     Dispatches ``server`` subcommands (start|stop|status|restart) or runs the
-    linting CLI (with optional ``--local`` mode).
+    linting CLI (with optional ``--local`` or ``--offline`` mode).
     """
     if len(sys.argv) > 1 and sys.argv[1] == "server":
         handle_server_command(sys.argv[2:])
@@ -155,7 +202,7 @@ def main():
             )
 
     parser = argparse.ArgumentParser(
-        description="Validate Jenkinsfiles using Jenkins API"
+        description="Validate Jenkinsfiles using Jenkins API, or offline with --offline"
     )
     parser.add_argument(
         "-V",
@@ -180,12 +227,20 @@ def main():
         "--token",
         help="Jenkins API token (can also be set via JENKINS_TOKEN env var)",
     )
-    parser.add_argument(
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument(
         "--local",
         action="store_true",
         help="Validate using a local Docker-based Jenkins server (no remote Jenkins required). "
         "The container is started automatically on first use and stays running for fast "
         "subsequent invocations. Use 'jenkinsfilelint server stop' to shut it down.",
+    )
+    mode.add_argument(
+        "--offline",
+        action="store_true",
+        help="Check Groovy syntax and Declarative Pipeline structure without Jenkins, "
+        "Docker or a JVM. Cannot check what depends on plugins, such as step names "
+        "and parameters; use a Jenkins server or --local for that.",
     )
     parser.add_argument(
         "-v",
@@ -213,7 +268,13 @@ def main():
 
     args = parser.parse_args()
 
-    if args.local:
+    if args.offline:
+        for option in ("jenkins_url", "username", "token"):
+            if getattr(args, option):
+                flag = "--" + option.replace("_", "-")
+                parser.error(f"argument --offline: not allowed with argument {flag}")
+        _run_offline_validation(args)
+    elif args.local:
         _run_local_validation(args)
     else:
         _run_remote_validation(args)

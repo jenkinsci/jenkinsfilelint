@@ -8,7 +8,7 @@ dynamic = ["version"]
 authors = [
     {name = "Xianpeng Shen", email = "xianpeng.shen@gmail.com"},
 ]
-description = "A Jenkinsfile linter that validates Jenkinsfiles using Jenkins API"
+description = "A Jenkinsfile linter that validates Jenkinsfiles using Jenkins API, or offline without a Jenkins server"
 license = {text = "MIT"}
 readme = "README.md"
 requires-python = ">=3.10"
@@ -19,6 +19,13 @@ classifiers = [
 ]
 dependencies = [
     "requests",
+    # The offline engine (--offline), pinned to the version in
+    # crates/jenkinsfilelint/Cargo.toml. Limited to the platforms that get a
+    # prebuilt wheel, so that installing never needs a Rust toolchain.
+    """jenkinsfilelint-engine==0.1.0; \
+    (sys_platform == 'linux' and (platform_machine == 'x86_64' or platform_machine == 'aarch64')) \
+    or (sys_platform == 'darwin' and (platform_machine == 'x86_64' or platform_machine == 'arm64')) \
+    or (sys_platform == 'win32' and platform_machine == 'AMD64')""",
 ]
 
 [project.optional-dependencies]

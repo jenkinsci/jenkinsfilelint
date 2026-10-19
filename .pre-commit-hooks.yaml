@@ -6,3 +6,10 @@
   types: [file]
   files: ^.*(Jenkinsfile.*|.*\.groovy)$
   require_serial: true
+- id: jenkinsfilelint-offline
+  name: jenkinsfilelint (offline)
+  description: Check Jenkinsfile syntax and Declarative Pipeline structure without a Jenkins server.
+  entry: jenkinsfilelint --offline
+  language: python
+  types: [file]
+  files: ^.*(Jenkinsfile.*|.*\.groovy)$

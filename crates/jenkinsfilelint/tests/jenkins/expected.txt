@@ -1,0 +1,473 @@
+# Expected offline results for the cases in this directory.
+#
+# Every case was also sent to Jenkins's own validator
+# (POST /pipeline-model-converter/validate on Jenkins 2.580.1 with
+# pipeline-model-definition 2.2293.v6e7193cec599, the plugin set of the
+# ghcr.io/jenkinsci/jenkinsfilelint-server image). Unless a comment says
+# otherwise, the expectation below is what Jenkins answered.
+#
+# Under each [case]:
+#   valid             no error
+#   error             at least one error (Groovy syntax messages are worded
+#                     differently from Jenkins's compiler)
+#   error: MESSAGE    exactly these error messages, in any order
+#   warning: MESSAGE  exactly these warning messages, in any order
+#   # Jenkins: ...    what Jenkins said, where it differs from the line above
+#   # Differs: ...    a known difference from Jenkins, and why
+
+[e01_missing_agent]
+error: Missing required section "agent"
+
+[e02_missing_stages]
+error: Missing required section "stages"
+
+[e03_stage_without_steps]
+error: Expected one of "steps", "stages", or "parallel" for stage "S"
+error: Unknown stage section "echo". Starting with version 0.5, steps in a stage must be in a ‘steps’ block.
+
+[e04_step_typo]
+error: Expected one of "steps", "stages", or "parallel" for stage "S"
+error: Unknown stage section "step". Starting with version 0.5, steps in a stage must be in a ‘steps’ block.
+
+[e05_duplicate_agent]
+error: Multiple occurrences of the agent section
+
+[e06_unknown_top_section]
+error: Undefined section "foo"
+
+[e07_bad_post_condition]
+error: Invalid condition "sucess" - valid conditions are [always, changed, fixed, regression, aborted, success, unsuccessful, unstable, failure, notBuilt, cleanup]
+
+[e08_bad_when_condition]
+error: Unknown conditional brnch. Valid conditionals are: allOf, anyOf, branch, buildingTag, changeRequest, changelog, changeset, environment, equals, expression, isRestartedRun, not, tag, triggeredBy
+
+[e09_nested_parallel]
+error: "matrix" or "parallel" cannot be nested inside another "matrix" or "parallel".
+
+[e10_steps_and_parallel]
+error: Only one of "matrix", "parallel", "stages", or "steps" allowed for stage "S"
+
+[e11_empty_stages]
+error: No stages specified
+
+[e12_env_list_value]
+# Jenkins also reports: No variables specified for environment
+error: Environment variable values must either be single quoted, double quoted, or function calls.
+
+[e13_unknown_option]
+# Differs: Option types can come from plugins, so unknown names are not reported.
+# Jenkins: Invalid option type "notAnOption". Valid option types: [buildDiscarder, catchError, checkoutToSubdirectory, disableConcurrentBuilds, disableRestartFromStage, disableResume, durabilityHint, newContainerPerStage, overrideIndexTriggers, parallelsAlwaysFailFast, preserveStashes, quietPeriod, rateLimitBuilds, retry, script, skipDefaultCheckout, skipStagesAfterUnstable, timeout, timestamps, waitUntil, warnError, withChecks, withContext, withCredentials, withEnv, wrap, ws]
+valid
+
+[e14_bad_agent_type]
+# Differs: Agent types can come from plugins, so this is a warning, not an error.
+# Jenkins: Invalid agent type "foo" specified. Must be one of [any, docker, dockerfile, label, none]
+valid
+warning: Agent type "foo" is not built in (built-in types: [any, docker, dockerfile, kubernetes, label, node, none]). Ignore this if a plugin provides it.
+
+[e15_bad_parameter_type]
+# Differs: Parameter types can come from plugins, so unknown names are not reported.
+# Jenkins: Invalid parameter type "notAParam". Valid parameter types: [booleanParam, choice, credentials, file, text, password, run, string]
+valid
+
+[e16_two_pipelines]
+# Differs: Stricter than the validator, which accepts this file; Jenkins refuses to run a second pipeline block.
+# Jenkins: valid
+error: Multiple occurrences of the pipeline section
+
+[e17_pipeline_in_node]
+error: pipeline block must be at the top-level, not within another block.
+
+[e18_stage_without_name]
+# Jenkins: Expected string literal
+# Jenkins: Stage does not have a block
+# Jenkins: Expected one of "steps", "stages", or "parallel" for stage "error"
+error
+
+[e19_matrix_without_axes]
+error: Missing required section "axes"
+
+[e20_input_without_message]
+error: No message specified for input
+
+[e21_duplicate_stage_names]
+error: Duplicate stage name: "Same"
+
+[e22_stages_without_stage]
+error: No stages specified
+error: Expected a stage
+
+[e23_unknown_stage_directive]
+error: Unknown stage section "foo". Starting with version 0.5, steps in a stage must be in a ‘steps’ block.
+
+[e24_stage_step_in_steps]
+error: Invalid step "stage" used - not allowed in this context - The stage step cannot be used in Declarative Pipelines
+
+[e25_properties_step]
+error: Invalid step "properties" used - not allowed in this context - The properties step cannot be used in Declarative Pipelines
+
+[e26_unknown_trigger]
+# Differs: Trigger types can come from plugins, so unknown names are not reported.
+# Jenkins: Invalid trigger type "notATrigger". Valid trigger types: [upstream, cron, pollSCM]
+valid
+
+[e27_empty_steps]
+error: No steps specified for branch
+
+[e28_when_empty]
+error: Empty when closure, remove the property or add some content.
+
+[e29_post_empty]
+error: post can not be empty
+
+[e30_agent_label_no_arg]
+# Differs: Known gap: `label` without a value is not reported yet.
+# Jenkins: Expected an agent
+# Jenkins: No agent type specified. Must be one of [any, docker, dockerfile, label, none]
+valid
+
+[e31_parallel_and_stages]
+error: Only one of "matrix", "parallel", "stages", or "steps" allowed for stage "S"
+
+[e32_env_no_value]
+# Jenkins also reports: Expected name=value pairs
+# Jenkins also reports: No variables specified for environment
+error: "FOO" is not a valid environment expression. Use "key = value" pairs with valid Java/shell keys.
+
+[e33_stage_outside_stages]
+error: Missing required section "stages"
+error: Undefined section "stage"
+
+[e34_when_all_of_empty]
+error: Nested when condition "allOf" requires at least one child condition.
+
+[e35_parameters_string_no_name]
+valid
+
+[e36_dup_parallel_siblings]
+error: Duplicate stage name: "A"
+
+[e37_dup_matrix_siblings]
+error: Duplicate stage name: "T"
+
+[e38_dup_nested_siblings]
+error: Duplicate stage name: "T"
+
+[e39_axis_name_gstring]
+# Jenkins also reports: "" is not a valid identifier and cannot be used for an environment variable. Identifiers must start with a letter or underscore and can contain only letters, numbers or underscores.
+error: Expected string literal
+
+[e40_axis_name_number]
+# Jenkins also reports: "" is not a valid identifier and cannot be used for an environment variable. Identifiers must start with a letter or underscore and can contain only letters, numbers or underscores.
+error: Expected string literal
+
+[e41_axis_name_property]
+# Jenkins also reports: "" is not a valid identifier and cannot be used for an environment variable. Identifiers must start with a letter or underscore and can contain only letters, numbers or underscores.
+error: Expected string literal
+
+[e42_axis_values_bare_words]
+# Jenkins: Expected string literal but got ${gcc}
+# Jenkins: Expected string literal but got ${clang}
+error
+
+[e43_axis_name_invalid_identifier]
+error: "my_axis$x" is not a valid identifier and cannot be used for an environment variable. Identifiers must start with a letter or underscore and can contain only letters, numbers or underscores.
+
+[e44_axis_name_duplicate_bare_word]
+error: Duplicate axis name: "compiler"
+
+[e45_gstring_stage_name]
+# Differs: Known gap: an interpolated stage name is not reported yet.
+# Jenkins: Expected string literal
+valid
+
+[e46_gstring_stage_name_semicolons]
+# Differs: Known gap: an interpolated stage name is not reported yet.
+# Jenkins: Expected string literal
+valid
+
+[p01_kubernetes_agent]
+# Differs: Depends on installed plugins or controller configuration, which the offline linter cannot see.
+# Jenkins: Invalid agent type "kubernetes" specified. Must be one of [any, docker, dockerfile, label, none]
+valid
+
+[p02_tools]
+# Differs: Depends on installed plugins or controller configuration, which the offline linter cannot see.
+# Jenkins: Tool type "maven" does not have an install of "M3" configured - did you mean "null"?
+# Jenkins: Tool type "jdk" does not have an install of "jdk17" configured - did you mean "null"?
+valid
+
+[p03_plugin_options]
+# Differs: Depends on installed plugins or controller configuration, which the offline linter cannot see.
+# Jenkins: Invalid option type "ansiColor". Valid option types: [buildDiscarder, catchError, checkoutToSubdirectory, disableConcurrentBuilds, disableRestartFromStage, disableResume, durabilityHint, newContainerPerStage, overrideIndexTriggers, parallelsAlwaysFailFast, preserveStashes, quietPeriod, rateLimitBuilds, retry, script, skipDefaultCheckout, skipStagesAfterUnstable, timeout, timestamps, waitUntil, warnError, withChecks, withContext, withCredentials, withEnv, wrap, ws]
+valid
+
+[p04_unknown_step]
+valid
+
+[p05_bad_step_param]
+# Differs: Step and option parameters are not checked yet (needs the planned step catalog).
+# Jenkins: Invalid parameter "foo", did you mean "label"?
+valid
+
+[p06_timeout_bad_unit]
+# Differs: Step and option parameters are not checked yet (needs the planned step catalog).
+# Jenkins: Expecting "class java.util.concurrent.TimeUnit" for parameter "unit" but got "FOREVER" of type class java.lang.String instead
+valid
+
+[p07_timeout_missing_param]
+# Differs: Step and option parameters are not checked yet (needs the planned step catalog).
+# Jenkins: "timeout" should have 1 arguments but has 0 arguments instead.
+valid
+
+[p08_plugin_trigger]
+# Differs: Depends on installed plugins or controller configuration, which the offline linter cannot see.
+# Jenkins: Invalid trigger type "githubPush". Valid trigger types: [upstream, cron, pollSCM]
+valid
+
+[p09_plugin_when]
+error: Unknown conditional gitlabMergeRequest. Valid conditionals are: allOf, anyOf, branch, buildingTag, changeRequest, changelog, changeset, environment, equals, expression, isRestartedRun, not, tag, triggeredBy
+
+[p10_plugin_parameter]
+# Differs: Depends on installed plugins or controller configuration, which the offline linter cannot see.
+# Jenkins: Invalid parameter type "gitParameter". Valid parameter types: [booleanParam, choice, credentials, file, text, password, run, string]
+valid
+
+[p11_plugin_step_in_steps]
+valid
+
+[p12_retry_string]
+# Differs: Step and option parameters are not checked yet (needs the planned step catalog).
+# Jenkins: Expecting "int" but got "three" of type class java.lang.String instead
+valid
+
+[s01_unclosed_brace]
+# Jenkins: expecting '}', found ''
+error
+
+[s02_unclosed_string]
+# Jenkins: expecting ''', found '\n'
+error
+
+[s03_unclosed_paren]
+# Jenkins: unexpected token: }
+error
+
+[s04_extra_closing_brace]
+# Jenkins: unexpected token: }
+error
+
+[s05_unclosed_gstring_expr]
+# Jenkins: expecting anything but ''\n''; got it anyway
+error
+
+[s06_bad_token]
+# Jenkins: unexpected token: @
+error
+
+[s07_map_missing_comma]
+# Jenkins: unexpected token: b
+error
+
+[s08_else_without_if]
+# Differs: Known gap: a stray `else` inside a script block is not reported yet.
+# Jenkins: unexpected token: else
+valid
+
+[s09_unclosed_block_comment]
+# Jenkins: expecting '*', found '<EOF>'
+error
+
+[s10_unclosed_triple_quote]
+# Jenkins: expecting ''', found '<EOF>'
+error
+
+[s11_missing_closing_bracket]
+# Jenkins: expecting ']', found '}'
+error
+
+[s12_bad_method_def]
+# Jenkins: unexpected token: {
+error
+
+[s13_newline_before_and_at_statement_level]
+# Jenkins: unexpected token: &&
+error
+
+[s14_newline_before_and_in_closure_body]
+# Jenkins: unexpected token: &&
+error
+
+[s15_expression_continued_by_if]
+# Differs: Known gap: `1 +` followed by `if` on the next line is not reported yet.
+# Jenkins: unexpected token: if
+valid
+
+[s16_unclosed_list_in_method]
+# Jenkins: expecting ']', found 'return'
+error
+
+[s17_bad_token_in_class_body]
+# Differs: Known gap: the parser only checks that brackets balance here.
+# Jenkins: expecting '}', found ')'
+valid
+
+[s18_bad_token_in_switch]
+# Differs: Known gap: the parser only checks that brackets balance here.
+# Jenkins: unexpected token: default
+valid
+
+[s19_bad_for_header]
+# Differs: Known gap: the parser only checks that brackets balance here.
+# Jenkins: unexpected token: <
+valid
+
+[v01_minimal]
+valid
+
+[v02_full_featured]
+valid
+
+[v03_matrix]
+valid
+
+[v04_nested_stages]
+valid
+
+[v05_groovy_heavy]
+valid
+
+[v06_comments_unicode]
+valid
+
+[v07_crlf]
+valid
+
+[v08_agent_variants]
+valid
+
+[v09_when_variants]
+valid
+
+[v10_stage_level_directives]
+valid
+
+[v11_libraries_directive]
+valid
+
+[v12_env_expressions]
+valid
+
+[v14_post_in_parallel_and_matrix]
+valid
+
+[v15_input_top_options]
+valid
+
+[v18_same_name_under_two_parents]
+valid
+
+[v19_same_name_parent_child]
+valid
+
+[v20_same_name_in_parallel_branches]
+valid
+
+[v21_same_name_matrix_and_top]
+valid
+
+[v22_same_name_parallel_and_parent]
+valid
+
+[v23_multi_assign]
+valid
+
+[v24_multi_assign_multiline]
+valid
+
+[v25_multi_assign_def]
+valid
+
+[v26_multi_assign_typed]
+valid
+
+[v27_paren_expression_statement]
+valid
+
+[v28_newline_before_and_in_parens]
+valid
+
+[v29_newline_in_if_condition]
+valid
+
+[v30_newline_in_call_args]
+valid
+
+[v31_newline_in_list]
+valid
+
+[v32_newline_ternary_in_parens]
+valid
+
+[v33_closure_in_call_args]
+valid
+
+[v34_newline_in_index]
+valid
+
+[v35_newline_between_named_args]
+valid
+
+[v36_newline_before_comma]
+valid
+
+[v37_axis_name_bare_word]
+valid
+
+[v38_axis_name_double_quoted]
+valid
+
+[v39_double_quoted_stage_name]
+valid
+
+[x01_scripted_pipeline]
+# Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
+# Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
+valid
+
+[x02_empty]
+# Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
+# Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
+valid
+
+[x03_comment_only]
+# Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
+# Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
+valid
+
+[x04_shared_lib_vars]
+# Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
+# Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
+valid
+
+[x05_plain_groovy_class]
+# Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
+# Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
+valid
+
+[x06_build_plugin]
+# Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
+# Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
+valid
+
+[x07_bom_minimal]
+# Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
+error
+
+[x08_tabs_minimal]
+valid
+
+[x09_scripted_with_error_word]
+# Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
+# Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
+valid

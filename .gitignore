@@ -29,3 +29,6 @@ htmlcov/
 *.swp
 *.swo
 *~
+
+# Rust
+crates/*/target/
