@@ -233,7 +233,7 @@ jobs:
 
   verify:
     # Install what was just uploaded from the index, as a user would.
-    name: Install from ${{ github.event_name == 'release' && 'PyPI' || 'TestPyPI' }} (${{ matrix.os }})
+    name: Install from the index (${{ matrix.os }})
     needs: [publish]
     if: github.event_name == 'release' || inputs.publish == 'testpypi'
     runs-on: ${{ matrix.os }}

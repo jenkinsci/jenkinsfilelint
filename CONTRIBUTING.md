@@ -56,6 +56,13 @@ TestPyPI trusted publisher for each of the two projects) and install from
 there. `jenkinsfilelint` gets a development version such as
 `1.5.1.post1.dev18`, so every commit can be uploaded once.
 
+Both packages are uploaded with tokens for the same trusted publisher, so on
+PyPI and TestPyPI the publishers of the two projects must be configured
+identically: owner `jenkinsci`, repository `jenkinsfilelint`, workflow
+`release.yml` and the same environment. A publisher that differs, even only
+in its environment, is a separate publisher, and the token it gets can upload
+only to its own project.
+
 ## Conventions
 
 - Follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `chore:`, etc.)
