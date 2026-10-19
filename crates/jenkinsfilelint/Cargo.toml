@@ -1,0 +1,17 @@
+[package]
+name = "jenkinsfilelint"
+version = "0.1.0"
+edition = "2021"
+description = "Check Jenkinsfile syntax and Declarative Pipeline structure without a Jenkins controller"
+license = "MIT"
+repository = "https://github.com/jenkinsci/jenkinsfilelint"
+readme = "README.md"
+keywords = ["jenkins", "jenkinsfile", "lint", "pipeline", "groovy"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+
+[profile.release]
+lto = true
+strip = true
+codegen-units = 1
