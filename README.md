@@ -24,6 +24,7 @@ works as a standalone CLI tool.
   - [What happens on commit](#what-happens-on-commit)
 - [CLI](#cli)
 - [Filtering files](#filtering-files)
+- [Parallel validation](#parallel-validation)
 - [Configuration](#configuration)
   - [Local Docker image](#local-docker-image)
 - [Security](#security)
@@ -174,6 +175,25 @@ You can also combine both — `--include` narrows first, then `--skip` removes f
 - id: jenkinsfilelint
   args: ["--include=Jenkinsfile*", "--skip=*/src/*.groovy"]
 ```
+
+## Parallel validation
+
+Files are validated 8 at a time over reused (keep-alive) connections, so a
+repository with many pipelines no longer pays one full round trip and TLS
+handshake per file. Results are still printed in the order the files were given.
+
+Use `--jobs` / `-j` to change how many requests are in flight at once — for
+example to go easier on a shared Jenkins controller:
+
+```yaml
+- id: jenkinsfilelint
+  args: ["--jobs=4"]  # use --jobs=1 to validate one file at a time
+```
+
+The hook runs as a single process (`require_serial: true`), so `--jobs` is the
+total load it puts on Jenkins. Overriding `require_serial: false` in your
+config would multiply that by the number of CPUs pre-commit uses, and in
+`--local` mode would race to start the container.
 
 ## Configuration
 
