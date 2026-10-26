@@ -4,8 +4,9 @@
 import sys
 import argparse
 import io
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
-from typing import List, Optional, Set
+from typing import List, Optional, Set, Tuple
 from .linter import JenkinsfileLinter, NOT_DECLARATIVE_MESSAGE
 from .local import LocalJenkins, handle_server_command
 from . import __version__
@@ -54,47 +55,96 @@ def should_include_file(filepath: str, include_patterns: Optional[List[str]]) ->
     return False
 
 
+DEFAULT_JOBS = 8
+
+
+def _positive_int(value: str) -> int:
+    """argparse type for ``--jobs``: an integer >= 1."""
+    try:
+        number = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"invalid int value: '{value}'")
+    if number < 1:
+        raise argparse.ArgumentTypeError("must be at least 1")
+    return number
+
+
+def _skip_reason(jenkinsfile: str, args: argparse.Namespace) -> Optional[str]:
+    """Return why *jenkinsfile* is filtered out, or None to validate it."""
+    # Include patterns act as a whitelist, skip patterns as a blacklist.
+    if not should_include_file(jenkinsfile, args.include):
+        return "does not match include pattern"
+    if should_skip_file(jenkinsfile, args.skip):
+        return "matches skip pattern"
+    return None
+
+
 def _validate_files(linter: JenkinsfileLinter, args: argparse.Namespace) -> None:
-    """Shared validation loop used by both remote and local modes."""
+    """Shared validation loop used by both remote and local modes.
+
+    Up to ``args.jobs`` files are validated at once, but results are printed
+    in the order the files were given, so the output is the same as a serial
+    run.
+    """
     all_valid = True
     printed_messages: Set[str] = set()
 
-    for jenkinsfile in args.jenkinsfile:
-        # Check if file should be included (whitelist)
-        if not should_include_file(jenkinsfile, args.include):
-            if args.verbose:
-                print(f"⊘ {jenkinsfile}: Skipped (does not match include pattern)")
-            continue
+    with ThreadPoolExecutor(max_workers=args.jobs) as executor:
+        try:
+            pending: List[Tuple[str, Optional[str], Optional[Future]]] = []
+            for jenkinsfile in args.jenkinsfile:
+                reason = _skip_reason(jenkinsfile, args)
+                future = (
+                    None if reason else executor.submit(linter.validate, jenkinsfile)
+                )
+                pending.append((jenkinsfile, reason, future))
 
-        # Check if file should be skipped (blacklist)
-        if should_skip_file(jenkinsfile, args.skip):
-            if args.verbose:
-                print(f"⊘ {jenkinsfile}: Skipped (matches skip pattern)")
-            continue
+            for jenkinsfile, reason, future in pending:
+                if future is None:
+                    if args.verbose:
+                        print(f"⊘ {jenkinsfile}: Skipped ({reason})")
+                    continue
 
-        if args.verbose:
-            print(f"Validating {jenkinsfile}...")
+                if args.verbose:
+                    print(f"Validating {jenkinsfile}...")
 
-        is_valid, message = linter.validate(jenkinsfile)
-
-        if is_valid and message == NOT_DECLARATIVE_MESSAGE:
-            # The Groovy parsed, but there is no Declarative syntax to check.
-            if args.verbose or len(args.jenkinsfile) > 1:
-                print(f"⊘ {jenkinsfile}: Skipped (not a Declarative Pipeline)")
-        elif is_valid:
-            # Show valid status for multiple files or when verbose
-            if args.verbose or len(args.jenkinsfile) > 1:
-                print(f"✓ {jenkinsfile}: Valid")
-            if args.verbose and message:
-                print(f"  {message}")
-        else:
-            # Deduplicate error messages (e.g., credentials errors)
-            if message not in printed_messages:
-                print(f"  {message}", file=sys.stderr)
-                printed_messages.add(message)
-            all_valid = False
+                is_valid, message = future.result()
+                all_valid = (
+                    _report(jenkinsfile, is_valid, message, args, printed_messages)
+                    and all_valid
+                )
+        except BaseException:
+            # On Ctrl-C (or a crash) don't send the files still waiting in the queue.
+            executor.shutdown(wait=False, cancel_futures=True)
+            raise
 
     sys.exit(0 if all_valid else 1)
+
+
+def _report(
+    jenkinsfile: str,
+    is_valid: bool,
+    message: str,
+    args: argparse.Namespace,
+    printed_messages: Set[str],
+) -> bool:
+    """Print the result for one file and return whether it passed."""
+    if is_valid and message == NOT_DECLARATIVE_MESSAGE:
+        # The Groovy parsed, but there is no Declarative syntax to check.
+        if args.verbose or len(args.jenkinsfile) > 1:
+            print(f"⊘ {jenkinsfile}: Skipped (not a Declarative Pipeline)")
+    elif is_valid:
+        # Show valid status for multiple files or when verbose
+        if args.verbose or len(args.jenkinsfile) > 1:
+            print(f"✓ {jenkinsfile}: Valid")
+        if args.verbose and message:
+            print(f"  {message}")
+    else:
+        # Deduplicate error messages (e.g., credentials errors)
+        if message not in printed_messages:
+            print(f"  {message}", file=sys.stderr)
+            printed_messages.add(message)
+    return is_valid
 
 
 def _run_remote_validation(args: argparse.Namespace) -> None:
@@ -209,6 +259,16 @@ def main():
         help="Glob pattern(s) for files to include. When specified, only files "
         "matching at least one pattern are validated. Can be used multiple times. "
         "Example: --include 'Jenkinsfile*' --include 'pipelines/*.groovy'",
+    )
+    parser.add_argument(
+        "-j",
+        "--jobs",
+        type=_positive_int,
+        default=DEFAULT_JOBS,
+        metavar="N",
+        help="Number of files to validate at the same time (default: "
+        f"{DEFAULT_JOBS}). Lower it to go easier on a shared Jenkins; "
+        "use 1 to validate one file at a time.",
     )
 
     args = parser.parse_args()

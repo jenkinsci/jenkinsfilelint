@@ -2,6 +2,7 @@
 """Core linter module for validating Jenkinsfiles."""
 
 import os
+import threading
 import requests
 from typing import Tuple, Optional
 
@@ -63,6 +64,18 @@ class JenkinsfileLinter:
         self.jenkins_url = jenkins_url or os.environ.get("JENKINS_URL")
         self.username = username or os.environ.get("JENKINS_USER")
         self.token = token or os.environ.get("JENKINS_TOKEN")
+        # One Session per thread: keep-alive skips the TCP/TLS handshake on
+        # every file after the first, and requests does not promise that a
+        # single Session is safe to share between threads.
+        self._local = threading.local()
+
+    def _session(self) -> requests.Session:
+        """Return this thread's HTTP session, creating it on first use."""
+        session = getattr(self._local, "session", None)
+        if session is None:
+            session = requests.Session()
+            self._local.session = session
+        return session
 
     def _validate_with_jenkins(self, jenkinsfile_path: str) -> Tuple[bool, str]:
         """Validate Jenkinsfile using Jenkins API.
@@ -100,7 +113,9 @@ class JenkinsfileLinter:
             # Send validation request
             # Jenkins expects 'jenkinsfile' as form data, not a file upload
             data = {"jenkinsfile": jenkinsfile_content}
-            response = requests.post(validation_url, data=data, auth=auth, timeout=30)
+            response = self._session().post(
+                validation_url, data=data, auth=auth, timeout=30
+            )
 
             # Check response
             response.raise_for_status()

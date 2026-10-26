@@ -5,6 +5,8 @@ import os
 import pytest
 import requests
 import tempfile
+import threading
+import time
 from unittest.mock import patch, Mock
 from jenkinsfilelint import cli as cli_module
 from jenkinsfilelint.cli import main, should_skip_file, should_include_file
@@ -183,7 +185,7 @@ class TestCLIMain:
                     temp_path,
                 ],
             ):
-                with patch("jenkinsfilelint.linter.requests.post") as mock_post:
+                with patch("jenkinsfilelint.linter.requests.Session.post") as mock_post:
                     mock_response = Mock()
                     mock_response.status_code = 200
                     mock_response.json.return_value = {"status": "ok"}
@@ -218,7 +220,7 @@ class TestCLIMain:
                     temp_path,
                 ],
             ):
-                with patch("jenkinsfilelint.linter.requests.post") as mock_post:
+                with patch("jenkinsfilelint.linter.requests.Session.post") as mock_post:
                     mock_response = Mock()
                     mock_response.status_code = 200
                     mock_response.json.return_value = {"status": "ok"}
@@ -254,7 +256,7 @@ class TestCLIMain:
                     temp_path,
                 ],
             ):
-                with patch("jenkinsfilelint.linter.requests.post") as mock_post:
+                with patch("jenkinsfilelint.linter.requests.Session.post") as mock_post:
                     mock_response = Mock()
                     mock_response.status_code = 200
                     mock_response.json.return_value = {"status": "ok"}
@@ -299,7 +301,9 @@ class TestCLIMain:
                 },
             ):
                 with patch("sys.argv", ["jenkinsfilelint", temp_path]):
-                    with patch("jenkinsfilelint.linter.requests.post") as mock_post:
+                    with patch(
+                        "jenkinsfilelint.linter.requests.Session.post"
+                    ) as mock_post:
                         mock_response = Mock()
                         mock_response.status_code = 200
                         mock_response.json.return_value = {"status": "ok"}
@@ -428,7 +432,7 @@ class TestCLISkipOption:
                     jenkinsfile_path,
                 ],
             ):
-                with patch("jenkinsfilelint.linter.requests.post") as mock_post:
+                with patch("jenkinsfilelint.linter.requests.Session.post") as mock_post:
                     mock_response = Mock()
                     mock_response.status_code = 200
                     mock_response.json.return_value = {"status": "ok"}
@@ -625,7 +629,7 @@ class TestCLIIncludeOption:
                     helper_file,
                 ],
             ):
-                with patch("jenkinsfilelint.linter.requests.post") as mock_post:
+                with patch("jenkinsfilelint.linter.requests.Session.post") as mock_post:
                     mock_response = Mock()
                     mock_response.status_code = 200
                     mock_response.json.return_value = {"status": "ok"}
@@ -677,7 +681,7 @@ class TestCLIIncludeOption:
                     helper_groovy,
                 ],
             ):
-                with patch("jenkinsfilelint.linter.requests.post") as mock_post:
+                with patch("jenkinsfilelint.linter.requests.Session.post") as mock_post:
                     mock_response = Mock()
                     mock_response.status_code = 200
                     mock_response.json.return_value = {"status": "ok"}
@@ -713,7 +717,7 @@ class TestCLILocalMode:
                     "sys.argv", ["jenkinsfilelint", "--local", "--verbose", temp_path]
                 ),
                 patch("jenkinsfilelint.cli.LocalJenkins") as mock_local_cls,
-                patch("jenkinsfilelint.linter.requests.post") as mock_post,
+                patch("jenkinsfilelint.linter.requests.Session.post") as mock_post,
             ):
                 mock_instance = Mock()
                 mock_instance.ensure_running.return_value = "http://127.0.0.1:18080"
@@ -777,7 +781,7 @@ class TestCLILocalMode:
                     "sys.argv", ["jenkinsfilelint", "--local", "--verbose", temp_path]
                 ),
                 patch("jenkinsfilelint.cli.LocalJenkins") as mock_local_cls,
-                patch("jenkinsfilelint.linter.requests.post") as mock_post,
+                patch("jenkinsfilelint.linter.requests.Session.post") as mock_post,
             ):
                 mock_instance = Mock()
                 mock_instance.ensure_running.return_value = "http://127.0.0.1:18080"
@@ -807,7 +811,7 @@ class TestCLILocalMode:
         with (
             patch("sys.argv", ["jenkinsfilelint", "--local", str(jenkinsfile)]),
             patch("jenkinsfilelint.cli.LocalJenkins") as mock_local_cls,
-            patch("jenkinsfilelint.linter.requests.post") as mock_post,
+            patch("jenkinsfilelint.linter.requests.Session.post") as mock_post,
         ):
             mock_local_cls.return_value.ensure_running.return_value = (
                 "http://127.0.0.1:18080"
@@ -844,7 +848,7 @@ class TestCLINonDeclarativeFiles:
     def _run(self, argv):
         with (
             patch("sys.argv", ["jenkinsfilelint", "--jenkins-url", "https://j", *argv]),
-            patch("jenkinsfilelint.linter.requests.post") as mock_post,
+            patch("jenkinsfilelint.linter.requests.Session.post") as mock_post,
         ):
             mock_post.side_effect = lambda url, **kwargs: _validate_reply(kwargs)
             with pytest.raises(SystemExit) as exc_info:
@@ -913,7 +917,7 @@ class TestCLICredentialHandling:
         with (
             patch("sys.argv", argv),
             patch(
-                "jenkinsfilelint.linter.requests.post",
+                "jenkinsfilelint.linter.requests.Session.post",
                 return_value=_http_response(status_code),
             ) as mock_post,
         ):
@@ -1006,3 +1010,123 @@ class TestWindowsUTF8Encoding:
                     with patch("sys.argv", ["jenkinsfilelint", "--help"]):
                         with pytest.raises(SystemExit):
                             main()
+
+
+class TestCLIParallelValidation:
+    """--jobs validates several files at once and keeps the output in order."""
+
+    VALIDATE = "jenkinsfilelint.cli.JenkinsfileLinter.validate"
+
+    @staticmethod
+    def _files(tmp_path, count):
+        paths = []
+        for i in range(count):
+            path = tmp_path / f"Jenkinsfile.{i}"
+            path.write_text("pipeline { agent any }")
+            paths.append(str(path))
+        return paths
+
+    @staticmethod
+    def _main(argv):
+        with patch(
+            "sys.argv", ["jenkinsfilelint", "--jenkins-url", "https://j", *argv]
+        ):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+        return exc_info.value.code
+
+    def test_files_are_validated_concurrently_by_default(self, tmp_path):
+        """Without --jobs, several requests are in flight at the same time."""
+        files = self._files(tmp_path, 4)
+        # Every call waits for the other three, so a serial run would time out.
+        barrier = threading.Barrier(len(files), timeout=5)
+
+        def validate(path):
+            barrier.wait()
+            return True, "ok"
+
+        with patch(self.VALIDATE, side_effect=validate):
+            assert self._main(files) == 0
+
+    @pytest.mark.parametrize("jobs", [1, 2])
+    def test_jobs_caps_concurrent_requests(self, tmp_path, jobs):
+        """No more than --jobs files are validated at once."""
+        files = self._files(tmp_path, 6)
+        lock = threading.Lock()
+        running = peak = 0
+
+        def validate(path):
+            nonlocal running, peak
+            with lock:
+                running += 1
+                peak = max(peak, running)
+            time.sleep(0.05)
+            with lock:
+                running -= 1
+            return True, "ok"
+
+        with patch(self.VALIDATE, side_effect=validate):
+            assert self._main(["--jobs", str(jobs), *files]) == 0
+        assert peak == jobs
+
+    def test_output_follows_input_order(self, tmp_path, capsys):
+        """Results print in the order given, even when a later file finishes first."""
+        files = self._files(tmp_path, 3)
+
+        def validate(path):
+            if path == files[0]:
+                time.sleep(0.2)
+            return True, "ok"
+
+        with patch(self.VALIDATE, side_effect=validate):
+            code = self._main(["--verbose", "--skip", "*/Jenkinsfile.1", *files])
+
+        assert code == 0
+        assert capsys.readouterr().out.splitlines() == [
+            f"Validating {files[0]}...",
+            f"✓ {files[0]}: Valid",
+            "  ok",
+            f"⊘ {files[1]}: Skipped (matches skip pattern)",
+            f"Validating {files[2]}...",
+            f"✓ {files[2]}: Valid",
+            "  ok",
+        ]
+
+    def test_queued_files_are_dropped_after_a_crash(self, tmp_path):
+        """An unexpected error (or Ctrl-C) doesn't wait for the rest of the queue."""
+        files = self._files(tmp_path, 20)
+        calls = []
+
+        def validate(path):
+            calls.append(path)
+            if path == files[0]:
+                raise RuntimeError("boom")
+            time.sleep(0.1)
+            return True, "ok"
+
+        with patch(self.VALIDATE, side_effect=validate):
+            with pytest.raises(RuntimeError, match="boom"):
+                self._main(["--jobs", "1", *files])
+        assert len(calls) < len(files)
+
+    @pytest.mark.parametrize("value", ["0", "-1", "two"])
+    def test_jobs_must_be_a_positive_integer(self, value, capsys):
+        """--jobs rejects values that can't size a worker pool."""
+        with patch("sys.argv", ["jenkinsfilelint", "--jobs", value, "Jenkinsfile"]):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+        assert exc_info.value.code == 2
+        assert "--jobs" in capsys.readouterr().err
+
+    def test_workers_reuse_their_connections(self, validate_server, tmp_path):
+        """Against a real server, each worker keeps one connection for all its files."""
+        files = self._files(tmp_path, 6)
+        argv = ["jenkinsfilelint", "--jenkins-url", validate_server.url]
+
+        with patch("sys.argv", [*argv, "--jobs", "2", *files]):
+            with pytest.raises(SystemExit) as exc_info:
+                main()
+
+        assert exc_info.value.code == 0
+        assert validate_server.requests == 6
+        assert validate_server.connections <= 2
