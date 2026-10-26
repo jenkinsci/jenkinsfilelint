@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Command-line interface for jenkinsfilelint."""
 
+import os
 import sys
 import argparse
 import io
@@ -89,34 +90,41 @@ def _validate_files(linter: JenkinsfileLinter, args: argparse.Namespace) -> None
     all_valid = True
     printed_messages: Set[str] = set()
 
-    with ThreadPoolExecutor(max_workers=args.jobs) as executor:
-        try:
-            pending: List[Tuple[str, Optional[str], Optional[Future]]] = []
-            for jenkinsfile in args.jenkinsfile:
-                reason = _skip_reason(jenkinsfile, args)
-                future = (
-                    None if reason else executor.submit(linter.validate, jenkinsfile)
-                )
-                pending.append((jenkinsfile, reason, future))
+    executor = ThreadPoolExecutor(max_workers=args.jobs)
+    try:
+        pending: List[Tuple[str, Optional[str], Optional[Future]]] = []
+        for jenkinsfile in args.jenkinsfile:
+            reason = _skip_reason(jenkinsfile, args)
+            future = None if reason else executor.submit(linter.validate, jenkinsfile)
+            pending.append((jenkinsfile, reason, future))
 
-            for jenkinsfile, reason, future in pending:
-                if future is None:
-                    if args.verbose:
-                        print(f"⊘ {jenkinsfile}: Skipped ({reason})")
-                    continue
-
+        for jenkinsfile, reason, future in pending:
+            if future is None:
                 if args.verbose:
-                    print(f"Validating {jenkinsfile}...")
+                    print(f"⊘ {jenkinsfile}: Skipped ({reason})")
+                continue
 
-                is_valid, message = future.result()
-                all_valid = (
-                    _report(jenkinsfile, is_valid, message, args, printed_messages)
-                    and all_valid
-                )
-        except BaseException:
-            # On Ctrl-C (or a crash) don't send the files still waiting in the queue.
-            executor.shutdown(wait=False, cancel_futures=True)
-            raise
+            if args.verbose:
+                print(f"Validating {jenkinsfile}...")
+
+            is_valid, message = future.result()
+            all_valid = (
+                _report(jenkinsfile, is_valid, message, args, printed_messages)
+                and all_valid
+            )
+    except KeyboardInterrupt:
+        # Drop the queued files and exit now. Python would otherwise wait for
+        # the requests already sent, up to their 30s timeout if Jenkins hangs.
+        executor.shutdown(wait=False, cancel_futures=True)
+        sys.stdout.flush()
+        print("✗ Interrupted", file=sys.stderr)
+        sys.stderr.flush()
+        os._exit(130)
+    except BaseException:
+        # On a crash, don't send the files still waiting in the queue.
+        executor.shutdown(wait=False, cancel_futures=True)
+        raise
+    executor.shutdown()
 
     sys.exit(0 if all_valid else 1)
 

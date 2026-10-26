@@ -1109,6 +1109,36 @@ class TestCLIParallelValidation:
                 self._main(["--jobs", "1", *files])
         assert len(calls) < len(files)
 
+    def test_ctrl_c_does_not_wait_for_requests_in_flight(self, tmp_path, capsys):
+        """Ctrl-C exits at once even while Jenkins is not answering other files."""
+        files = self._files(tmp_path, 3)
+        others_started = threading.Barrier(len(files) - 1, timeout=5)
+        hung = threading.Event()
+
+        def validate(path):
+            if path == files[0]:
+                time.sleep(0.05)
+                raise KeyboardInterrupt
+            others_started.wait()
+            hung.wait(timeout=10)  # a request Jenkins never answers
+            return True, "ok"
+
+        try:
+            with (
+                patch(self.VALIDATE, side_effect=validate),
+                # The real os._exit would end the pytest process.
+                patch("jenkinsfilelint.cli.os._exit", side_effect=SystemExit) as exit_,
+            ):
+                start = time.monotonic()
+                self._main(["--jobs", "3", *files])
+                elapsed = time.monotonic() - start
+        finally:
+            hung.set()
+
+        exit_.assert_called_once_with(130)
+        assert elapsed < 2
+        assert capsys.readouterr().err.strip() == "✗ Interrupted"
+
     @pytest.mark.parametrize("value", ["0", "-1", "two"])
     def test_jobs_must_be_a_positive_integer(self, value, capsys):
         """--jobs rejects values that can't size a worker pool."""
