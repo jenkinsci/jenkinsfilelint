@@ -99,8 +99,14 @@ def lint_files(
         detail = (proc.stderr or proc.stdout).strip() or f"exit code {proc.returncode}"
         raise OfflineEngineError(f"Unexpected output from {engine}: {detail}") from None
 
-    for report in reports:
-        path = report["file"]
+    if not isinstance(reports, list) or len(reports) != len(existing):
+        raise OfflineEngineError(
+            f"{engine} returned {len(reports) if isinstance(reports, list) else 'no'} "
+            f"result(s) for {len(existing)} file(s)"
+        )
+    # The engine reports files in the order given. Match by position, not by
+    # the "file" field, which is lossy for file names that are not UTF-8.
+    for path, report in zip(existing, reports):
         if "error" in report:
             results[path] = OfflineResult(
                 False, False, [f"Error reading file {path}: {report['error']}"]
@@ -116,9 +122,4 @@ def lint_files(
             ],
         )
 
-    missing = [path for path in existing if path not in results]
-    if missing:
-        raise OfflineEngineError(
-            f"{engine} returned no result for {', '.join(missing)}"
-        )
     return results

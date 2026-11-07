@@ -253,6 +253,13 @@ def main():
             sys.stderr = io.TextIOWrapper(
                 sys.stderr.buffer, encoding="utf-8", errors="replace"
             )
+    # A file name that is not valid UTF-8 reaches Python as lone surrogates,
+    # which a strict stream cannot print. Show them escaped instead.
+    for stream in (sys.stdout, sys.stderr):
+        if getattr(stream, "errors", None) == "strict" and hasattr(
+            stream, "reconfigure"
+        ):
+            stream.reconfigure(errors="backslashreplace")
 
     parser = argparse.ArgumentParser(
         description="Validate Jenkinsfiles using Jenkins API, or offline with --offline"

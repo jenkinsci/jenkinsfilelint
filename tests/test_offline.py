@@ -26,6 +26,10 @@ ROOT = Path(__file__).resolve().parent.parent
 CRATE = ROOT / "crates" / "jenkinsfilelint"
 CASES = CRATE / "tests" / "jenkins"
 NOT_DECLARATIVE = "did not contain the 'pipeline' step"
+VALID_PIPELINE = (
+    "pipeline {\n  agent any\n  stages {\n"
+    "    stage('A') {\n      steps {\n        echo 'x'\n      }\n    }\n  }\n}\n"
+)
 
 
 def run_cli(argv):
@@ -209,7 +213,9 @@ class TestLintFiles:
         with patch(
             "jenkinsfilelint.offline.subprocess.run", return_value=engine_output([])
         ):
-            with pytest.raises(OfflineEngineError, match="no result"):
+            with pytest.raises(
+                OfflineEngineError, match=r"returned 0 result\(s\) for 1 file"
+            ):
                 lint_files([str(f)], "engine")
 
 
@@ -392,6 +398,20 @@ class TestAgainstJenkinsVerdicts:
         f.write_bytes(b"pipeline { agent \xff }")
         assert run_cli(["--offline", str(f)]) == 1
         assert f"Error reading file {f}: " in capsys.readouterr().err
+
+    @pytest.mark.skipif(
+        sys.platform != "linux", reason="needs a file system that allows any bytes"
+    )
+    def test_file_name_not_utf8(self, tmp_path, capsys):
+        good = tmp_path / "Jenkinsfile"
+        good.write_text(VALID_PIPELINE)
+        odd = os.fsdecode(bytes(tmp_path) + b"/caf\xe9.groovy")
+        Path(odd).write_text(VALID_PIPELINE)
+        assert run_cli(["--offline", str(good), odd]) == 0
+        out = capsys.readouterr().out
+        assert f"✓ {good}: Valid" in out
+        # Printed escaped, since a strict UTF-8 stream cannot show it.
+        assert "caf\\udce9.groovy: Valid" in out
 
     def test_console_script(self):
         """A real process, so output encoding is exercised too."""
