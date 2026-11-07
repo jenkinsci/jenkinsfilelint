@@ -87,7 +87,7 @@ class TestJenkinsfileLinterValidateWithJenkins:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_successful_with_text_response(self, mock_post):
         """Test successful validation with text response."""
         mock_response = Mock()
@@ -110,7 +110,7 @@ class TestJenkinsfileLinterValidateWithJenkins:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_successful_with_json_response(self, mock_post):
         """Test successful validation with JSON response."""
         mock_response = Mock()
@@ -132,7 +132,7 @@ class TestJenkinsfileLinterValidateWithJenkins:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_with_errors_in_json(self, mock_post):
         """Test validation with errors in JSON response."""
         mock_response = Mock()
@@ -158,7 +158,7 @@ class TestJenkinsfileLinterValidateWithJenkins:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_with_json_error_no_error_list(self, mock_post):
         """Test validation with JSON error response but no errors list."""
         mock_response = Mock()
@@ -183,7 +183,7 @@ class TestJenkinsfileLinterValidateWithJenkins:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_with_errors_in_text(self, mock_post):
         """Test validation with errors in text response."""
         mock_response = Mock()
@@ -209,7 +209,7 @@ class TestJenkinsfileLinterValidateWithJenkins:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_with_authentication(self, mock_post):
         """Test validation with authentication."""
         mock_response = Mock()
@@ -231,7 +231,7 @@ class TestJenkinsfileLinterValidateWithJenkins:
             )
             linter._validate_with_jenkins(temp_path)
 
-            # Check that auth was passed to requests.post and data (not files) was used
+            # Check that auth was passed to Session.post and data (not files) was used
             mock_post.assert_called_once()
             call_kwargs = mock_post.call_args[1]
             assert call_kwargs["auth"] == ("user", "token")
@@ -240,7 +240,7 @@ class TestJenkinsfileLinterValidateWithJenkins:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_connection_error(self, mock_post):
         """Test validation when connection to Jenkins fails."""
         import requests
@@ -273,7 +273,7 @@ class TestJenkinsfileLinterValidateWithJenkins:
 class TestJenkinsfileLinterHTTPErrors:
     """Test HTTP error responses from Jenkins."""
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_http_401(self, mock_post):
         """Test validation when Jenkins returns HTTP 401 Unauthorized."""
         from requests.exceptions import HTTPError
@@ -299,7 +299,7 @@ class TestJenkinsfileLinterHTTPErrors:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_http_403(self, mock_post):
         """Test validation when Jenkins returns HTTP 403 Forbidden."""
         from requests.exceptions import HTTPError
@@ -325,7 +325,7 @@ class TestJenkinsfileLinterHTTPErrors:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_http_500(self, mock_post):
         """Test validation when Jenkins returns HTTP 500 Internal Server Error."""
         from requests.exceptions import HTTPError
@@ -354,7 +354,7 @@ class TestJenkinsfileLinterHTTPErrors:
 class TestJenkinsfileLinterTimeout:
     """Test timeout scenarios."""
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_timeout(self, mock_post):
         """Test validation when Jenkins request times out."""
         import requests
@@ -375,7 +375,7 @@ class TestJenkinsfileLinterTimeout:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_connection_timeout(self, mock_post):
         """Test validation when connection times out during connect phase."""
         from requests.exceptions import ConnectTimeout
@@ -399,7 +399,7 @@ class TestJenkinsfileLinterTimeout:
 class TestJenkinsfileLinterGroovyErrors:
     """Test Groovy compilation error responses from Jenkins."""
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_workflowscript_error(self, mock_post):
         """Test validation with Groovy WorkflowScript compilation error."""
         mock_response = Mock()
@@ -428,7 +428,7 @@ class TestJenkinsfileLinterGroovyErrors:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_unexpected_token_error(self, mock_post):
         """Test validation with Groovy unexpected token error."""
         mock_response = Mock()
@@ -453,7 +453,7 @@ class TestJenkinsfileLinterGroovyErrors:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_unable_to_resolve_class_error(self, mock_post):
         """Test validation with unresolved class error."""
         mock_response = Mock()
@@ -478,7 +478,7 @@ class TestJenkinsfileLinterGroovyErrors:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_expected_error(self, mock_post):
         """Test validation with syntax 'Expected' error pattern."""
         mock_response = Mock()
@@ -507,7 +507,7 @@ class TestJenkinsfileLinterGroovyErrors:
 class TestJenkinsfileLinterJSONEdgeCases:
     """Test edge cases in JSON response parsing."""
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_json_non_dict_response(self, mock_post):
         """Test validation when JSON response is not a dict."""
         mock_response = Mock()
@@ -530,7 +530,7 @@ class TestJenkinsfileLinterJSONEdgeCases:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_json_status_ok_no_errors_list(self, mock_post):
         """Test JSON with status=ok and extra fields."""
         mock_response = Mock()
@@ -555,7 +555,7 @@ class TestJenkinsfileLinterJSONEdgeCases:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_json_status_error_empty_data(self, mock_post):
         """Test JSON error with empty data dict."""
         mock_response = Mock()
@@ -585,7 +585,7 @@ class TestJenkinsfileLinterJSONEdgeCases:
 class TestJenkinsfileLinterFileScenarios:
     """Test various file-related validation scenarios."""
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_with_unicode_content(self, mock_post):
         """Test validation with Jenkinsfile containing Unicode characters."""
         mock_response = Mock()
@@ -612,7 +612,7 @@ class TestJenkinsfileLinterFileScenarios:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_with_empty_file(self, mock_post):
         """Test validation of an empty file via Jenkins."""
         mock_response = Mock()
@@ -639,7 +639,7 @@ class TestJenkinsfileLinterFileScenarios:
         finally:
             os.unlink(temp_path)
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_empty_file_with_jenkins_error(self, mock_post):
         """Test validation of an empty file when Jenkins returns error."""
         mock_response = Mock()
@@ -673,7 +673,7 @@ class TestJenkinsfileLinterValidate:
         assert is_valid is False
         assert "File not found" in message
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_validate_with_jenkins_url_uses_jenkins_validation(self, mock_post):
         """Test that Jenkins validation is used when URL is set."""
         mock_response = Mock()
@@ -715,7 +715,7 @@ class TestJenkinsfileLinterValidate:
 class TestJenkinsfileLinterRequest:
     """Test how the validation request is sent to Jenkins."""
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_request_targets_validate_endpoint_with_timeout_and_tls(
         self, mock_post, tmp_path
     ):
@@ -743,7 +743,7 @@ class TestJenkinsfileLinterRequest:
     @pytest.mark.parametrize(
         ("username", "token"), [("alice", None), (None, "secret-token")]
     )
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_partial_credentials_send_no_auth(
         self, mock_post, tmp_path, username, token
     ):
@@ -805,7 +805,7 @@ class TestJenkinsfileLinterTextResponses:
             "blank",
         ],
     )
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_non_declarative_file_is_skipped(self, mock_post, tmp_path, source):
         """Files without a pipeline block get the same verdict whatever they say."""
         mock_post.return_value = _jenkins_text_response(_not_declarative_reply(source))
@@ -820,7 +820,7 @@ class TestJenkinsfileLinterTextResponses:
         # The file content echoed back by Jenkins is not passed on.
         assert "did not contain" not in message
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_declarative_error_fails(self, mock_post, tmp_path):
         """A real Declarative syntax error is reported verbatim."""
         reply = (
@@ -842,7 +842,7 @@ class TestJenkinsfileLinterTextResponses:
         assert is_valid is False
         assert message == reply.strip()
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_scripted_groovy_syntax_error_fails(self, mock_post, tmp_path):
         """Jenkins parses the Groovy first, so broken scripted files still fail."""
         reply = (
@@ -861,7 +861,7 @@ class TestJenkinsfileLinterTextResponses:
         assert is_valid is False
         assert "expecting '}'" in message
 
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_successful_validation(self, mock_post, tmp_path):
         """The success reply is valid even when the file mentions errors."""
         mock_post.return_value = _jenkins_text_response(
@@ -887,7 +887,7 @@ class TestJenkinsfileLinterTextResponses:
         ],
         ids=["html-login-page", "empty-body"],
     )
-    @patch("requests.post")
+    @patch("requests.Session.post")
     def test_unrecognised_reply_fails(self, mock_post, tmp_path, body, detail):
         """A reply that is none of Jenkins's known shapes is not treated as valid."""
         mock_post.return_value = _jenkins_text_response(body)
@@ -900,3 +900,33 @@ class TestJenkinsfileLinterTextResponses:
         assert is_valid is False
         assert message.startswith("Unexpected response from Jenkins validate endpoint")
         assert detail in message
+
+
+class TestJenkinsfileLinterConnectionReuse:
+    """Requests reuse a keep-alive connection instead of reconnecting per file."""
+
+    def test_files_share_one_connection(self, validate_server, tmp_path):
+        """Validating several files from one thread opens a single connection."""
+        linter = JenkinsfileLinter(jenkins_url=validate_server.url)
+        for i in range(5):
+            jenkinsfile = tmp_path / f"Jenkinsfile.{i}"
+            jenkinsfile.write_text("pipeline { agent any }")
+            assert linter.validate(str(jenkinsfile))[0] is True
+
+        assert validate_server.requests == 5
+        assert validate_server.connections == 1
+
+    def test_each_thread_gets_its_own_session(self):
+        """requests.Session is not shared across threads."""
+        import threading
+
+        linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com")
+        main_session = linter._session()
+        assert linter._session() is main_session
+
+        other = []
+        thread = threading.Thread(target=lambda: other.append(linter._session()))
+        thread.start()
+        thread.join()
+
+        assert other[0] is not main_session

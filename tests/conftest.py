@@ -101,3 +101,57 @@ myCustomFunction()
 
     yield temp_path
     os.unlink(temp_path)
+
+
+@pytest.fixture
+def validate_server(monkeypatch):
+    """A local stand-in for Jenkins's validate endpoint that counts TCP connections.
+
+    ``server.connections`` is the number of connections opened so far and
+    ``server.requests`` the number of files posted, so a test can tell whether
+    the client reused its connections.
+    """
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"  # keep-alive
+
+        def setup(self):
+            super().setup()
+            with server.lock:
+                server.connections += 1
+
+        def do_POST(self):
+            self.rfile.read(int(self.headers["Content-Length"]))
+            with server.lock:
+                server.requests += 1
+            body = b"Jenkinsfile successfully validated.\n"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain;charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    # Don't let a developer's proxy settings route the requests elsewhere.
+    for var in ("NO_PROXY", "no_proxy"):
+        monkeypatch.setenv(var, "127.0.0.1")
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server.daemon_threads = True
+    server.connections = 0
+    server.requests = 0
+    server.lock = threading.Lock()
+    server.url = f"http://127.0.0.1:{server.server_address[1]}"
+    thread = threading.Thread(
+        target=server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True
+    )
+    thread.start()
+
+    yield server
+
+    server.shutdown()
+    server.server_close()
