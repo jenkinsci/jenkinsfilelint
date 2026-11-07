@@ -430,6 +430,9 @@ valid
 [v39_double_quoted_stage_name]
 valid
 
+[v40_empty_block_in_step]
+valid
+
 [x01_scripted_pipeline]
 # Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
 # Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
@@ -468,6 +471,11 @@ error
 valid
 
 [x09_scripted_with_error_word]
+# Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
+# Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
+valid
+
+[x10_class_with_modifiers]
 # Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
 # Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
 valid

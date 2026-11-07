@@ -67,6 +67,8 @@ struct Lexer<'a> {
     col: usize,
     src: &'a str,
     out: Vec<Token>,
+    /// Nesting of `${ "..." }` inside GStrings, capped like the parser's.
+    interp_depth: usize,
 }
 
 impl<'a> Lexer<'a> {
@@ -78,6 +80,7 @@ impl<'a> Lexer<'a> {
             col: 1,
             src,
             out: Vec::new(),
+            interp_depth: 0,
         }
     }
 
@@ -344,6 +347,19 @@ impl<'a> Lexer<'a> {
 
     /// Consume `${ ... }` inside a GString and return its raw text.
     fn interpolation(&mut self, start: Pos) -> Result<String, Diagnostic> {
+        if self.interp_depth >= crate::parser::MAX_DEPTH {
+            return Err(self.err(
+                self.pos(),
+                format!("Nesting is too deep to check (more than {} levels)", crate::parser::MAX_DEPTH),
+            ));
+        }
+        self.interp_depth += 1;
+        let result = self.interpolation_inner(start);
+        self.interp_depth -= 1;
+        result
+    }
+
+    fn interpolation_inner(&mut self, start: Pos) -> Result<String, Diagnostic> {
         let mut text = String::new();
         text.push(self.bump().unwrap()); // $
         text.push(self.bump().unwrap()); // {

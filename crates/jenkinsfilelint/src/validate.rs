@@ -595,10 +595,11 @@ impl Validator {
         for a in args {
             self.method_args(arg_expr(a));
         }
-        // Block-scoped steps such as dir('x') { ... } hold more steps.
+        // Block-scoped steps such as dir('x') { ... } hold more steps. An
+        // empty block is fine there: only an empty `steps` is an error.
         for a in args {
             if let Expr::Closure { body, pos, .. } = arg_expr(a) {
-                if name == "parallel" {
+                if name == "parallel" || body.is_empty() {
                     continue;
                 }
                 self.steps(*pos, body);

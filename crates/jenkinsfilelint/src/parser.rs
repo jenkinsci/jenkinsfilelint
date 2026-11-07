@@ -15,6 +15,7 @@ pub fn parse(tokens: Vec<Token>) -> Result<Vec<Stmt>, Diagnostic> {
         toks: tokens,
         i: 0,
         in_group: false,
+        depth: 0,
     };
     let stmts = p.stmts_until(None)?;
     Ok(stmts)
@@ -45,9 +46,17 @@ struct Parser {
     /// Inside `( )` or `[ ]`, where a newline does not end an expression
     /// (a closure body inside them starts a fresh statement context).
     in_group: bool,
+    /// How many nested statements and expressions are being parsed. Capped
+    /// at MAX_DEPTH so that absurd nesting gives an error, not a crash.
+    depth: usize,
 }
 
 type PResult<T> = Result<T, Diagnostic>;
+
+/// Nesting limit, counted in parser levels (a closure costs about three).
+/// Real Jenkinsfiles stay far below it; main.rs gives the linter a stack
+/// big enough for it on every platform.
+pub const MAX_DEPTH: usize = 1000;
 
 impl Parser {
     fn peek(&self) -> &Token {
@@ -89,6 +98,20 @@ impl Parser {
             Diagnostic::error(t.pos, format!("Unexpected {}, expected {wanted}", t.describe()))
         }
     }
+    /// Run `f` one nesting level deeper, or fail when that passes MAX_DEPTH.
+    fn nested<T>(&mut self, f: impl FnOnce(&mut Self) -> PResult<T>) -> PResult<T> {
+        if self.depth >= MAX_DEPTH {
+            return Err(Diagnostic::error(
+                self.peek().pos,
+                format!("Nesting is too deep to check (more than {MAX_DEPTH} levels)"),
+            ));
+        }
+        self.depth += 1;
+        let result = f(self);
+        self.depth -= 1;
+        result
+    }
+
     /// Parse with `in_group` set to `value`, restoring it afterwards.
     fn grouped<T>(&mut self, value: bool, f: impl FnOnce(&mut Self) -> PResult<T>) -> PResult<T> {
         let saved = std::mem::replace(&mut self.in_group, value);
@@ -205,6 +228,10 @@ impl Parser {
     }
 
     fn stmt(&mut self) -> PResult<Stmt> {
+        self.nested(Self::stmt_inner)
+    }
+
+    fn stmt_inner(&mut self) -> PResult<Stmt> {
         let t = self.peek().clone();
         let pos = t.pos;
         if t.is_punct("@") {
@@ -327,6 +354,16 @@ impl Parser {
                 }
                 Ok(Stmt::Other { kind: "assert", pos })
             }
+            _ if MODIFIERS.contains(&word.as_str()) && self.modifiers_then_type_decl() => {
+                while !self.peek().is_ident("class")
+                    && !self.peek().is_ident("interface")
+                    && !self.peek().is_ident("enum")
+                    && !self.peek().is_ident("trait")
+                {
+                    self.next();
+                }
+                self.type_decl(pos)
+            }
             _ if word == "def" || MODIFIERS.contains(&word.as_str()) => self.declaration(pos),
             _ if self.looks_like_typed_decl() => self.declaration(pos),
             _ if self.peek_at(1).is_punct(":") && !self.peek_at(2).nl_before && word != "default" => {
@@ -337,6 +374,15 @@ impl Parser {
             }
             _ => Ok(Stmt::Expr(self.expr_stmt()?)),
         }
+    }
+
+    /// `public class X`, `abstract class X`, `final enum X`, ...
+    fn modifiers_then_type_decl(&self) -> bool {
+        let mut k = 0;
+        while matches!(&self.peek_at(k).kind, TokKind::Ident(w) if MODIFIERS.contains(&w.as_str())) {
+            k += 1;
+        }
+        matches!(&self.peek_at(k).kind, TokKind::Ident(w) if matches!(w.as_str(), "class" | "interface" | "enum" | "trait"))
     }
 
     /// `(a, b) = expr`: Groovy multiple assignment to existing variables.
@@ -606,6 +652,10 @@ impl Parser {
     // ---------------------------------------------------------------
 
     pub fn expr(&mut self) -> PResult<Expr> {
+        self.nested(Self::expr_inner)
+    }
+
+    fn expr_inner(&mut self) -> PResult<Expr> {
         let lhs = self.ternary()?;
         let t = self.peek();
         if !t.nl_before {
@@ -626,6 +676,10 @@ impl Parser {
     }
 
     fn ternary(&mut self) -> PResult<Expr> {
+        self.nested(Self::ternary_inner)
+    }
+
+    fn ternary_inner(&mut self) -> PResult<Expr> {
         let cond = self.binary(0)?;
         if self.peek().is_punct("?") {
             let pos = self.next().pos;
@@ -728,6 +782,10 @@ impl Parser {
     }
 
     fn unary(&mut self) -> PResult<Expr> {
+        self.nested(Self::unary_inner)
+    }
+
+    fn unary_inner(&mut self) -> PResult<Expr> {
         let t = self.peek().clone();
         if let TokKind::Punct(p) = t.kind {
             if matches!(p, "!" | "-" | "+" | "~" | "++" | "--") {

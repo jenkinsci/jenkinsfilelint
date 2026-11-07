@@ -77,12 +77,28 @@ fn json_report(path: &str, report: &Report) -> String {
     )
 }
 
+/// Stack for the linting thread. The parser stops at parser::MAX_DEPTH,
+/// which needs far less than this even in a debug build; a fixed size keeps
+/// that true on Windows, whose main thread gets only 1 MiB.
+const LINT_STACK: usize = 64 * 1024 * 1024;
+
 fn main() -> ExitCode {
-    let mut files = Vec::new();
+    match std::thread::Builder::new().stack_size(LINT_STACK).spawn(run) {
+        Ok(handle) => handle.join().unwrap_or(ExitCode::from(2)),
+        Err(e) => {
+            eprintln!("cannot start the linting thread: {e}");
+            ExitCode::from(2)
+        }
+    }
+}
+
+fn run() -> ExitCode {
+    let mut files: Vec<std::ffi::OsString> = Vec::new();
     let mut json = false;
-    let mut args = std::env::args().skip(1);
+    // args_os: a file name that is not UTF-8 must not panic.
+    let mut args = std::env::args_os().skip(1);
     while let Some(a) = args.next() {
-        match a.as_str() {
+        match a.to_str().unwrap_or("") {
             "--" => {
                 files.extend(args.by_ref());
             }
@@ -94,7 +110,7 @@ fn main() -> ExitCode {
                 println!("{} {}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
                 return ExitCode::SUCCESS;
             }
-            "--format" => match args.next().as_deref() {
+            "--format" => match args.next().as_deref().and_then(|f| f.to_str()) {
                 Some("json") => json = true,
                 Some("text") => json = false,
                 _ => {
@@ -112,8 +128,9 @@ fn main() -> ExitCode {
 
     let mut failed = false;
     let mut json_items = Vec::new();
-    for path in &files {
-        let src = match std::fs::read_to_string(path) {
+    for os_path in &files {
+        let path = &*os_path.to_string_lossy();
+        let src = match std::fs::read_to_string(os_path) {
             Ok(s) => s,
             Err(e) => {
                 if json {
@@ -194,6 +211,52 @@ mod tests {
         let m = messages("pipeline {\n  agent any\n  stages {\n    stage('A') {\n      steps { sh 'x' 'y' }\n    }\n  }\n}\n");
         assert_eq!(m.len(), 1);
         assert!(m[0].starts_with("5:22"), "{m:?}");
+    }
+
+    /// Absurd nesting gives an error instead of overflowing the stack.
+    /// Run on a thread with the same stack as the binary's linting thread.
+    #[test]
+    fn deep_nesting_is_an_error() {
+        let wrap = |body: String| {
+            format!("pipeline {{\n agent any\n stages {{\n stage('A') {{\n steps {{\n script {{\n{body}\n }}\n }}\n }}\n }}\n}}\n")
+        };
+        let cases = [
+            "{".repeat(100_000),
+            wrap(format!("def x = {}1{}", "(".repeat(100_000), ")".repeat(100_000))),
+            wrap(format!("{}echo 'x'{}", "[1].each { ".repeat(100_000), " }".repeat(100_000))),
+            wrap(format!("def x = {}true", "!".repeat(100_000))),
+            wrap(format!("def x = {}2", "a = ".repeat(100_000))),
+            wrap(format!("if (a) {{ echo 'x' }}{}", " else if (a) { echo 'x' }".repeat(100_000))),
+            wrap(format!("echo \"{}x{}\"", "${\"".repeat(100_000), "\"}".repeat(100_000))),
+            format!(
+                "pipeline {{\n agent any\n stages {{\n{}stage('l') {{ steps {{ echo 'x' }} }}\n{}}}\n}}\n",
+                "stage('s') { stages {\n".repeat(10_000),
+                "} }\n".repeat(10_000)
+            ),
+        ];
+        let handle = std::thread::Builder::new()
+            .stack_size(super::LINT_STACK)
+            .spawn(move || cases.iter().map(|src| messages(src)).collect::<Vec<_>>())
+            .unwrap();
+        for m in handle.join().unwrap() {
+            assert_eq!(m.len(), 1, "{m:?}");
+            assert!(m[0].contains("Nesting is too deep to check"), "{m:?}");
+        }
+    }
+
+    /// Modifiers before `class` are common in shared library src/ files.
+    #[test]
+    fn class_with_modifiers() {
+        for src in [
+            "public class A implements Serializable {}",
+            "abstract class A { abstract def run() }",
+            "final class A {}",
+            "public static final class A {}",
+            "public interface I {}",
+            "private enum E { X }",
+        ] {
+            assert_eq!(messages(src), Vec::<String>::new(), "{src}");
+        }
     }
 
     /// Lint every case in tests/jenkins/ and compare with expected.txt,
