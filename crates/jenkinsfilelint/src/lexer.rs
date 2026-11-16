@@ -156,6 +156,12 @@ impl<'a> Lexer<'a> {
                         self.bump();
                         self.bump();
                     }
+                    Some('\\') if self.peek(1) == Some('\r') && self.peek(2) == Some('\n') => {
+                        // Line continuation in a CRLF file.
+                        self.bump();
+                        self.bump();
+                        self.bump();
+                    }
                     Some('/') if self.peek(1) == Some('/') => {
                         while let Some(c) = self.peek(0) {
                             if c == '\n' {
@@ -364,6 +370,9 @@ impl<'a> Lexer<'a> {
         text.push(self.bump().unwrap()); // $
         text.push(self.bump().unwrap()); // {
         let mut depth = 1;
+        // The last meaningful character, to tell `/` as division (after a
+        // value) from a slashy string (after an operator or delimiter).
+        let mut prev = '{';
         while depth > 0 {
             let Some(c) = self.peek(0) else {
                 return Err(self.err(start, "Unterminated ${...} in string"));
@@ -376,9 +385,42 @@ impl<'a> Lexer<'a> {
                     let before = self.i;
                     self.string(p)?;
                     text.extend(&self.chars[before..self.i]);
+                    prev = '"';
+                    continue;
+                }
+                '/' if self.peek(1) == Some('/') => {
+                    // A line comment; a `}` in it does not end the `${...}`.
+                    while self.peek(0).is_some_and(|c| c != '\n') {
+                        text.push(self.bump().unwrap());
+                    }
+                    continue;
+                }
+                '/' if self.peek(1) == Some('*') => {
+                    // A comment does not change what the next `/` means.
+                    while !self.starts_with("*/") {
+                        if self.bump().is_none() {
+                            return Err(self.err(start, "Unterminated ${...} in string"));
+                        }
+                    }
+                    self.bump();
+                    self.bump();
+                    text.push_str("/**/");
+                    continue;
+                }
+                '/' if !prev.is_alphanumeric() && !matches!(prev, ')' | ']' | '_' | '"') => {
+                    // A slashy string, as in `${m[/"/]}`; a `}` or quote in
+                    // it does not end the `${...}`.
+                    let p = self.pos();
+                    let before = self.i;
+                    self.slashy(p)?;
+                    text.extend(&self.chars[before..self.i]);
+                    prev = '"';
                     continue;
                 }
                 _ => {}
+            }
+            if !c.is_whitespace() {
+                prev = c;
             }
             text.push(c);
             self.bump();

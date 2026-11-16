@@ -186,6 +186,21 @@ valid
 # Jenkins: Expected string literal
 valid
 
+[e47_failfast_in_parallel]
+error: Expected a stage
+
+[e48_failfast_in_top_level_stages]
+error: Expected a stage
+
+[e49_failfast_in_matrix]
+error: Undefined section "failFast"
+
+[e50_failfast_in_matrix_stages]
+error: Expected a stage
+
+[e51_failfast_in_sequential_stages]
+error: Expected a stage
+
 [p01_kubernetes_agent]
 # Differs: Depends on installed plugins or controller configuration, which the offline linter cannot see.
 # Jenkins: Invalid agent type "kubernetes" specified. Must be one of [any, docker, dockerfile, label, none]
@@ -431,6 +446,21 @@ valid
 valid
 
 [v40_empty_block_in_step]
+valid
+
+[v41_spread_map_in_call_args]
+valid
+
+[v42_command_call_on_class]
+valid
+
+[v43_slashy_string_in_interpolation]
+valid
+
+[v44_line_continuation_crlf]
+valid
+
+[v45_stage_level_failfast]
 valid
 
 [x01_scripted_pipeline]

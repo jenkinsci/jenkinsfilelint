@@ -410,7 +410,9 @@ impl Validator {
     }
 
     /// The stages of one `stages`, `parallel` or matrix `stages` block.
-    /// Like Jenkins, stage names only have to be unique among siblings.
+    /// Like Jenkins, stage names only have to be unique among siblings, and
+    /// only stages are allowed here: `failFast` is a section of the stage
+    /// that holds the `parallel` block, not an entry of these lists.
     fn stage_list(&mut self, pos: Pos, body: &[Stmt], in_nested: bool) {
         let mut count = 0;
         let mut names = HashSet::new();
@@ -425,7 +427,6 @@ impl Validator {
                     }
                     self.stage(&st, in_nested);
                 }
-                Some(st) if st.name == "failFast" => {}
                 _ => self.err(stmt.pos(), "Expected a stage"),
             }
         }

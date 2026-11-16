@@ -475,7 +475,24 @@ impl Parser {
             return false;
         }
         let after = self.peek_at(k + 1);
-        after.is_punct("=") || after.is_punct("(") || after.is_punct(",") || after.is_punct(";") || after.nl_before
+        if !after.is_punct(",") {
+            return after.is_punct("=") || after.is_punct("(") || after.is_punct(";") || after.nl_before;
+        }
+        // After a comma, a declaration continues with plain variable names
+        // (`String a, b = 'x'`), while a command call takes any arguments:
+        // `Utils.notify currentBuild, status: 'ok'` declares nothing.
+        let mut k = k + 1;
+        while self.peek_at(k).is_punct(",") {
+            if !matches!(self.peek_at(k + 1).kind, TokKind::Ident(_)) {
+                return false;
+            }
+            let next = self.peek_at(k + 2);
+            if next.is_punct("=") || next.is_punct(";") || next.nl_before || matches!(next.kind, TokKind::Eof) {
+                return true;
+            }
+            k += 2;
+        }
+        false
     }
 
     fn skip_type(&mut self) -> PResult<()> {
@@ -890,7 +907,9 @@ impl Parser {
                 let (key, pos) = self.named_key();
                 let value = self.expr()?;
                 args.push(Arg::Named { key, value, pos });
-            } else if self.peek().is_punct("*:") {
+            } else if self.peek().is_punct("*") && self.peek_at(1).is_punct(":") {
+                // Spread-map argument: `f(*:defaults, x: 1)`.
+                self.next();
                 self.next();
                 self.expr()?;
             } else {
@@ -1006,10 +1025,8 @@ impl Parser {
         let mut entries = Vec::new();
         let mut is_map = false;
         while !self.peek().is_punct("]") {
-            if self.peek().is_punct("*:") || (self.peek().is_punct("*") && self.peek_at(1).is_punct(":")) {
-                while !self.peek().is_punct(":") {
-                    self.next();
-                }
+            if self.peek().is_punct("*") && self.peek_at(1).is_punct(":") {
+                self.next();
                 self.next();
                 let v = self.expr()?;
                 entries.push((Expr::Ident { name: "*".into(), pos }, v));
