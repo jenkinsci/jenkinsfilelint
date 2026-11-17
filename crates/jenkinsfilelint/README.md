@@ -69,7 +69,7 @@ but there was no Declarative structure to check.
   `triggers`, `parameters`, `tools`, `libraries`, `input`; `when` conditions
   and their nesting; `post` conditions; `matrix` axes and excludes; steps that
   are blocked in Declarative (`stage`, `properties`, mixed `parallel`);
-  `pipeline {}` inside another block.
+  `pipeline {}` inside the block of another step (`node { pipeline { } }`).
 
 ## What it cannot check
 
