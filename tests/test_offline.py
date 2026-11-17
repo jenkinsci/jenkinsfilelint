@@ -13,7 +13,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from jenkinsfilelint.cli import main
+from jenkinsfilelint.cli import NO_JENKINS_NO_ENGINE, NO_JENKINS_NOTE, main
 from jenkinsfilelint.offline import (
     ENGINE_ENV,
     ENGINE_MISSING_MESSAGE,
@@ -322,6 +322,138 @@ class TestOfflineCLI:
             assert run_cli(["--offline", "--skip", "Jenkinsfile", str(f)]) == 0
 
 
+class TestDefaultMode:
+    """Without --offline or --local: Jenkins when one is configured, else offline.
+
+    conftest.py clears JENKINS_URL, JENKINS_USER and JENKINS_TOKEN.
+    """
+
+    def offline_run(self, tmp_path, argv, reports=None, returncode=0):
+        """Run the CLI with the engine mocked; return (code, output, engine run)."""
+        f = tmp_path / "Jenkinsfile"
+        f.write_text("")
+        if reports is None:
+            reports = [{"file": str(f), "declarative": True, "diagnostics": []}]
+        with (
+            patch("jenkinsfilelint.cli.find_engine", return_value="engine"),
+            patch(
+                "jenkinsfilelint.offline.subprocess.run",
+                return_value=engine_output(reports, returncode=returncode),
+            ) as run,
+            patch("jenkinsfilelint.linter.requests.post") as post,
+        ):
+            code = run_cli([*argv, str(f)])
+        post.assert_not_called()
+        return code, run
+
+    def test_no_jenkins_checks_offline_with_a_note(self, tmp_path, capsys):
+        code, run = self.offline_run(tmp_path, [])
+        assert code == 0
+        run.assert_called_once()
+        captured = capsys.readouterr()
+        assert captured.out == ""
+        assert captured.err == NO_JENKINS_NOTE + "\n"
+
+    def test_note_comes_before_the_errors(self, tmp_path, capsys):
+        f = tmp_path / "Jenkinsfile"
+        report = {
+            "file": str(f),
+            "declarative": True,
+            "diagnostics": [
+                {"line": 1, "column": 1, "severity": "error", "message": "E"}
+            ],
+        }
+        code, _ = self.offline_run(tmp_path, [], reports=[report], returncode=1)
+        assert code == 1
+        assert capsys.readouterr().err.splitlines() == [
+            NO_JENKINS_NOTE,
+            f"{f}:1:1: error: E",
+        ]
+
+    def test_offline_flag_hides_the_note(self, tmp_path, capsys):
+        code, _ = self.offline_run(tmp_path, ["--offline"])
+        assert code == 0
+        assert capsys.readouterr().err == ""
+
+    def test_no_note_when_every_file_is_skipped(self, tmp_path, capsys):
+        f = tmp_path / "Jenkinsfile"
+        with patch(
+            "jenkinsfilelint.cli.find_engine", side_effect=OfflineEngineError("x")
+        ):
+            assert run_cli(["--skip", "Jenkinsfile", str(f)]) == 0
+        assert capsys.readouterr().err == ""
+
+    def test_no_jenkins_and_no_engine(self, tmp_path, capsys):
+        f = tmp_path / "Jenkinsfile"
+        f.write_text("")
+        with patch(
+            "jenkinsfilelint.cli.find_engine",
+            side_effect=OfflineEngineError(ENGINE_MISSING_MESSAGE),
+        ):
+            assert run_cli([str(f)]) == 1
+        assert capsys.readouterr().err.splitlines() == [
+            NO_JENKINS_NO_ENGINE,
+            f"✗ {ENGINE_MISSING_MESSAGE}",
+        ]
+
+    @pytest.mark.parametrize(
+        "setting",
+        [
+            {"env": {"JENKINS_URL": "https://jenkins.example.com"}},
+            {"env": {"JENKINS_USER": "user"}},
+            {"env": {"JENKINS_TOKEN": "token"}},
+            {"argv": ["--jenkins-url", "https://jenkins.example.com"]},
+            {"argv": ["--username", "user"]},
+            {"argv": ["--token", "token"]},
+        ],
+        ids=[
+            "JENKINS_URL",
+            "JENKINS_USER",
+            "JENKINS_TOKEN",
+            "--jenkins-url",
+            "--username",
+            "--token",
+        ],
+    )
+    def test_any_jenkins_setting_selects_jenkins(self, setting, tmp_path, monkeypatch):
+        for name, value in setting.get("env", {}).items():
+            monkeypatch.setenv(name, value)
+        f = tmp_path / "Jenkinsfile"
+        f.write_text("")
+        with (
+            patch("jenkinsfilelint.cli._run_remote_validation") as remote,
+            patch("jenkinsfilelint.cli.find_engine") as find,
+        ):
+            main_argv = [*setting.get("argv", []), str(f)]
+            with patch("sys.argv", ["jenkinsfilelint", *main_argv]):
+                main()
+        remote.assert_called_once()
+        find.assert_not_called()
+
+    def test_empty_jenkins_url_is_not_a_setting(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("JENKINS_URL", "")
+        code, run = self.offline_run(tmp_path, [])
+        assert code == 0
+        run.assert_called_once()
+
+    def test_jenkins_url_without_offline_flag_uses_jenkins(self, tmp_path, monkeypatch):
+        """Existing users who set JENKINS_URL keep the check they had."""
+        monkeypatch.setenv("JENKINS_URL", "https://jenkins.example.com")
+        f = tmp_path / "Jenkinsfile"
+        f.write_text("pipeline {}")
+        response = Mock(status_code=200, text="Jenkinsfile successfully validated.")
+        with (
+            patch(
+                "jenkinsfilelint.linter.requests.Session.post", return_value=response
+            ) as post,
+            patch("jenkinsfilelint.cli.find_engine") as find,
+        ):
+            assert run_cli([str(f)]) == 0
+        post.assert_called_once()
+        assert post.call_args.args[0].startswith("https://jenkins.example.com")
+        find.assert_not_called()
+
+
 def load_cases():
     """Read tests/jenkins/expected.txt: case name -> its lines, comments included."""
     cases = {}
@@ -435,3 +567,29 @@ class TestAgainstJenkinsVerdicts:
             f"{ROOT / 'tests' / 'Jenkinsfile.fail'}:2:5: error: "
             'Not a valid section definition: "agent".'
         ) in proc.stderr
+
+    def test_console_script_without_jenkins(self):
+        """No flag and no Jenkins configured: the real engine checks the files."""
+        env = {k: v for k, v in os.environ.items() if not k.startswith("JENKINS_")}
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "jenkinsfilelint.cli",
+                str(ROOT / "tests" / "Jenkinsfile"),
+                str(ROOT / "tests" / "Jenkinsfile.fail"),
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            env=env,
+            check=False,
+        )
+        assert proc.returncode == 1, proc.stderr
+        assert f"✓ {ROOT / 'tests' / 'Jenkinsfile'}: Valid" in proc.stdout
+        lines = proc.stderr.splitlines()
+        assert lines[0] == NO_JENKINS_NOTE
+        assert lines[1].startswith(
+            f"{ROOT / 'tests' / 'Jenkinsfile.fail'}:2:5: error: "
+            'Not a valid section definition: "agent".'
+        )

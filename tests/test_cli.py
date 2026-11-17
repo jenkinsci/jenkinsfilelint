@@ -52,7 +52,7 @@ class TestCLIMain:
         )
 
     def test_validate_single_valid_file(self, capsys):
-        """Test validation of a single valid file requires credentials."""
+        """Credentials without a URL select a Jenkins server, which needs a URL."""
         f = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".groovy")
         f.write("pipeline { agent any }")
         f.flush()
@@ -60,7 +60,9 @@ class TestCLIMain:
         temp_path = f.name
 
         try:
-            with patch("sys.argv", ["jenkinsfilelint", temp_path]):
+            with patch(
+                "sys.argv", ["jenkinsfilelint", "--username", "user", temp_path]
+            ):
                 with pytest.raises(SystemExit) as exc_info:
                     main()
                 assert exc_info.value.code == 1
@@ -71,7 +73,7 @@ class TestCLIMain:
             os.unlink(temp_path)
 
     def test_validate_single_invalid_file(self, capsys):
-        """Test validation of a single invalid file."""
+        """An empty file, with a Jenkins server selected but no URL."""
         f = tempfile.NamedTemporaryFile(mode="w", delete=False)
         f.write("")  # Empty file
         f.flush()
@@ -79,7 +81,9 @@ class TestCLIMain:
         temp_path = f.name
 
         try:
-            with patch("sys.argv", ["jenkinsfilelint", temp_path]):
+            with patch(
+                "sys.argv", ["jenkinsfilelint", "--username", "user", temp_path]
+            ):
                 with pytest.raises(SystemExit) as exc_info:
                     main()
                 assert exc_info.value.code == 1
@@ -91,7 +95,7 @@ class TestCLIMain:
             os.unlink(temp_path)
 
     def test_validate_multiple_files(self, capsys):
-        """Test validation of multiple files requires credentials.
+        """With a Jenkins server selected but no URL, every file fails.
 
         Error messages should be deduplicated - the same error should only
         appear once even when multiple files have the same error.
@@ -109,7 +113,10 @@ class TestCLIMain:
         temp_path2 = f2.name
 
         try:
-            with patch("sys.argv", ["jenkinsfilelint", temp_path1, temp_path2]):
+            with patch(
+                "sys.argv",
+                ["jenkinsfilelint", "--username", "user", temp_path1, temp_path2],
+            ):
                 with pytest.raises(SystemExit) as exc_info:
                     main()
                 assert exc_info.value.code == 1
@@ -147,7 +154,7 @@ class TestCLIMain:
             os.unlink(temp_path2)
 
     def test_validate_with_verbose_flag(self, capsys):
-        """Test validation with verbose output requires credentials."""
+        """Verbose output, with a Jenkins server selected but no URL."""
         f = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".groovy")
         f.write("pipeline { agent any }")
         f.flush()
@@ -155,7 +162,10 @@ class TestCLIMain:
         temp_path = f.name
 
         try:
-            with patch("sys.argv", ["jenkinsfilelint", "--verbose", temp_path]):
+            with patch(
+                "sys.argv",
+                ["jenkinsfilelint", "--username", "user", "--verbose", temp_path],
+            ):
                 with pytest.raises(SystemExit) as exc_info:
                     main()
                 assert exc_info.value.code == 1
@@ -540,11 +550,18 @@ class TestCLIIncludeOption:
         try:
             with patch(
                 "sys.argv",
-                ["jenkinsfilelint", "--include", "Jenkinsfile*", temp_path],
+                [
+                    "jenkinsfilelint",
+                    "--username",
+                    "user",
+                    "--include",
+                    "Jenkinsfile*",
+                    temp_path,
+                ],
             ):
                 with pytest.raises(SystemExit) as exc_info:
                     main()
-                # No Jenkins URL → credentials error → exit 1
+                # A Jenkins server but no URL → URL error → exit 1
                 assert exc_info.value.code == 1
 
             captured = capsys.readouterr()

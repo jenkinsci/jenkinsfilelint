@@ -5,8 +5,9 @@ JVM. One ~500 KB binary that checks Groovy syntax and Declarative Pipeline
 structure, and reports errors with the same wording as Jenkins's own
 validator.
 
-This is the offline engine behind `jenkinsfilelint --offline` and the
-`jenkinsfilelint-offline` pre-commit hook. Most people want
+This is the offline engine of `jenkinsfilelint`: it runs for `--offline`, the
+`jenkinsfilelint-offline` pre-commit hook, and whenever no Jenkins server is
+configured. Most people want
 [jenkinsfilelint](https://github.com/jenkinsci/jenkinsfilelint) itself, which
 installs this package. The remote and Docker modes of `jenkinsfilelint` stay
 the exact check; this one is the fast one. See [DESIGN.md](DESIGN.md).

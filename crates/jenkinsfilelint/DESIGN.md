@@ -82,8 +82,8 @@ mistakes in them are all caught.
    `jenkinsfilelint-engine`, maturin binary wheels (`bindings = "bin"`,
    like ruff) for Linux, macOS and Windows plus an sdist. `jenkinsfilelint`
    stays pure Python, depends on the engine pinned to the exact version, and
-   runs it for `--offline` and the `jenkinsfilelint-offline` pre-commit
-   hook. Keeping the root package pure Python matters because pre-commit
+   runs it for `--offline`, the `jenkinsfilelint-offline` pre-commit hook,
+   and whenever no Jenkins server is configured. Keeping the root package pure Python matters because pre-commit
    installs hooks from source: a maturin-built root package would make every
    pre-commit user compile Rust. The dependency is limited to platforms with
    a wheel, so other platforms keep the remote and Docker modes. GitHub

@@ -185,8 +185,37 @@ def _run_local_validation(args: argparse.Namespace) -> None:
     # shut it down explicitly.
 
 
-def _run_offline_validation(args: argparse.Namespace) -> None:
-    """Validate files with the offline engine, without a Jenkins server."""
+# Settings that mean "check with this Jenkins server".
+JENKINS_ENV_VARS = ("JENKINS_URL", "JENKINS_USER", "JENKINS_TOKEN")
+
+NO_JENKINS_NOTE = (
+    "ℹ No Jenkins server configured, so checking offline: step names, step "
+    "parameters and other plugin-dependent checks are skipped. Set JENKINS_URL "
+    "to check with Jenkins, or pass --offline to hide this note."
+)
+
+NO_JENKINS_NO_ENGINE = (
+    "✗ No Jenkins server configured (set JENKINS_URL or pass --jenkins-url), "
+    "and offline checking is not available here."
+)
+
+
+def _jenkins_configured(args: argparse.Namespace) -> bool:
+    """Whether a Jenkins server was set up, on the command line or in the
+    environment. Credentials alone count: they mean a server was intended,
+    and without its URL that is an error to report, not a reason to check
+    offline instead."""
+    return any((args.jenkins_url, args.username, args.token)) or any(
+        os.environ.get(name) for name in JENKINS_ENV_VARS
+    )
+
+
+def _run_offline_validation(args: argparse.Namespace, automatic: bool = False) -> None:
+    """Validate files with the offline engine, without a Jenkins server.
+
+    *automatic* is true when no Jenkins server is configured and offline
+    checking was chosen for the user rather than asked for with --offline.
+    """
     selected = [f for f in args.jenkinsfile if _skip_reason(f, args) is None]
     try:
         engine = find_engine() if selected else None
@@ -194,8 +223,14 @@ def _run_offline_validation(args: argparse.Namespace) -> None:
             print(f"✓ Offline engine: {engine}")
         results = lint_files(selected, engine) if selected else {}
     except OfflineEngineError as exc:
+        if automatic:
+            print(NO_JENKINS_NO_ENGINE, file=sys.stderr)
         print(f"✗ {exc}", file=sys.stderr)
         sys.exit(1)
+
+    if automatic and selected:
+        sys.stdout.flush()
+        print(NO_JENKINS_NOTE, file=sys.stderr)
 
     all_valid = True
     for jenkinsfile in args.jenkinsfile:
@@ -230,7 +265,9 @@ def main():
     """Main entry point for jenkinsfilelint.
 
     Dispatches ``server`` subcommands (start|stop|status|restart) or runs the
-    linting CLI (with optional ``--local`` or ``--offline`` mode).
+    linting CLI. Files are checked with the configured Jenkins server, with a
+    local Docker one (``--local``), or offline (``--offline``, and whenever no
+    Jenkins server is configured).
     """
     if len(sys.argv) > 1 and sys.argv[1] == "server":
         handle_server_command(sys.argv[2:])
@@ -262,7 +299,8 @@ def main():
             stream.reconfigure(errors="backslashreplace")
 
     parser = argparse.ArgumentParser(
-        description="Validate Jenkinsfiles using Jenkins API, or offline with --offline"
+        description="Validate Jenkinsfiles with a Jenkins server, or offline when "
+        "none is configured."
     )
     parser.add_argument(
         "-V",
@@ -277,7 +315,8 @@ def main():
     )
     parser.add_argument(
         "--jenkins-url",
-        help="Jenkins server URL (can also be set via JENKINS_URL env var)",
+        help="Jenkins server URL (can also be set via JENKINS_URL env var). "
+        "Without a Jenkins server, files are checked offline.",
     )
     parser.add_argument(
         "--username",
@@ -298,9 +337,11 @@ def main():
     mode.add_argument(
         "--offline",
         action="store_true",
-        help="Check Groovy syntax and Declarative Pipeline structure without Jenkins, "
-        "Docker or a JVM. Cannot check what depends on plugins, such as step names "
-        "and parameters; use a Jenkins server or --local for that.",
+        help="Check offline, even when a Jenkins server is configured: Groovy "
+        "syntax and Declarative Pipeline structure, without Jenkins, Docker or a "
+        "JVM. Cannot check what depends on plugins, such as step names and "
+        "parameters; use a Jenkins server or --local for that. This is also what "
+        "happens when no Jenkins server is configured.",
     )
     parser.add_argument(
         "-v",
@@ -333,8 +374,8 @@ def main():
         metavar="N",
         help="Number of files to validate at the same time (default: "
         f"{DEFAULT_JOBS}). Lower it to go easier on a shared Jenkins; "
-        "use 1 to validate one file at a time. Not used by --offline, which "
-        "checks all files in one run of the engine.",
+        "use 1 to validate one file at a time. Not used when checking offline, "
+        "which checks all files in one run of the engine.",
     )
 
     args = parser.parse_args()
@@ -347,8 +388,10 @@ def main():
         _run_offline_validation(args)
     elif args.local:
         _run_local_validation(args)
-    else:
+    elif _jenkins_configured(args):
         _run_remote_validation(args)
+    else:
+        _run_offline_validation(args, automatic=True)
 
 
 if __name__ == "__main__":

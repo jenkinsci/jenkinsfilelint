@@ -1,6 +1,6 @@
 - id: jenkinsfilelint
   name: jenkinsfilelint
-  description: Lint Jenkinsfiles and Groovy files.
+  description: Lint Jenkinsfiles and Groovy files with the configured Jenkins server, or offline when none is configured.
   entry: jenkinsfilelint
   language: python
   types: [file]
@@ -8,7 +8,7 @@
   require_serial: true
 - id: jenkinsfilelint-offline
   name: jenkinsfilelint (offline)
-  description: Check Jenkinsfile syntax and Declarative Pipeline structure without a Jenkins server.
+  description: Check Jenkinsfile syntax and Declarative Pipeline structure without a Jenkins server, even when one is configured.
   entry: jenkinsfilelint --offline
   language: python
   types: [file]
