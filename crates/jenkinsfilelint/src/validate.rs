@@ -145,6 +145,27 @@ fn axis_name(arg: &Arg) -> Option<&str> {
     }
 }
 
+/// Groovy keeps no trace of parentheses in its syntax tree, so Jenkins reads
+/// `('a')` exactly like `'a'`.
+fn unparen(mut e: &Expr) -> &Expr {
+    while let Expr::Paren { inner, .. } = e {
+        e = inner;
+    }
+    e
+}
+
+/// What Groovy parses as one constant, or a GString: a string, a number
+/// (a sign in front of a number literal is part of the constant), `true`,
+/// `false` or `null`.
+fn is_constant(e: &Expr) -> bool {
+    match e {
+        Expr::Str { .. } | Expr::Num { .. } => true,
+        Expr::Ident { name, .. } => matches!(name.as_str(), "true" | "false" | "null"),
+        Expr::Unary { op: "-" | "+", expr, .. } => matches!(expr.as_ref(), Expr::Num { .. }),
+        _ => false,
+    }
+}
+
 fn arg_expr(arg: &Arg) -> &Expr {
     match arg {
         Arg::Pos(e) => e,
@@ -772,10 +793,12 @@ impl Validator {
         }
     }
 
+    /// Jenkins accepts a constant, a GString, a method call, or constants
+    /// and GStrings joined with `+`.
     fn env_value(&mut self, value: &Expr) {
+        let value = unparen(value);
         match value {
-            Expr::Str { .. } | Expr::Num { .. } => {}
-            Expr::Ident { name, .. } if name == "true" || name == "false" || name == "null" => {}
+            v if is_constant(v) => {}
             Expr::Call { callee, .. } if matches!(callee.as_ref(), Expr::Ident { name, .. } if name == "$") => {
                 self.err(
                     value.pos(),
@@ -791,9 +814,9 @@ impl Validator {
                     );
                     return;
                 }
-                for side in [lhs.as_ref(), rhs.as_ref()] {
+                for side in [unparen(lhs), unparen(rhs)] {
                     match side {
-                        Expr::Str { .. } => {}
+                        s if is_constant(s) => {}
                         Expr::Binary { .. } => self.env_value(side),
                         _ => self.err(
                             side.pos(),

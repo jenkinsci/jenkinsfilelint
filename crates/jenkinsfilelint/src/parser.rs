@@ -366,8 +366,9 @@ impl Parser {
             }
             _ if word == "def" || MODIFIERS.contains(&word.as_str()) => self.declaration(pos),
             _ if self.looks_like_typed_decl() => self.declaration(pos),
-            _ if self.peek_at(1).is_punct(":") && !self.peek_at(2).nl_before && word != "default" => {
-                // Statement label, e.g. `outer: for (...)`.
+            _ if self.peek_at(1).is_punct(":") && !self.peek_at(1).nl_before && word != "default" => {
+                // Statement label: `outer: for (...)`, or `outer:` on a
+                // line of its own before the statement it names.
                 self.next();
                 self.next();
                 self.stmt()
@@ -944,18 +945,21 @@ impl Parser {
                 Ok(Expr::Num { text, pos })
             }
             TokKind::Punct("(") => {
-                // Cast: `(String) x`
-                if matches!(self.peek_at(1).kind, TokKind::Ident(_)) && self.peek_at(2).is_punct(")") {
-                    let after = self.peek_at(3);
+                // Cast: `(String) x`, `(String[]) x`, `(List<String>) x`,
+                // `(java.util.List) x`.
+                if let Some((close, type_only)) = self.cast_type() {
+                    let after = self.peek_at(close + 1);
                     let castable = !after.nl_before
                         && match &after.kind {
                             TokKind::Ident(n) => !NON_ARG_IDENTS.contains(&n.as_str()),
                             TokKind::Str { .. } | TokKind::Num(_) => true,
-                            TokKind::Punct(p) => *p == "(" || *p == "[",
+                            // `(a.b)(x)` and `(a.b)[0]` call or index a
+                            // value; only what cannot be a value is a cast.
+                            TokKind::Punct(p) => (*p == "(" || *p == "[") && (type_only || close == 2),
                             _ => false,
                         };
                     if castable {
-                        self.i += 3;
+                        self.i += close + 1;
                         return self.unary();
                     }
                 }
@@ -971,6 +975,42 @@ impl Parser {
             TokKind::Punct("{") => self.closure(),
             _ => Err(self.unexpected("an expression")),
         }
+    }
+
+    /// At a `(`: whether a type and nothing else stands between it and its
+    /// `)`, as in a cast. Returns the offset of the `)`, and whether the
+    /// type can only be a type (it has generic arguments or `[]`), unlike
+    /// `(a.b)`, which is also how a property is written.
+    fn cast_type(&self) -> Option<(usize, bool)> {
+        if !matches!(self.peek_at(1).kind, TokKind::Ident(_)) {
+            return None;
+        }
+        let mut k = 2;
+        while self.peek_at(k).is_punct(".") && matches!(self.peek_at(k + 1).kind, TokKind::Ident(_)) {
+            k += 2;
+        }
+        let mut type_only = false;
+        if self.peek_at(k).is_punct("<") {
+            let mut depth = 0;
+            loop {
+                match &self.peek_at(k).kind {
+                    TokKind::Punct("<") => depth += 1,
+                    TokKind::Punct(">") => depth -= 1,
+                    TokKind::Ident(_) | TokKind::Punct("," | "." | "?" | "[" | "]") => {}
+                    _ => return None,
+                }
+                k += 1;
+                if depth == 0 {
+                    break;
+                }
+            }
+            type_only = true;
+        }
+        while self.peek_at(k).is_punct("[") && self.peek_at(k + 1).is_punct("]") {
+            k += 2;
+            type_only = true;
+        }
+        self.peek_at(k).is_punct(")").then_some((k, type_only))
     }
 
     fn new_expr(&mut self, pos: Pos) -> PResult<Expr> {
@@ -1077,34 +1117,77 @@ impl Parser {
     fn closure(&mut self) -> PResult<Expr> {
         let open = self.expect("{")?.pos;
         let mut params = Vec::new();
-        // Look ahead for `a, b ->` or `->`.
-        let mut k = 0;
-        let mut has_arrow = false;
-        loop {
-            let t = self.peek_at(k);
-            match &t.kind {
-                TokKind::Punct("->") => {
-                    has_arrow = true;
-                    break;
+        if let Some(arrow) = self.closure_arrow() {
+            // The name of a parameter is the last word before its `=`
+            // default, the `,` after it or the arrow.
+            let mut name = None;
+            let mut depth = 0usize;
+            let mut in_default = false;
+            for _ in 0..arrow {
+                let t = self.next();
+                match t.kind {
+                    TokKind::Punct("(" | "[") => depth += 1,
+                    TokKind::Punct(")" | "]") => depth = depth.saturating_sub(1),
+                    // Generic arguments of a type: `Map<String, ?> m`.
+                    TokKind::Punct("<") if !in_default => depth += 1,
+                    TokKind::Punct(">") if !in_default => depth = depth.saturating_sub(1),
+                    TokKind::Punct("=") if depth == 0 => in_default = true,
+                    TokKind::Punct(",") if depth == 0 => {
+                        params.extend(name.take());
+                        in_default = false;
+                    }
+                    TokKind::Ident(n) if depth == 0 && !in_default => name = Some(n),
+                    _ => {}
                 }
-                TokKind::Ident(_) => {}
-                TokKind::Punct("," | "<" | ">" | "." | "[" | "]" | "=") => {}
-                TokKind::Str { .. } | TokKind::Num(_) => {}
-                _ => break,
             }
-            k += 1;
-        }
-        if has_arrow {
-            for _ in 0..k {
-                if let TokKind::Ident(n) = &self.next().kind {
-                    params.push(n.clone());
-                }
-            }
+            params.extend(name);
             self.expect("->")?;
         }
         let body = self.grouped(false, |p| p.stmts_until(Some(open)))?;
         self.expect("}")?;
         Ok(Expr::Closure { params, body, pos: open })
+    }
+
+    /// Whether a closure starts with parameters: `a, b ->`, `String s ->`,
+    /// `Map opts = [:], Object... rest ->` or just `->`. Returns how many
+    /// tokens come before the arrow.
+    ///
+    /// Types and default values are skipped, not parsed: a default may be
+    /// any expression with balanced `( )` and `[ ]`. The list ends at the
+    /// arrow and may only continue on the next line after a comma.
+    fn closure_arrow(&self) -> Option<usize> {
+        let mut k = 0;
+        // Nesting of `( )` and `[ ]` inside a default value.
+        let mut depth = 0usize;
+        let mut in_default = false;
+        loop {
+            let t = self.peek_at(k);
+            if depth == 0 {
+                if t.is_punct("->") {
+                    return Some(k);
+                }
+                if k > 0 && t.nl_before && !self.peek_at(k - 1).is_punct(",") {
+                    return None;
+                }
+            }
+            match &t.kind {
+                TokKind::Punct("(" | "[") if in_default => depth += 1,
+                TokKind::Punct(")" | "]") if depth > 0 => depth -= 1,
+                // Inside a default value anything goes, except what ends
+                // a statement or opens another closure.
+                TokKind::Punct(";" | "{" | "}" | ")" | "]") | TokKind::Eof => return None,
+                _ if depth > 0 => {}
+                TokKind::Punct(",") => in_default = false,
+                _ if in_default => {}
+                TokKind::Punct("=") => in_default = true,
+                // Modifiers, types and names: `final Map<String, ?> m`,
+                // `String[] a`, `Object... rest`, `@Annotated x`.
+                TokKind::Ident(_) | TokKind::Punct("." | "<" | ">" | "?" | "..." | "@") => {}
+                TokKind::Punct("[") if self.peek_at(k + 1).is_punct("]") => k += 1,
+                _ => return None,
+            }
+            k += 1;
+        }
     }
 }
 
@@ -1175,6 +1258,37 @@ mod tests {
         ok("def ok = (a != 'x'\n  &&\n  (b == null || b == 'y'))");
         ok("if (a\n  || b) { c() }");
         ok("echo(a\n  + b)\nl = [a\n  + 'x']");
+        ok("outer:\nfor (a in b) { break outer }\ninner: while (true) { break inner }");
+        ok("def a = (String[]) b\ndef c = (List<String>) d\ndef e = (java.util.List) f");
+        ok("def a = (b.c)[0]\ndef d = (b.c)(1)\ndef e = (b)\ndef f = (b) ? c : d");
+        ok("x.each {\n  k, v ->\n  echo k\n}\nx.each { k,\n  v -> echo k }");
+        ok("x.each { a = [1, 2]\n  b = a }");
+    }
+
+    #[test]
+    fn closure_parameters() {
+        let params = |src: &str| match ok(src).remove(0) {
+            Stmt::Decl {
+                value: Some(Expr::Closure { params, body, .. }),
+                ..
+            } => (params, body.len()),
+            other => panic!("{src}: {other:?}"),
+        };
+        assert_eq!(params("def c = { -> 1 }"), (vec![], 1));
+        assert_eq!(params("def c = { a, b -> 1 }"), (vec!["a".to_string(), "b".to_string()], 1));
+        assert_eq!(
+            params("def c = { Map<String, ?> m = [:], String... rest, int n = f(1, 2) -> 1 }"),
+            (vec!["m".to_string(), "rest".to_string(), "n".to_string()], 1)
+        );
+        assert_eq!(
+            params("def c = { final String[] a, b = -1, c = b ? 'x' : 'y' -> 1 }").0,
+            ["a", "b", "c"]
+        );
+        // No arrow on the first line: everything is the body.
+        assert_eq!(params("def c = { a = 1\n b = { x -> x } }"), (vec![], 2));
+        assert_eq!(params("def c = { a }"), (vec![], 1));
+        // Without an arrow, `a, b` is not a parameter list.
+        fails("def c = { a, b }");
     }
 
     #[test]
@@ -1187,5 +1301,7 @@ mod tests {
         // a closure body even when the closure sits in brackets.
         fails("def x = a\n  && b");
         fails("f({ ->\n  def z = a\n  && b\n})");
+        // The colon of a label stays on the line of its name.
+        fails("outer\n: for (a in b) { }");
     }
 }

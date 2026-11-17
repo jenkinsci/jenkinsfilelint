@@ -201,6 +201,18 @@ error: Expected a stage
 [e51_failfast_in_sequential_stages]
 error: Expected a stage
 
+[e52_env_concat_with_variable]
+error: Environment variable values to be concatenated together must be single or double quoted.
+
+[e53_env_negated_variable]
+# Jenkins also reports: No variables specified for environment
+error: Environment variable values must either be single quoted, double quoted, or function calls.
+
+[e54_label_first_in_script_block]
+# Differs: Known gap: Jenkins compiles the text of a script block on its own and loses a label on the block's first statement.
+# Jenkins: Groovy compilation error(s) in script. Error(s): "unexpected token: :"
+valid
+
 [p01_kubernetes_agent]
 # Differs: Depends on installed plugins or controller configuration, which the offline linter cannot see.
 # Jenkins: Invalid agent type "kubernetes" specified. Must be one of [any, docker, dockerfile, label, none]
@@ -337,6 +349,10 @@ valid
 # Jenkins: unexpected token: <
 valid
 
+[s20_label_colon_on_next_line]
+# Jenkins: unexpected token: :
+error
+
 [v01_minimal]
 valid
 
@@ -461,6 +477,24 @@ valid
 valid
 
 [v45_stage_level_failfast]
+valid
+
+[v46_env_signed_number]
+valid
+
+[v47_env_parenthesized_value]
+valid
+
+[v48_env_concat_with_constant]
+valid
+
+[v49_label_on_own_line]
+valid
+
+[v50_closure_parameters]
+valid
+
+[v51_cast_forms]
 valid
 
 [x01_scripted_pipeline]
