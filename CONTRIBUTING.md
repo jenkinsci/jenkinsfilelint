@@ -36,7 +36,14 @@ cases in `crates/jenkinsfilelint/tests/jenkins/`. For the engine itself, see
 set of prebuilt wheels. `pyproject.toml` pins it to the exact version in
 `crates/jenkinsfilelint/Cargo.toml`, and a test checks that the two agree.
 When a change touches the engine, bump the version in both places in the
-same PR. Otherwise the next release keeps the engine already on PyPI.
+same PR. Otherwise the next release keeps the engine already on PyPI. One
+bump between two releases is enough.
+
+`crates/jenkinsfilelint/scripts/check_engine_version.py` checks this: it
+fails when the files built into the engine (`src/`, `python/`, `Cargo.toml`,
+`Cargo.lock`, `pyproject.toml` of the crate) differ from the last release tag
+and the version does not. The release workflow runs it on pull requests that
+touch `crates/`, and before a release uploads anything.
 
 Publishing a GitHub release runs `.github/workflows/release.yml`. It builds
 the engine wheels and the `jenkinsfilelint` package, installs them on each

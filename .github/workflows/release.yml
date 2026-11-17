@@ -111,6 +111,11 @@ jobs:
         pin = re.search(r"jenkinsfilelint-engine==([^;\s\"]+)", pyproject).group(1)
         assert pin == version, f"pyproject.toml pins jenkinsfilelint-engine=={pin}, Cargo.toml says {version}"
         print(f"jenkinsfilelint-engine=={pin}")
+    - name: Check the engine version was bumped if the engine changed
+      # The engine upload skips a version that is already on PyPI. Without
+      # this check, a changed engine with an unchanged version would never
+      # reach users, and the release would still be green.
+      run: python crates/jenkinsfilelint/scripts/check_engine_version.py
     - name: Install build tools
       run: python -m pip install --upgrade pip build twine
     - name: Build distribution
