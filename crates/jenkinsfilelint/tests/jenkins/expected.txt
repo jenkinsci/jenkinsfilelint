@@ -234,6 +234,102 @@ error: Invalid config option "pull" for agent type "dockerfile". Valid config op
 [e61_agent_node_unknown_option]
 error: Invalid config option "pull" for agent type "node". Valid config options are [label, customWorkspace, retries]
 
+[e62_if_in_steps]
+error: Expected a step
+
+[e63_def_in_steps]
+error: Expected a step
+
+[e64_assignment_in_steps]
+error: Expected a step
+
+[e65_if_in_nested_step_block]
+error: Expected a step
+
+[e66_script_without_block]
+# Jenkins: no verdict; its validator answers HTTP 500 for this file.
+error: script step without a block
+
+[e67_pipeline_in_steps]
+# Jenkins: no verdict; its validator answers HTTP 500 for this file.
+error: pipeline block must be at the top-level, not within another block.
+
+[e68_steps_without_block]
+# Jenkins: no verdict; its validator answers HTTP 500 for this file.
+error: Expected a block for steps
+
+[e69_when_expression_without_block]
+# Jenkins: no verdict; its validator answers HTTP 500 for this file.
+error: Expected a block for expression
+
+[e70_statement_in_pipeline]
+# Jenkins: Not a valid section definition: "def x = 1". Some extra configuration is required.
+error
+
+[e71_agent_docker_without_image]
+error: Missing required parameter for agent type "docker": image
+
+[e72_agent_key_without_value]
+# Jenkins: Expected to find ‘someKey "someValue"’
+# Jenkins: Missing required parameter for agent type "docker": image
+error
+
+[e73_agent_key_two_values]
+# Jenkins: Too many arguments for map key "image"
+# Jenkins: Missing required parameter for agent type "docker": image
+error
+
+[e74_stage_two_names]
+# Jenkins: Stage does not have a block
+# Jenkins: Expected one of "steps", "stages", or "parallel" for stage "A"
+error
+
+[e75_stage_without_block]
+# Jenkins: Expected a stage
+# Jenkins: No stages specified
+error
+
+[e76_post_without_block]
+# Jenkins: Expected a block
+# Jenkins: post can not be empty
+error
+
+[e77_tools_empty]
+error: No tools specified
+
+[e78_tools_statement]
+# Jenkins also reports: No tools specified
+error: Expected to find ‘someTool "someVersion"’
+
+[e79_options_statement]
+error: Expected an option
+
+[e80_matrix_not_an_axis]
+# Jenkins: Missing required section "values"
+error
+
+[e81_matrix_axis_unknown_field]
+# Jenkins: Undefined section "labels"
+error
+
+[e82_matrix_not_values_in_axes]
+# Jenkins: Undefined section "notValues"
+# Jenkins: Missing required section "values"
+error
+
+[e83_parallel_step_bad_argument]
+# Jenkins: Expected one of "steps", "stages", or "parallel" for stage "S"
+error
+
+[e84_input_without_block]
+# Jenkins also reports: No message specified for input
+error: Expected a block for input
+
+[e85_matrix_without_block]
+# Jenkins also reports: Missing required section "axes"
+# Jenkins also reports: Missing required section "stages"
+error: Expected a block for matrix
+
 [p01_kubernetes_agent]
 # Differs: Depends on installed plugins or controller configuration, which the offline linter cannot see.
 # Jenkins: Invalid agent type "kubernetes" specified. Must be one of [any, docker, dockerfile, label, none]
@@ -372,6 +468,26 @@ valid
 
 [s20_label_colon_on_next_line]
 # Jenkins: unexpected token: :
+error
+
+[s21_unterminated_slashy_string]
+# Jenkins: unexpected char: 0xFFFF
+error
+
+[s22_unterminated_dollar_slashy_string]
+# Jenkins: unexpected char: 0xA
+error
+
+[s23_try_without_catch]
+# Jenkins: A try statement must have at least one catch or finally block.
+error
+
+[s24_list_and_map_mixed]
+# Jenkins: Unexpected node type: EXPR found when expecting type: LABELED_ARG
+error
+
+[s25_unclosed_generic_type]
+# Jenkins: Missing closing bracket '>' for generics types
 error
 
 [v01_minimal]
@@ -525,6 +641,27 @@ valid
 valid
 
 [v54_shared_lib_pipeline_in_step_block]
+valid
+
+[v55_parallel_step]
+valid
+
+[v56_agent_parameters]
+valid
+
+[v57_shift_operators]
+valid
+
+[v58_number_literals]
+valid
+
+[v59_typed_declarations]
+valid
+
+[v60_arrays_and_loops]
+valid
+
+[v61_method_definitions]
 valid
 
 [x01_scripted_pipeline]
