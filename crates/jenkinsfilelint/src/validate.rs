@@ -94,11 +94,19 @@ pub fn validate(stmts: &[Stmt]) -> Report {
                 seen_pipeline = true;
                 v.pipeline(&sec);
             }
-            _ => match stmt {
+            _ => {
                 // Shared library steps: def call() { pipeline { ... } }
-                Stmt::MethodDef { body, .. } => v.library_body(body),
-                other => v.no_nested_pipeline(other),
-            },
+                if let Stmt::MethodDef { body, .. } = stmt {
+                    v.library_body(body);
+                }
+            }
+        }
+    }
+    // Like Jenkins, look for a misplaced pipeline only in a file that has
+    // no pipeline to check.
+    if !v.declarative {
+        for stmt in stmts {
+            v.no_nested_pipeline(stmt);
         }
     }
     v.diags.sort_by_key(|d| d.pos);
@@ -166,6 +174,28 @@ fn is_constant(e: &Expr) -> bool {
     }
 }
 
+/// A stage name: a string, or a bare word, which Jenkins reads as the same
+/// string (`stage(Build)` is `stage('Build')`).
+fn stage_name<'a>(args: &[&'a Arg]) -> Option<&'a str> {
+    match args {
+        [Arg::Pos(Expr::Str { value, .. })] => Some(value),
+        [Arg::Pos(Expr::Ident { name, .. })] if !matches!(name.as_str(), "true" | "false" | "null") => Some(name),
+        _ => None,
+    }
+}
+
+/// In a shared library, Jenkins takes a `pipeline { }` block for a
+/// Declarative Pipeline only when it calls both `agent` and `stages`: other
+/// libraries use the name for blocks of their own.
+fn is_library_pipeline(sec: &Section) -> bool {
+    let calls = |body: &[Stmt], name: &str| {
+        body.iter()
+            .filter_map(|s| s.section())
+            .any(|x| x.name == name && (x.parens || !x.args.is_empty() || x.body.is_some()))
+    };
+    sec.name == "pipeline" && sec.args.is_empty() && sec.body.is_some_and(|body| calls(body, "agent") && calls(body, "stages"))
+}
+
 fn arg_expr(arg: &Arg) -> &Expr {
     match arg {
         Arg::Pos(e) => e,
@@ -197,38 +227,41 @@ impl Validator {
         self.diags.push(Diagnostic::error(pos, msg));
     }
 
-    /// Body of a shared library step (`def call() { ... }`), where a
-    /// pipeline may sit inside plain control flow.
+    /// Body of a shared library step (`def call() { ... }`). Like Jenkins,
+    /// check every Declarative Pipeline in it, wherever it sits: in control
+    /// flow or in the block of another step.
     fn library_body(&mut self, body: &[Stmt]) {
         for inner in body {
-            match (inner.section(), inner) {
-                (Some(sec), _) if sec.name == "pipeline" => self.pipeline(&sec),
-                (_, Stmt::Control { bodies, .. }) => bodies.iter().for_each(|b| self.library_body(b)),
-                _ => self.no_nested_pipeline(inner),
+            if let Some(sec) = inner.section().filter(is_library_pipeline) {
+                self.pipeline(&sec);
+                continue;
+            }
+            let mut bodies: Vec<&[Stmt]> = Vec::new();
+            match inner {
+                Stmt::Control { bodies: bs, .. } => bodies.extend(bs.iter().map(|b| b.as_slice())),
+                Stmt::Expr(e) | Stmt::Decl { value: Some(e), .. } => for_each_closure(e, &mut |b| bodies.push(b)),
+                _ => {}
+            }
+            for body in bodies {
+                self.library_body(body);
             }
         }
     }
 
-    /// `pipeline { }` anywhere but the top level is an error.
+    /// `pipeline { }` in the block of another step, as in
+    /// `node { pipeline { } }`, is an error. Like Jenkins, this follows
+    /// only blocks passed to steps: a pipeline inside `if`, a loop, `try`
+    /// or a closure kept in a variable is not reported.
     fn no_nested_pipeline(&mut self, stmt: &Stmt) {
-        let mut bodies: Vec<&[Stmt]> = Vec::new();
-        match stmt {
-            Stmt::Expr(e) => for_each_closure(e, &mut |b| bodies.push(b)),
-            Stmt::Decl { value: Some(e), .. } => for_each_closure(e, &mut |b| bodies.push(b)),
-            Stmt::Control { bodies: bs, .. } => bodies.extend(bs.iter().map(|b| b.as_slice())),
-            Stmt::MethodDef { body, .. } => bodies.push(body),
-            _ => {}
-        }
-        for body in bodies {
-            for inner in body {
-                if let Some(sec) = inner.section() {
-                    if sec.name == "pipeline" && sec.body.is_some() {
-                        self.err(sec.pos, "pipeline block must be at the top-level, not within another block.");
-                        continue;
-                    }
-                }
-                self.no_nested_pipeline(inner);
+        let Stmt::Expr(Expr::Call { args, .. }) = stmt else { return };
+        let Some(Arg::Pos(Expr::Closure { body, .. })) = args.last() else {
+            return;
+        };
+        for inner in body {
+            if inner.section().is_some_and(|sec| sec.name == "pipeline" && sec.body.is_some()) {
+                self.err(inner.pos(), "pipeline block must be at the top-level, not within another block.");
             }
+            self.no_nested_pipeline(inner);
         }
     }
 
@@ -354,19 +387,19 @@ impl Validator {
 
     fn agent_params(&mut self, t: &Section) {
         let (required, allowed): (&[&str], &[&str]) = match t.name {
-            "node" => (&["label"], &["label", "customWorkspace"]),
+            "node" => (&["label"], &["label", "customWorkspace", "retries"]),
             "docker" => (
                 &["image"],
                 &[
                     "image",
-                    "args",
                     "alwaysPull",
+                    "args",
+                    "containerPerStageRoot",
                     "customWorkspace",
                     "label",
                     "registryCredentialsId",
                     "registryUrl",
                     "reuseNode",
-                    "containerPerStageRoot",
                 ],
             ),
             "dockerfile" => (
@@ -374,6 +407,7 @@ impl Validator {
                 &[
                     "additionalBuildArgs",
                     "args",
+                    "containerPerStageRoot",
                     "customWorkspace",
                     "dir",
                     "filename",
@@ -381,7 +415,6 @@ impl Validator {
                     "registryCredentialsId",
                     "registryUrl",
                     "reuseNode",
-                    "containerPerStageRoot",
                 ],
             ),
             _ => return,
@@ -441,9 +474,9 @@ impl Validator {
             match stmt.section() {
                 Some(st) if st.name == "stage" => {
                     count += 1;
-                    if let [Arg::Pos(Expr::Str { value, .. })] = st.args.as_slice() {
-                        if !names.insert(value.as_str()) {
-                            self.err(st.pos, format!("Duplicate stage name: \"{value}\""));
+                    if let Some(name) = stage_name(&st.args) {
+                        if !names.insert(name) {
+                            self.err(st.pos, format!("Duplicate stage name: \"{name}\""));
                         }
                     }
                     self.stage(&st, in_nested);
@@ -457,13 +490,13 @@ impl Validator {
     }
 
     fn stage(&mut self, s: &Section, in_nested: bool) {
-        let name = match s.args.as_slice() {
-            [Arg::Pos(Expr::Str { value, .. })] => value.clone(),
-            [] => {
+        let name = match stage_name(&s.args) {
+            Some(name) => name.to_string(),
+            None if s.args.is_empty() => {
                 self.err(s.pos, "Expected a stage name but did not find any");
                 return;
             }
-            _ => {
+            None => {
                 self.err(s.pos, "Expected string literal");
                 return;
             }

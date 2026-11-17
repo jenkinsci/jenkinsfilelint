@@ -213,6 +213,27 @@ error: Environment variable values must either be single quoted, double quoted, 
 # Jenkins: Groovy compilation error(s) in script. Error(s): "unexpected token: :"
 valid
 
+[e55_stage_name_not_a_string]
+error: Expected string literal
+
+[e56_stage_bare_word_duplicate]
+error: Duplicate stage name: "Build"
+
+[e57_shared_lib_pipeline_in_step_block]
+error: Expected one of "steps", "stages", or "parallel" for stage "S"
+
+[e58_pipeline_in_nested_step_blocks]
+error: pipeline block must be at the top-level, not within another block.
+
+[e59_agent_docker_unknown_option]
+error: Invalid config option "pull" for agent type "docker". Valid config options are [image, alwaysPull, args, containerPerStageRoot, customWorkspace, label, registryCredentialsId, registryUrl, reuseNode]
+
+[e60_agent_dockerfile_unknown_option]
+error: Invalid config option "pull" for agent type "dockerfile". Valid config options are [additionalBuildArgs, args, containerPerStageRoot, customWorkspace, dir, filename, label, registryCredentialsId, registryUrl, reuseNode]
+
+[e61_agent_node_unknown_option]
+error: Invalid config option "pull" for agent type "node". Valid config options are [label, customWorkspace, retries]
+
 [p01_kubernetes_agent]
 # Differs: Depends on installed plugins or controller configuration, which the offline linter cannot see.
 # Jenkins: Invalid agent type "kubernetes" specified. Must be one of [any, docker, dockerfile, label, none]
@@ -497,6 +518,15 @@ valid
 [v51_cast_forms]
 valid
 
+[v52_agent_node_retries]
+valid
+
+[v53_stage_bare_word_name]
+valid
+
+[v54_shared_lib_pipeline_in_step_block]
+valid
+
 [x01_scripted_pipeline]
 # Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
 # Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
@@ -540,6 +570,21 @@ valid
 valid
 
 [x10_class_with_modifiers]
+# Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
+# Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
+valid
+
+[x11_pipeline_in_if_else]
+# Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
+# Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
+valid
+
+[x12_pipeline_in_closure_variable]
+# Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
+# Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
+valid
+
+[x13_shared_lib_other_pipeline_block]
 # Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
 # Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
 valid
