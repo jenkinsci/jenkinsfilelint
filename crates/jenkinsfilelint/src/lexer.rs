@@ -66,6 +66,12 @@ fn is_identifier_start(c: char) -> bool {
     c.is_alphabetic() || c == '_'
 }
 
+/// A byte order mark at the start of the file. Jenkins does not skip it: its
+/// validator reads `\u{feff}pipeline { ... }` as a file with no pipeline block.
+const LEADING_BOM: &str = "Unexpected byte order mark (U+FEFF) at the start of the file. \
+Save the file as UTF-8 without a BOM: Jenkins reads a Jenkinsfile that starts with one \
+as if it had no pipeline block.";
+
 /// An error for a character no token can start with. Invisible ones, such
 /// as a no-break space, are named by their code point.
 fn unexpected_char(c: char) -> String {
@@ -243,7 +249,12 @@ impl<'a> Lexer<'a> {
                 TokKind::Ident(s)
             } else {
                 let Some(p) = PUNCTS.iter().find(|p| self.starts_with(p)) else {
-                    return Err(self.err(pos, unexpected_char(c)));
+                    let message = if c == '\u{feff}' && self.i == 0 {
+                        LEADING_BOM.to_string()
+                    } else {
+                        unexpected_char(c)
+                    };
+                    return Err(self.err(pos, message));
                 };
                 for _ in 0..p.chars().count() {
                     self.bump();
@@ -583,6 +594,19 @@ mod tests {
         }
         // Inside strings and comments anything goes.
         assert!(tokenize("x = 'a\u{a0}b' // c\u{a0}d").is_ok());
+    }
+
+    #[test]
+    fn byte_order_mark() {
+        let e = tokenize("\u{feff}pipeline { }").expect_err("leading BOM");
+        assert_eq!((e.pos.line, e.pos.col), (1, 1));
+        assert!(
+            e.message.starts_with("Unexpected byte order mark (U+FEFF) at the start"),
+            "{}",
+            e.message
+        );
+        let e = tokenize("a \u{feff}b").expect_err("BOM inside");
+        assert_eq!(e.message, "Unexpected character U+FEFF");
     }
 
     #[test]

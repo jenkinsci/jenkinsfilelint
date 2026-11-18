@@ -269,6 +269,17 @@ class TestJenkinsfileLinterValidateWithJenkins:
         assert is_valid is False
         assert "Error reading file" in message
 
+    @patch("requests.Session.post")
+    def test_validate_with_jenkins_file_not_utf8(self, mock_post, tmp_path):
+        """A file that is not UTF-8 is reported, not raised, and not sent."""
+        jenkinsfile = tmp_path / "Jenkinsfile"
+        jenkinsfile.write_bytes("pipeline { } // café\n".encode("latin-1"))
+        linter = JenkinsfileLinter(jenkins_url="https://jenkins.example.com")
+        is_valid, message = linter._validate_with_jenkins(str(jenkinsfile))
+        assert is_valid is False
+        assert message.startswith("Error reading file: 'utf-8' codec can't decode")
+        mock_post.assert_not_called()
+
 
 class TestJenkinsfileLinterHTTPErrors:
     """Test HTTP error responses from Jenkins."""

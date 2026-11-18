@@ -729,7 +729,7 @@ valid
 
 [x07_bom_minimal]
 # Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
-error
+error: Unexpected byte order mark (U+FEFF) at the start of the file. Save the file as UTF-8 without a BOM: Jenkins reads a Jenkinsfile that starts with one as if it had no pipeline block.
 
 [x08_tabs_minimal]
 valid
