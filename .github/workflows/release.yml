@@ -207,7 +207,8 @@ jobs:
       # The container then needs no network: name resolution inside these
       # containers has failed in CI, once for pypi.org.
       if: ${{ matrix.image }}
-      run: python3 -m pip download --only-binary=:all: --platform any --dest wheels/deps requests
+      run: |
+        python3 -m pip download --only-binary=:all: --platform any --dest wheels/deps requests
     - name: Test in a container
       if: ${{ matrix.image }}
       env:
