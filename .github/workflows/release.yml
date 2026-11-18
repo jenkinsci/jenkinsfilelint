@@ -46,7 +46,11 @@ jobs:
           # 32-bit builds. A 32-bit Python on a 64-bit OS reports the 64-bit
           # machine, so pyproject.toml requires the engine there and pip
           # needs one of these wheels.
-          - {runner: ubuntu-latest, target: i686-unknown-linux-gnu, manylinux: auto}
+          # The default image for i686 on x86_64, quay.io/pypa/manylinux2014_i686,
+          # makes maturin-action install libatomic with yum from the CentOS 7
+          # vault, which is not reliably reachable. The cross image that
+          # maturin-action uses on arm64 runners builds the same wheel.
+          - {runner: ubuntu-latest, target: i686-unknown-linux-gnu, manylinux: auto, container: 'ghcr.io/rust-cross/manylinux2014-cross:i686'}
           - {runner: ubuntu-latest, target: armv7-unknown-linux-gnueabihf, manylinux: auto}
           - {runner: ubuntu-latest, target: i686-unknown-linux-musl, manylinux: musllinux_1_2}
           - {runner: ubuntu-latest, target: armv7-unknown-linux-musleabihf, manylinux: musllinux_1_2}
@@ -65,6 +69,7 @@ jobs:
         working-directory: crates/jenkinsfilelint
         target: ${{ matrix.target }}
         manylinux: ${{ matrix.manylinux || 'auto' }}
+        container: ${{ matrix.container }}
         args: --release --out dist
     - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
       with:
