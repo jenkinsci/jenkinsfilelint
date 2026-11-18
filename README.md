@@ -14,7 +14,7 @@ hook, but also works as a standalone CLI tool.
 
 > 📖 Read the [official blog post](https://www.jenkins.io/blog/2026/06/08/jenkinsfilelint-pre-commit/) for the story behind this tool.
 
-![demo](https://github.com/jenkinsci/jenkinsfilelint/blob/main/demo.gif)
+![demo](https://raw.githubusercontent.com/jenkinsci/jenkinsfilelint/main/demo.gif)
 
 ## Table of Contents
 
