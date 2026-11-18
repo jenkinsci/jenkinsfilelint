@@ -346,15 +346,13 @@ class TestDefaultMode:
         post.assert_not_called()
         return code, run
 
-    def test_no_jenkins_checks_offline_with_a_note(self, tmp_path, capsys):
+    def test_no_jenkins_checks_offline_quietly(self, tmp_path, capsys):
         code, run = self.offline_run(tmp_path, [])
         assert code == 0
         run.assert_called_once()
-        captured = capsys.readouterr()
-        assert captured.out == ""
-        assert captured.err == NO_JENKINS_NOTE + "\n"
+        assert capsys.readouterr() == ("", "")
 
-    def test_note_comes_before_the_errors(self, tmp_path, capsys):
+    def test_errors_come_without_a_note(self, tmp_path, capsys):
         f = tmp_path / "Jenkinsfile"
         report = {
             "file": str(f),
@@ -365,23 +363,33 @@ class TestDefaultMode:
         }
         code, _ = self.offline_run(tmp_path, [], reports=[report], returncode=1)
         assert code == 1
-        assert capsys.readouterr().err.splitlines() == [
-            NO_JENKINS_NOTE,
-            f"{f}:1:1: error: E",
-        ]
+        assert capsys.readouterr() == ("", f"{f}:1:1: error: E\n")
 
-    def test_offline_flag_hides_the_note(self, tmp_path, capsys):
-        code, _ = self.offline_run(tmp_path, ["--offline"])
+    def test_verbose_says_why_it_checks_offline(self, tmp_path, capsys):
+        code, _ = self.offline_run(tmp_path, ["--verbose"])
         assert code == 0
-        assert capsys.readouterr().err == ""
+        captured = capsys.readouterr()
+        assert captured.out.splitlines()[:2] == [
+            NO_JENKINS_NOTE,
+            "✓ Offline engine: engine",
+        ]
+        assert captured.err == ""
+
+    def test_offline_flag_has_no_note(self, tmp_path, capsys):
+        code, _ = self.offline_run(tmp_path, ["--offline", "--verbose"])
+        assert code == 0
+        out = capsys.readouterr().out
+        assert out.startswith("✓ Offline engine: engine\n")
+        assert NO_JENKINS_NOTE not in out
 
     def test_no_note_when_every_file_is_skipped(self, tmp_path, capsys):
         f = tmp_path / "Jenkinsfile"
         with patch(
             "jenkinsfilelint.cli.find_engine", side_effect=OfflineEngineError("x")
         ):
-            assert run_cli(["--skip", "Jenkinsfile", str(f)]) == 0
-        assert capsys.readouterr().err == ""
+            assert run_cli(["--verbose", "--skip", "Jenkinsfile", str(f)]) == 0
+        captured = capsys.readouterr()
+        assert NO_JENKINS_NOTE not in captured.out + captured.err
 
     def test_no_jenkins_and_no_engine(self, tmp_path, capsys):
         f = tmp_path / "Jenkinsfile"
@@ -587,9 +595,9 @@ class TestAgainstJenkinsVerdicts:
         )
         assert proc.returncode == 1, proc.stderr
         assert f"✓ {ROOT / 'tests' / 'Jenkinsfile'}: Valid" in proc.stdout
+        assert NO_JENKINS_NOTE not in proc.stdout + proc.stderr
         lines = proc.stderr.splitlines()
-        assert lines[0] == NO_JENKINS_NOTE
-        assert lines[1].startswith(
+        assert lines[0].startswith(
             f"{ROOT / 'tests' / 'Jenkinsfile.fail'}:2:5: error: "
             'Not a valid section definition: "agent".'
         )

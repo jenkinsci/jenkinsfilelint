@@ -62,10 +62,9 @@ machines without Docker. Remote and local mode ask a real Jenkins, so they also
 catch mistakes that depend on the plugins it has installed.
 
 Any Jenkins setting (`JENKINS_URL`, `JENKINS_USER` or `JENKINS_TOKEN`, or the
-matching flag) selects remote mode, so a CI job whose `JENKINS_URL` secret is
-missing still fails instead of quietly checking less. When offline mode is
-chosen because nothing is configured, a one-line note says so; `--offline`
-chooses it explicitly, without the note, even if a Jenkins server is
+matching flag) selects remote mode. So a CI job that sets `JENKINS_TOKEN` but
+lost its `JENKINS_URL` secret fails with "Jenkins URL not provided" instead of
+quietly checking less. `--offline` checks offline even if a Jenkins server is
 configured.
 
 ## Pre-commit Hook
@@ -211,11 +210,11 @@ jenkinsfilelint --local Jenkinsfile           # a Jenkins in Docker
 jenkinsfilelint --offline Jenkinsfile         # offline, even if JENKINS_URL is set
 ```
 
-Without a Jenkins server configured, the first line prints a note before its
-results:
+With `--verbose`, a run that checks offline because no Jenkins server is
+configured starts by saying so:
 
 ```text
-ℹ No Jenkins server configured, so checking offline: step names, step parameters and other plugin-dependent checks are skipped. Set JENKINS_URL to check with Jenkins, or pass --offline to hide this note.
+ℹ No Jenkins server configured, so checking offline: step names, step parameters and other plugin-dependent checks are skipped. Set JENKINS_URL to check with Jenkins.
 ```
 
 The exit code is `0` when every file is valid and `1` when any file has an

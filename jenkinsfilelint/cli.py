@@ -188,10 +188,12 @@ def _run_local_validation(args: argparse.Namespace) -> None:
 # Settings that mean "check with this Jenkins server".
 JENKINS_ENV_VARS = ("JENKINS_URL", "JENKINS_USER", "JENKINS_TOKEN")
 
+# Printed with --verbose when offline checking was chosen because no Jenkins
+# server is configured.
 NO_JENKINS_NOTE = (
     "ℹ No Jenkins server configured, so checking offline: step names, step "
     "parameters and other plugin-dependent checks are skipped. Set JENKINS_URL "
-    "to check with Jenkins, or pass --offline to hide this note."
+    "to check with Jenkins."
 )
 
 NO_JENKINS_NO_ENGINE = (
@@ -220,6 +222,8 @@ def _run_offline_validation(args: argparse.Namespace, automatic: bool = False) -
     try:
         engine = find_engine() if selected else None
         if engine and args.verbose:
+            if automatic:
+                print(NO_JENKINS_NOTE)
             print(f"✓ Offline engine: {engine}")
         results = lint_files(selected, engine) if selected else {}
     except OfflineEngineError as exc:
@@ -227,10 +231,6 @@ def _run_offline_validation(args: argparse.Namespace, automatic: bool = False) -
             print(NO_JENKINS_NO_ENGINE, file=sys.stderr)
         print(f"✗ {exc}", file=sys.stderr)
         sys.exit(1)
-
-    if automatic and selected:
-        sys.stdout.flush()
-        print(NO_JENKINS_NOTE, file=sys.stderr)
 
     all_valid = True
     for jenkinsfile in args.jenkinsfile:
