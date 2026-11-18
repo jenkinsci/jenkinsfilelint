@@ -96,7 +96,9 @@ class JenkinsfileLinter:
         try:
             with open(jenkinsfile_path, "r", encoding="utf-8") as f:
                 jenkinsfile_content = f.read()
-        except IOError as e:
+        except (OSError, UnicodeDecodeError) as e:
+            # UnicodeDecodeError is not an OSError: without it, one file that
+            # is not UTF-8 ended the whole run with a traceback.
             return False, f"Error reading file: {e}"
 
         # Prepare the validation endpoint
