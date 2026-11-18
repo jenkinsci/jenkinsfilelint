@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Tests for --offline mode and the jenkinsfilelint-engine binary it runs."""
 
+import importlib.util
 import json
 import os
 import re
@@ -47,9 +48,18 @@ def engine_output(reports, returncode=1, stderr=""):
     )
 
 
+# The parsers of crates/jenkinsfilelint/scripts/check_engine_version.py,
+# which the release workflow runs.
+_spec = importlib.util.spec_from_file_location(
+    "check_engine_version", CRATE / "scripts" / "check_engine_version.py"
+)
+check_engine_version = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(check_engine_version)
+
+
 def cargo_version():
     text = (CRATE / "Cargo.toml").read_text(encoding="utf-8")
-    return re.search(r'^version = "([^"]+)"', text, re.MULTILINE).group(1)
+    return check_engine_version.cargo_version(text)
 
 
 @pytest.fixture
@@ -72,9 +82,8 @@ class TestEnginePin:
     """jenkinsfilelint requires exactly the engine version in Cargo.toml."""
 
     def test_pin_matches_cargo_version(self):
-        pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-        pin = re.search(r"jenkinsfilelint-engine==([^;\s\"]+)", pyproject).group(1)
-        assert pin == cargo_version()
+        lines = check_engine_version.check_pin(ROOT)
+        assert not lines[0].startswith("error:"), lines
 
     def test_installed_engine_matches_cargo_version(self):
         try:
@@ -207,6 +216,38 @@ class TestLintFiles:
             with pytest.raises(OfflineEngineError, match="panicked"):
                 lint_files([str(f)], "engine")
 
+    @pytest.mark.parametrize(
+        "report",
+        [
+            {"file": "x"},
+            1,
+            "text",
+            {"file": "x", "declarative": True, "diagnostics": [{"line": 1}]},
+            {"file": "x", "declarative": "yes", "diagnostics": []},
+            {"file": "x", "declarative": True, "diagnostics": "none"},
+        ],
+        ids=[
+            "no-diagnostics",
+            "number",
+            "string",
+            "diagnostic-fields",
+            "declarative-type",
+            "diagnostics-type",
+        ],
+    )
+    def test_malformed_report(self, report, tmp_path):
+        """An engine that answers in another shape gives a clean error."""
+        f = tmp_path / "Jenkinsfile"
+        f.write_text("")
+        with patch(
+            "jenkinsfilelint.offline.subprocess.run",
+            return_value=engine_output([report]),
+        ):
+            with pytest.raises(
+                OfflineEngineError, match="Unexpected output from engine"
+            ):
+                lint_files([str(f)], "engine")
+
     def test_file_left_out_by_engine(self, tmp_path):
         f = tmp_path / "Jenkinsfile"
         f.write_text("")
@@ -246,7 +287,7 @@ class TestOfflineCLI:
                 "jenkinsfilelint.offline.subprocess.run",
                 return_value=engine_output([report], returncode=0),
             ),
-            patch("jenkinsfilelint.linter.requests.post") as post,
+            patch("jenkinsfilelint.linter.requests.Session.post") as post,
         ):
             assert run_cli(["--offline", str(f)]) == 0
         post.assert_not_called()
@@ -340,7 +381,7 @@ class TestDefaultMode:
                 "jenkinsfilelint.offline.subprocess.run",
                 return_value=engine_output(reports, returncode=returncode),
             ) as run,
-            patch("jenkinsfilelint.linter.requests.post") as post,
+            patch("jenkinsfilelint.linter.requests.Session.post") as post,
         ):
             code = run_cli([*argv, str(f)])
         post.assert_not_called()

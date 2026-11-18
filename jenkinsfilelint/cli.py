@@ -233,6 +233,7 @@ def _run_offline_validation(args: argparse.Namespace, automatic: bool = False) -
         sys.exit(1)
 
     all_valid = True
+    printed_messages: Set[str] = set()
     for jenkinsfile in args.jenkinsfile:
         reason = _skip_reason(jenkinsfile, args)
         if reason:
@@ -251,12 +252,11 @@ def _run_offline_validation(args: argparse.Namespace, automatic: bool = False) -
 
         if not result.is_valid:
             all_valid = False
-        elif not result.declarative:
-            # The Groovy parsed, but there is no Declarative syntax to check.
-            if args.verbose or len(args.jenkinsfile) > 1:
-                print(f"⊘ {jenkinsfile}: Skipped (not a Declarative Pipeline)")
-        elif args.verbose or len(args.jenkinsfile) > 1:
-            print(f"✓ {jenkinsfile}: Valid")
+        else:
+            # Valid, or skipped when there is no Declarative syntax to check:
+            # reported the same way as in the other modes.
+            message = "" if result.declarative else NOT_DECLARATIVE_MESSAGE
+            _report(jenkinsfile, True, message, args, printed_messages)
 
     sys.exit(0 if all_valid else 1)
 

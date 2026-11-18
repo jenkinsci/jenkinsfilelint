@@ -107,19 +107,36 @@ def lint_files(
     # The engine reports files in the order given. Match by position, not by
     # the "file" field, which is lossy for file names that are not UTF-8.
     for path, report in zip(existing, reports):
-        if "error" in report:
-            results[path] = OfflineResult(
-                False, False, [f"Error reading file {path}: {report['error']}"]
-            )
-            continue
-        diagnostics = report["diagnostics"]
-        results[path] = OfflineResult(
-            is_valid=not any(d["severity"] == "error" for d in diagnostics),
-            declarative=report["declarative"],
-            lines=[
-                f"{path}:{d['line']}:{d['column']}: {d['severity']}: {d['message']}"
-                for d in diagnostics
-            ],
-        )
+        try:
+            results[path] = _result(path, report)
+        except (KeyError, TypeError, AttributeError):
+            raise OfflineEngineError(
+                f"Unexpected output from {engine}: {json.dumps(report)[:200]}"
+            ) from None
 
     return results
+
+
+def _result(path: str, report: dict) -> OfflineResult:
+    """Turn the engine's report on one file into a result.
+
+    Raises:
+        KeyError, TypeError, AttributeError: if the report is not shaped as
+        the engine documents it.
+    """
+    if "error" in report:
+        return OfflineResult(
+            False, False, [f"Error reading file {path}: {report['error']}"]
+        )
+    diagnostics = report["diagnostics"]
+    declarative = report["declarative"]
+    if not isinstance(diagnostics, list) or not isinstance(declarative, bool):
+        raise TypeError("diagnostics must be a list and declarative a boolean")
+    return OfflineResult(
+        is_valid=not any(d["severity"] == "error" for d in diagnostics),
+        declarative=declarative,
+        lines=[
+            f"{path}:{d['line']}:{d['column']}: {d['severity']}: {d['message']}"
+            for d in diagnostics
+        ],
+    )
