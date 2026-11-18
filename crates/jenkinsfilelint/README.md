@@ -10,7 +10,7 @@ This is the offline engine of `jenkinsfilelint`: it runs for `--offline`, the
 configured. Most people want
 [jenkinsfilelint](https://github.com/jenkinsci/jenkinsfilelint) itself, which
 installs this package. The remote and Docker modes of `jenkinsfilelint` stay
-the exact check; this one is the fast one. See [DESIGN.md](DESIGN.md).
+the exact check; this one is the fast one. See [DESIGN.md](https://github.com/jenkinsci/jenkinsfilelint/blob/main/crates/jenkinsfilelint/DESIGN.md).
 
 ```console
 $ jenkinsfilelint-engine Jenkinsfile
