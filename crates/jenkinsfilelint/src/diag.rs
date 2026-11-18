@@ -6,6 +6,13 @@ pub struct Pos {
     pub col: usize,
 }
 
+/// A range of source text, from `start` up to but not including `end`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Span {
+    pub start: Pos,
+    pub end: Pos,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Severity {
     Error,

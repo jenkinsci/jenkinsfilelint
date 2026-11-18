@@ -228,6 +228,8 @@ mod tests {
             wrap(format!("def x = {}2", "a = ".repeat(100_000))),
             wrap(format!("if (a) {{ echo 'x' }}{}", " else if (a) { echo 'x' }".repeat(100_000))),
             wrap(format!("echo \"{}x{}\"", "${\"".repeat(100_000), "\"}".repeat(100_000))),
+            // Within the lexer's limit, so the parser's limit stops it.
+            wrap(format!("echo \"{}x{}\"", "${\"".repeat(990), "\"}".repeat(990))),
             format!(
                 "pipeline {{\n agent any\n stages {{\n{}stage('l') {{ steps {{ echo 'x' }} }}\n{}}}\n}}\n",
                 "stage('s') { stages {\n".repeat(10_000),

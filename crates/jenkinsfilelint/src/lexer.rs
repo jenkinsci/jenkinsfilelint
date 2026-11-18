@@ -1,23 +1,74 @@
 //! Tokenizer for the subset of Groovy used in Jenkinsfiles.
 //!
 //! It knows every Groovy string form (single, double, triple, slashy and
-//! dollar-slashy), comments and numbers. GString interpolation is kept as
-//! raw text: the declarative checks only need to know that a string is
-//! interpolated, not what is inside it.
+//! dollar-slashy), comments and numbers. A GString's `$name` and `${...}`
+//! placeholders are kept as source text with their positions, for the
+//! parser to parse.
 
-use crate::diag::{Diagnostic, Pos};
+use crate::diag::{Diagnostic, Pos, Span};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TokKind {
     Ident(String),
-    /// A string literal. `interp` is true for a GString that contains `$`.
+    /// A string literal. `interp` is true for a GString that contains `$`,
+    /// and for every dollar-slashy string. `parts` holds its text and
+    /// placeholders in order, and is empty when it has no placeholder.
     Str {
         value: String,
         interp: bool,
+        parts: Vec<RawPart>,
     },
     Num(String),
     Punct(&'static str),
     Eof,
+}
+
+/// A piece of a string literal: text, or a placeholder.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RawPart {
+    Text(String),
+    Placeholder(RawPlaceholder),
+}
+
+/// A `$name` or `${...}` placeholder of a GString, as source text.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RawPlaceholder {
+    /// The dotted name after `$`, or everything between `${` and `}`.
+    pub src: String,
+    /// Where `src` starts in the file.
+    pub src_pos: Pos,
+    /// From the `$` to just past the placeholder.
+    pub span: Span,
+    /// `${...}` rather than `$name`.
+    pub braced: bool,
+}
+
+/// Collects the parts of a string literal while it is read.
+#[derive(Default)]
+struct Parts {
+    parts: Vec<RawPart>,
+    text: String,
+}
+
+impl Parts {
+    fn text(&mut self, c: char) {
+        self.text.push(c);
+    }
+
+    fn placeholder(&mut self, p: RawPlaceholder) {
+        if !self.text.is_empty() {
+            self.parts.push(RawPart::Text(std::mem::take(&mut self.text)));
+        }
+        self.parts.push(RawPart::Placeholder(p));
+    }
+
+    /// The parts, or none when there was no placeholder.
+    fn finish(mut self) -> Vec<RawPart> {
+        if !self.parts.is_empty() && !self.text.is_empty() {
+            self.parts.push(RawPart::Text(self.text));
+        }
+        self.parts
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -86,6 +137,16 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, Diagnostic> {
     Lexer::new(src).run()
 }
 
+/// Tokenize text that starts at `start` in the file, such as what is
+/// inside a `${...}` placeholder, so that positions point into the file.
+pub fn tokenize_at(src: &str, start: Pos) -> Result<Vec<Token>, Diagnostic> {
+    let mut lexer = Lexer::new(src);
+    lexer.line = start.line;
+    lexer.col = start.col;
+    lexer.start_of_file = false;
+    lexer.run()
+}
+
 struct Lexer<'a> {
     chars: Vec<char>,
     i: usize,
@@ -95,6 +156,9 @@ struct Lexer<'a> {
     out: Vec<Token>,
     /// Nesting of `${ "..." }` inside GStrings, capped like the parser's.
     interp_depth: usize,
+    /// Whether the text is a whole file, where a shebang line or a byte
+    /// order mark can come first.
+    start_of_file: bool,
 }
 
 impl<'a> Lexer<'a> {
@@ -107,6 +171,7 @@ impl<'a> Lexer<'a> {
             src,
             out: Vec::new(),
             interp_depth: 0,
+            start_of_file: true,
         }
     }
 
@@ -157,7 +222,7 @@ impl<'a> Lexer<'a> {
     fn run(mut self) -> Result<Vec<Token>, Diagnostic> {
         let _ = self.src;
         // Shebang line.
-        if self.starts_with("#!") {
+        if self.start_of_file && self.starts_with("#!") {
             while let Some(c) = self.peek(0) {
                 if c == '\n' {
                     break;
@@ -249,7 +314,7 @@ impl<'a> Lexer<'a> {
                 TokKind::Ident(s)
             } else {
                 let Some(p) = PUNCTS.iter().find(|p| self.starts_with(p)) else {
-                    let message = if c == '\u{feff}' && self.i == 0 {
+                    let message = if c == '\u{feff}' && self.i == 0 && self.start_of_file {
                         LEADING_BOM.to_string()
                     } else {
                         unexpected_char(c)
@@ -336,11 +401,13 @@ impl<'a> Lexer<'a> {
             return Ok(TokKind::Str {
                 value: String::new(),
                 interp: false,
+                parts: Vec::new(),
             });
         }
         let gstring = q == '"';
         let mut value = String::new();
         let mut interp = false;
+        let mut parts = Parts::default();
         loop {
             let Some(c) = self.peek(0) else {
                 return Err(self.err(start, "Unterminated string literal"));
@@ -361,18 +428,20 @@ impl<'a> Lexer<'a> {
             if c == '\\' {
                 self.bump();
                 if let Some(e) = self.bump() {
-                    value.push(match e {
+                    let c = match e {
                         'n' => '\n',
                         't' => '\t',
                         other => other,
-                    });
+                    };
+                    value.push(c);
+                    parts.text(c);
                 }
                 continue;
             }
             if gstring && c == '$' {
                 if self.peek(1) == Some('{') {
                     interp = true;
-                    value.push_str(&self.interpolation(start)?);
+                    parts.placeholder(self.braced_placeholder(start, &mut value)?);
                     continue;
                 }
                 // Like Groovy, a `$` must start `${...}` or a name: `"$(date)"`,
@@ -381,15 +450,84 @@ impl<'a> Lexer<'a> {
                     return Err(self.err(self.pos(), ILLEGAL_DOLLAR));
                 }
                 interp = true;
+                parts.placeholder(self.simple_placeholder(&mut value));
+                continue;
             }
             value.push(c);
+            parts.text(c);
             self.bump();
         }
-        Ok(TokKind::Str { value, interp })
+        Ok(TokKind::Str {
+            value,
+            interp,
+            parts: parts.finish(),
+        })
     }
 
-    /// Consume `${ ... }` inside a GString and return its raw text.
-    fn interpolation(&mut self, start: Pos) -> Result<String, Diagnostic> {
+    /// At `${`: read the placeholder and add its text to `value`.
+    fn braced_placeholder(&mut self, start: Pos, value: &mut String) -> Result<RawPlaceholder, Diagnostic> {
+        let begin = self.pos();
+        let begin_i = self.i;
+        self.interpolation(start)?;
+        // Inside another placeholder, a string is read only to find where
+        // that placeholder ends; its value and parts are dropped, and the
+        // parser reads the text again. Copying the text there would make
+        // deep nesting quadratic.
+        let src = if self.interp_depth == 0 {
+            value.extend(&self.chars[begin_i..self.i]);
+            self.chars[begin_i + 2..self.i - 1].iter().collect()
+        } else {
+            String::new()
+        };
+        Ok(RawPlaceholder {
+            src,
+            src_pos: Pos {
+                line: begin.line,
+                col: begin.col + 2,
+            },
+            span: Span {
+                start: begin,
+                end: self.pos(),
+            },
+            braced: true,
+        })
+    }
+
+    /// At `$` and a name: read `$name`, and `.name` after it, as Groovy
+    /// does: `"$a.b"` is property `b` of `a`, and the `.` in `"$a."` and
+    /// `"$a.1"` is text. A name in a GString has no `$` in it.
+    fn simple_placeholder(&mut self, value: &mut String) -> RawPlaceholder {
+        let begin = self.pos();
+        value.push(self.bump().unwrap());
+        let src_pos = self.pos();
+        let mut src = String::new();
+        loop {
+            while let Some(c) = self.peek(0).filter(|c| c.is_alphanumeric() || *c == '_') {
+                src.push(c);
+                value.push(c);
+                self.bump();
+            }
+            if self.peek(0) == Some('.') && self.peek(1).is_some_and(is_identifier_start) {
+                src.push('.');
+                value.push('.');
+                self.bump();
+            } else {
+                break;
+            }
+        }
+        RawPlaceholder {
+            src,
+            src_pos,
+            span: Span {
+                start: begin,
+                end: self.pos(),
+            },
+            braced: false,
+        }
+    }
+
+    /// Consume `${ ... }` inside a GString.
+    fn interpolation(&mut self, start: Pos) -> Result<(), Diagnostic> {
         if self.interp_depth >= crate::parser::MAX_DEPTH {
             return Err(self.err(
                 self.pos(),
@@ -402,10 +540,9 @@ impl<'a> Lexer<'a> {
         result
     }
 
-    fn interpolation_inner(&mut self, start: Pos) -> Result<String, Diagnostic> {
-        let mut text = String::new();
-        text.push(self.bump().unwrap()); // $
-        text.push(self.bump().unwrap()); // {
+    fn interpolation_inner(&mut self, start: Pos) -> Result<(), Diagnostic> {
+        self.bump(); // $
+        self.bump(); // {
         let mut depth = 1;
         // The last meaningful character, to tell `/` as division (after a
         // value) from a slashy string (after an operator or delimiter).
@@ -419,16 +556,14 @@ impl<'a> Lexer<'a> {
                 '}' => depth -= 1,
                 '\'' | '"' => {
                     let p = self.pos();
-                    let before = self.i;
                     self.string(p)?;
-                    text.extend(&self.chars[before..self.i]);
                     prev = '"';
                     continue;
                 }
                 '/' if self.peek(1) == Some('/') => {
                     // A line comment; a `}` in it does not end the `${...}`.
                     while self.peek(0).is_some_and(|c| c != '\n') {
-                        text.push(self.bump().unwrap());
+                        self.bump();
                     }
                     continue;
                 }
@@ -441,16 +576,13 @@ impl<'a> Lexer<'a> {
                     }
                     self.bump();
                     self.bump();
-                    text.push_str("/**/");
                     continue;
                 }
                 '/' if !prev.is_alphanumeric() && !matches!(prev, ')' | ']' | '_' | '"') => {
                     // A slashy string, as in `${m[/"/]}`; a `}` or quote in
                     // it does not end the `${...}`.
                     let p = self.pos();
-                    let before = self.i;
                     self.slashy(p)?;
-                    text.extend(&self.chars[before..self.i]);
                     prev = '"';
                     continue;
                 }
@@ -459,16 +591,16 @@ impl<'a> Lexer<'a> {
             if !c.is_whitespace() {
                 prev = c;
             }
-            text.push(c);
             self.bump();
         }
-        Ok(text)
+        Ok(())
     }
 
     fn slashy(&mut self, start: Pos) -> Result<TokKind, Diagnostic> {
         self.bump();
         let mut value = String::new();
         let mut interp = false;
+        let mut parts = Parts::default();
         loop {
             match self.peek(0) {
                 None => return Err(self.err(start, "Unterminated slashy string")),
@@ -480,24 +612,36 @@ impl<'a> Lexer<'a> {
                     self.bump();
                     self.bump();
                     value.push('/');
+                    parts.text('/');
                 }
                 Some('$') if self.peek(1) == Some('{') => {
                     interp = true;
-                    value.push_str(&self.interpolation(start)?);
+                    parts.placeholder(self.braced_placeholder(start, &mut value)?);
+                }
+                // A `$` before anything but a name, as in `/^v\d+$/`, is text.
+                Some('$') if self.peek(1).is_some_and(is_identifier_start) => {
+                    interp = true;
+                    parts.placeholder(self.simple_placeholder(&mut value));
                 }
                 Some(c) => {
                     value.push(c);
+                    parts.text(c);
                     self.bump();
                 }
             }
         }
-        Ok(TokKind::Str { value, interp })
+        Ok(TokKind::Str {
+            value,
+            interp,
+            parts: parts.finish(),
+        })
     }
 
     fn dollar_slashy(&mut self, start: Pos) -> Result<TokKind, Diagnostic> {
         self.bump();
         self.bump();
         let mut value = String::new();
+        let mut parts = Parts::default();
         loop {
             if self.starts_with("/$") {
                 self.bump();
@@ -506,15 +650,32 @@ impl<'a> Lexer<'a> {
             }
             if self.starts_with("$$") || self.starts_with("$/") {
                 self.bump();
-                value.push(self.bump().unwrap());
+                let c = self.bump().unwrap();
+                value.push(c);
+                parts.text(c);
+                continue;
+            }
+            if self.starts_with("${") {
+                parts.placeholder(self.braced_placeholder(start, &mut value)?);
+                continue;
+            }
+            if self.peek(0) == Some('$') && self.peek(1).is_some_and(is_identifier_start) {
+                parts.placeholder(self.simple_placeholder(&mut value));
                 continue;
             }
             match self.bump() {
-                Some(c) => value.push(c),
+                Some(c) => {
+                    value.push(c);
+                    parts.text(c);
+                }
                 None => return Err(self.err(start, "Unterminated dollar-slashy string")),
             }
         }
-        Ok(TokKind::Str { value, interp: true })
+        Ok(TokKind::Str {
+            value,
+            interp: true,
+            parts: parts.finish(),
+        })
     }
 }
 
@@ -528,21 +689,119 @@ mod tests {
 
     #[test]
     fn strings() {
+        let k = kinds("sh 'a' \"b ${x + '}'} c\"");
+        assert_eq!(k[0], TokKind::Ident("sh".into()));
         assert_eq!(
-            kinds("sh 'a' \"b ${x + '}'} c\""),
+            k[1],
+            TokKind::Str {
+                value: "a".into(),
+                interp: false,
+                parts: vec![]
+            }
+        );
+        let TokKind::Str { value, interp, parts } = &k[2] else {
+            panic!("{:?}", k[2]);
+        };
+        assert_eq!((value.as_str(), *interp), ("b ${x + '}'} c", true));
+        assert_eq!(parts.len(), 3);
+        assert_eq!(k[3], TokKind::Eof);
+    }
+
+    /// The text and placeholders of each GString form, where they are in
+    /// the file, and what text goes to the parser.
+    fn parts(src: &str) -> Vec<RawPart> {
+        match tokenize(src).unwrap().remove(0).kind {
+            TokKind::Str { parts, .. } => parts,
+            other => panic!("{other:?}"),
+        }
+    }
+
+    fn text(t: &str) -> RawPart {
+        RawPart::Text(t.into())
+    }
+
+    fn placeholder(src: &str, braced: bool, (line, col): (usize, usize), end: (usize, usize)) -> RawPart {
+        let start = Pos { line, col };
+        RawPart::Placeholder(RawPlaceholder {
+            src: src.into(),
+            src_pos: Pos {
+                line,
+                col: col + if braced { 2 } else { 1 },
+            },
+            span: Span {
+                start,
+                end: Pos { line: end.0, col: end.1 },
+            },
+            braced,
+        })
+    }
+
+    #[test]
+    fn gstring_parts() {
+        assert_eq!(
+            parts("\"a ${x} $y.z. c\\$d\""),
             vec![
-                TokKind::Ident("sh".into()),
-                TokKind::Str {
-                    value: "a".into(),
-                    interp: false
-                },
-                TokKind::Str {
-                    value: "b ${x + '}'} c".into(),
-                    interp: true
-                },
-                TokKind::Eof
+                text("a "),
+                placeholder("x", true, (1, 4), (1, 8)),
+                text(" "),
+                placeholder("y.z", false, (1, 9), (1, 13)),
+                text(". c$d"),
             ]
         );
+        // `$a$b` is two names; `$a.1` and `$a.b()` stop before what is not a name.
+        assert_eq!(
+            parts("\"$a$b $c.1 $d.e()\""),
+            vec![
+                placeholder("a", false, (1, 2), (1, 4)),
+                placeholder("b", false, (1, 4), (1, 6)),
+                text(" "),
+                placeholder("c", false, (1, 7), (1, 9)),
+                text(".1 "),
+                placeholder("d.e", false, (1, 12), (1, 16)),
+                text("()"),
+            ]
+        );
+        // Placeholder text comes from the file, comments and lines included.
+        assert_eq!(
+            parts("\"\"\"x ${\n  a /* } */\n} y\"\"\""),
+            vec![text("x "), placeholder("\n  a /* } */\n", true, (1, 6), (3, 2)), text(" y"),]
+        );
+        assert_eq!(
+            parts("/a ${b} $c $/"),
+            vec![
+                text("a "),
+                placeholder("b", true, (1, 4), (1, 8)),
+                text(" "),
+                placeholder("c", false, (1, 9), (1, 11)),
+                text(" $")
+            ]
+        );
+        assert_eq!(
+            parts("$/a $b ${c} $$ $/ x/$"),
+            vec![
+                text("a "),
+                placeholder("b", false, (1, 5), (1, 7)),
+                text(" "),
+                placeholder("c", true, (1, 8), (1, 12)),
+                text(" $ / x")
+            ]
+        );
+        // No placeholder, no parts, even when interpolation is possible.
+        assert!(parts("\"plain\"").is_empty());
+        assert!(parts("'$a ${b}'").is_empty());
+        assert!(parts("/^v\\d+$/").is_empty());
+        assert!(parts("$/plain $$/$").is_empty());
+    }
+
+    #[test]
+    fn tokenize_at_keeps_file_positions() {
+        let toks = tokenize_at("a\n  b", Pos { line: 7, col: 30 }).unwrap();
+        assert_eq!((toks[0].pos.line, toks[0].pos.col), (7, 30));
+        assert_eq!((toks[1].pos.line, toks[1].pos.col), (8, 3));
+        // Only a whole file may start with a shebang line or a BOM.
+        assert!(tokenize_at("#!x", Pos { line: 1, col: 1 }).is_err());
+        let e = tokenize_at("\u{feff}a", Pos { line: 1, col: 1 }).expect_err("BOM");
+        assert_eq!(e.message, "Unexpected character U+FEFF");
     }
 
     #[test]
@@ -551,7 +810,8 @@ mod tests {
         assert!(k.contains(&TokKind::Punct("/")));
         assert!(k.contains(&TokKind::Str {
             value: "re+".into(),
-            interp: false
+            interp: false,
+            parts: vec![]
         }));
     }
 

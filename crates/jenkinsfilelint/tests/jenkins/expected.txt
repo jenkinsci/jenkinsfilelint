@@ -339,6 +339,16 @@ error: Expected one of "steps", "stages", or "parallel" for stage "S"
 [e88_missing_agent_beside_helper_pipeline]
 error: Missing required section "agent"
 
+[e89_command_chain_in_steps]
+error: Expected a step
+
+[e90_echo_then_word_in_steps]
+error: Expected a step
+
+[e91_command_chain_call_in_steps]
+# Jenkins: Expected a symbol
+error
+
 [p01_kubernetes_agent]
 # Differs: Depends on installed plugins or controller configuration, which the offline linter cannot see.
 # Jenkins: Invalid agent type "kubernetes" specified. Must be one of [any, docker, dockerfile, label, none]
@@ -509,6 +519,30 @@ error
 
 [s28_no_break_space]
 # Jenkins: unexpected char: 0xA0
+error
+
+[s29_gstring_placeholder_syntax_error]
+# Jenkins: expecting '}', found '+'
+error
+
+[s30_gstring_placeholder_escaped_quote]
+# Jenkins: unexpected char: '\'
+error
+
+[s31_gstring_placeholder_unclosed_paren]
+# Jenkins: unexpected token: }
+error
+
+[s32_gstring_placeholder_bad_char]
+# Jenkins: unexpected char: '#'
+error
+
+[s33_dollar_slashy_placeholder_error]
+# Jenkins: expecting '}', found '+'
+error
+
+[s34_slashy_placeholder_error]
+# Jenkins: expecting '}', found '+'
 error
 
 [v01_minimal]
@@ -695,6 +729,60 @@ valid
 valid
 
 [v65_pipeline_in_helper_method]
+valid
+
+[v66_gstring_empty_placeholder]
+valid
+
+[v67_gstring_lazy_placeholder]
+valid
+
+[v68_gstring_placeholder_statements]
+valid
+
+[v69_gstring_placeholder_comment]
+valid
+
+[v70_gstring_nested]
+valid
+
+[v71_gstring_dotted_name]
+valid
+
+[v72_gstring_multiline_placeholder]
+valid
+
+[v73_slashy_simple_placeholder]
+valid
+
+[v74_dollar_slashy_placeholders]
+valid
+
+[v75_gstring_placeholder_command_chain]
+valid
+
+[v76_gstring_placeholder_def]
+valid
+
+[v77_gstring_placeholder_if]
+valid
+
+[v78_command_chain]
+valid
+
+[v79_command_chain_with_argument]
+valid
+
+[v80_command_chain_dsl]
+valid
+
+[v81_command_chain_with_closure]
+valid
+
+[v82_command_chain_as_value]
+valid
+
+[v83_command_as_assigned_value]
 valid
 
 [x01_scripted_pipeline]

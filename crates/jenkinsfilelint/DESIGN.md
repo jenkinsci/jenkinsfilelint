@@ -52,9 +52,16 @@ scripts/corpus_check.py  agreement test against the plugin's own samples
 ```
 
 The parser is strict where Jenkins users write code every day (command
-calls, named arguments, closures, GStrings, maps, lists) and lenient where
-declarative validation never looks (class bodies, `switch`, `for` headers),
-where it only checks that brackets balance.
+calls and command chains, named arguments, closures, GStrings, maps, lists)
+and lenient where declarative validation never looks (class bodies,
+`switch`, `for` headers), where it only checks that brackets balance.
+
+GString placeholders are parsed as Groovy compiles them, so a mistake inside
+`"${...}"` is an error in the file. `$a.b` is an expression; what is inside
+`${...}` is a closure body, so it may hold statements (`${def v = 1; v}`) or
+start with `->`. Each placeholder keeps where it starts and ends in the file,
+which the security checks planned for 1.7.0 (#65) need to point at the exact
+value that is interpolated into a shell step.
 
 Messages are copied from the plugin's `Messages.properties`, so a user sees
 the same text offline and online.

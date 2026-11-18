@@ -1,6 +1,6 @@
 [package]
 name = "jenkinsfilelint-engine"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 description = "Check Jenkinsfile syntax and Declarative Pipeline structure without a Jenkins controller"
 license = "MIT"
