@@ -1,0 +1,594 @@
+//! Tokenizer for the subset of Groovy used in Jenkinsfiles.
+//!
+//! It knows every Groovy string form (single, double, triple, slashy and
+//! dollar-slashy), comments and numbers. GString interpolation is kept as
+//! raw text: the declarative checks only need to know that a string is
+//! interpolated, not what is inside it.
+
+use crate::diag::{Diagnostic, Pos};
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TokKind {
+    Ident(String),
+    /// A string literal. `interp` is true for a GString that contains `$`.
+    Str {
+        value: String,
+        interp: bool,
+    },
+    Num(String),
+    Punct(&'static str),
+    Eof,
+}
+
+#[derive(Debug, Clone)]
+pub struct Token {
+    pub kind: TokKind,
+    pub pos: Pos,
+    /// True when a newline separates this token from the previous one.
+    pub nl_before: bool,
+}
+
+impl Token {
+    pub fn is_punct(&self, p: &str) -> bool {
+        matches!(&self.kind, TokKind::Punct(q) if *q == p)
+    }
+    pub fn is_ident(&self, name: &str) -> bool {
+        matches!(&self.kind, TokKind::Ident(n) if n == name)
+    }
+    pub fn describe(&self) -> String {
+        match &self.kind {
+            TokKind::Ident(n) => format!("'{n}'"),
+            TokKind::Str { .. } => "string".to_string(),
+            TokKind::Num(n) => format!("number {n}"),
+            TokKind::Punct(p) => format!("'{p}'"),
+            TokKind::Eof => "end of file".to_string(),
+        }
+    }
+}
+
+// Longest operators first so that greedy matching works.
+const PUNCTS: &[&str] = &[
+    ">>>=", "<..<", "**=", "<<=", ">>=", "<=>", "===", "!==", "==~", "..<", "<..", "...", "?.", "*.", ".&", ".@", "::", "==", "!=", "<=",
+    ">=", "&&", "||", "++", "--", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "**", "->", "=~", "?:", "?=", "..", "<<", "+", "-", "*",
+    "/", "%", "=", "<", ">", "!", "~", "?", ":", ".", ",", ";", "(", ")", "[", "]", "{", "}", "@", "&", "|", "^",
+];
+
+/// Keywords after which a `/` starts a slashy string rather than a division.
+const REGEX_AFTER_KEYWORDS: &[&str] = &["return", "in", "case", "assert", "throw", "else", "new"];
+
+/// Groovy's message for a `$` in a GString that starts neither `${...}` nor
+/// a name.
+const ILLEGAL_DOLLAR: &str =
+    "illegal string body character after dollar sign; either escape a literal dollar sign \"\\$5\" or bracket the value expression \"${5}\"";
+
+/// What may follow `$` in a GString: Java's identifier start, except `$`.
+fn is_identifier_start(c: char) -> bool {
+    c.is_alphabetic() || c == '_'
+}
+
+/// An error for a character no token can start with. Invisible ones, such
+/// as a no-break space, are named by their code point.
+fn unexpected_char(c: char) -> String {
+    if c.is_whitespace() || c.is_control() || c == '\u{feff}' {
+        format!("Unexpected character U+{:04X}", c as u32)
+    } else {
+        format!("Unexpected character '{c}'")
+    }
+}
+
+pub fn tokenize(src: &str) -> Result<Vec<Token>, Diagnostic> {
+    Lexer::new(src).run()
+}
+
+struct Lexer<'a> {
+    chars: Vec<char>,
+    i: usize,
+    line: usize,
+    col: usize,
+    src: &'a str,
+    out: Vec<Token>,
+    /// Nesting of `${ "..." }` inside GStrings, capped like the parser's.
+    interp_depth: usize,
+}
+
+impl<'a> Lexer<'a> {
+    fn new(src: &'a str) -> Self {
+        Lexer {
+            chars: src.chars().collect(),
+            i: 0,
+            line: 1,
+            col: 1,
+            src,
+            out: Vec::new(),
+            interp_depth: 0,
+        }
+    }
+
+    fn peek(&self, k: usize) -> Option<char> {
+        self.chars.get(self.i + k).copied()
+    }
+
+    fn bump(&mut self) -> Option<char> {
+        let c = self.chars.get(self.i).copied()?;
+        self.i += 1;
+        if c == '\n' {
+            self.line += 1;
+            self.col = 1;
+        } else {
+            self.col += 1;
+        }
+        Some(c)
+    }
+
+    fn pos(&self) -> Pos {
+        Pos {
+            line: self.line,
+            col: self.col,
+        }
+    }
+
+    fn starts_with(&self, s: &str) -> bool {
+        s.chars().enumerate().all(|(k, c)| self.peek(k) == Some(c))
+    }
+
+    fn err(&self, pos: Pos, msg: impl Into<String>) -> Diagnostic {
+        Diagnostic::error(pos, msg)
+    }
+
+    /// Whether a `/` at this point begins a slashy string.
+    fn regex_allowed(&self) -> bool {
+        match self.out.last() {
+            None => true,
+            Some(t) => match &t.kind {
+                TokKind::Ident(n) => REGEX_AFTER_KEYWORDS.contains(&n.as_str()),
+                TokKind::Str { .. } | TokKind::Num(_) => false,
+                TokKind::Punct(p) => !matches!(*p, ")" | "]" | "}" | "++" | "--"),
+                TokKind::Eof => false,
+            },
+        }
+    }
+
+    fn run(mut self) -> Result<Vec<Token>, Diagnostic> {
+        let _ = self.src;
+        // Shebang line.
+        if self.starts_with("#!") {
+            while let Some(c) = self.peek(0) {
+                if c == '\n' {
+                    break;
+                }
+                self.bump();
+            }
+        }
+        let mut nl = false;
+        loop {
+            // Skip whitespace and comments, remembering newlines.
+            loop {
+                match self.peek(0) {
+                    Some('\n') => {
+                        nl = true;
+                        self.bump();
+                    }
+                    // Groovy separates tokens with spaces, tabs and form
+                    // feeds only: a no-break space pasted from a web page
+                    // is an error there, so it is one here too.
+                    Some(' ' | '\t' | '\x0c' | '\r') => {
+                        self.bump();
+                    }
+                    Some('\\') if self.peek(1) == Some('\n') => {
+                        // Line continuation.
+                        self.bump();
+                        self.bump();
+                    }
+                    Some('\\') if self.peek(1) == Some('\r') && self.peek(2) == Some('\n') => {
+                        // Line continuation in a CRLF file.
+                        self.bump();
+                        self.bump();
+                        self.bump();
+                    }
+                    Some('/') if self.peek(1) == Some('/') => {
+                        while let Some(c) = self.peek(0) {
+                            if c == '\n' {
+                                break;
+                            }
+                            self.bump();
+                        }
+                    }
+                    Some('/') if self.peek(1) == Some('*') => {
+                        let start = self.pos();
+                        self.bump();
+                        self.bump();
+                        loop {
+                            if self.starts_with("*/") {
+                                self.bump();
+                                self.bump();
+                                break;
+                            }
+                            match self.bump() {
+                                Some('\n') => nl = true,
+                                Some(_) => {}
+                                None => return Err(self.err(start, "Unterminated comment")),
+                            }
+                        }
+                    }
+                    _ => break,
+                }
+            }
+            let pos = self.pos();
+            let Some(c) = self.peek(0) else {
+                self.out.push(Token {
+                    kind: TokKind::Eof,
+                    pos,
+                    nl_before: true,
+                });
+                return Ok(self.out);
+            };
+            let kind = if c == '\'' || c == '"' {
+                self.string(pos)?
+            } else if c == '$' && self.peek(1) == Some('/') {
+                self.dollar_slashy(pos)?
+            } else if c == '/' && self.regex_allowed() && self.peek(1) != Some('=') {
+                self.slashy(pos)?
+            } else if c.is_ascii_digit() || (c == '.' && self.peek(1).is_some_and(|d| d.is_ascii_digit()) && !self.prev_is_value()) {
+                self.number()
+            } else if c.is_alphabetic() || c == '_' || c == '$' {
+                let mut s = String::new();
+                while let Some(c) = self.peek(0) {
+                    if c.is_alphanumeric() || c == '_' || c == '$' {
+                        s.push(c);
+                        self.bump();
+                    } else {
+                        break;
+                    }
+                }
+                TokKind::Ident(s)
+            } else {
+                let Some(p) = PUNCTS.iter().find(|p| self.starts_with(p)) else {
+                    return Err(self.err(pos, unexpected_char(c)));
+                };
+                for _ in 0..p.chars().count() {
+                    self.bump();
+                }
+                TokKind::Punct(p)
+            };
+            self.out.push(Token { kind, pos, nl_before: nl });
+            nl = false;
+        }
+    }
+
+    fn prev_is_value(&self) -> bool {
+        matches!(
+            self.out.last().map(|t| &t.kind),
+            Some(TokKind::Ident(_))
+                | Some(TokKind::Num(_))
+                | Some(TokKind::Str { .. })
+                | Some(TokKind::Punct(")"))
+                | Some(TokKind::Punct("]"))
+        )
+    }
+
+    fn number(&mut self) -> TokKind {
+        let mut s = String::new();
+        if self.starts_with("0x") || self.starts_with("0X") || self.starts_with("0b") || self.starts_with("0B") {
+            s.push(self.bump().unwrap());
+            s.push(self.bump().unwrap());
+            while let Some(c) = self.peek(0) {
+                if c.is_ascii_hexdigit() || c == '_' {
+                    s.push(c);
+                    self.bump();
+                } else {
+                    break;
+                }
+            }
+        } else {
+            while let Some(c) = self.peek(0) {
+                let exp_sign = (c == '+' || c == '-') && matches!(s.chars().last(), Some('e') | Some('E'));
+                let decimal_point = c == '.' && self.peek(1).is_some_and(|d| d.is_ascii_digit()) && !s.contains('.');
+                if c.is_ascii_digit() || c == '_' || exp_sign || c == 'e' || c == 'E' || decimal_point {
+                    s.push(c);
+                    self.bump();
+                } else {
+                    break;
+                }
+            }
+        }
+        if let Some(c) = self.peek(0) {
+            if "gGlLiIdDfF".contains(c) {
+                s.push(c);
+                self.bump();
+            }
+        }
+        // `1BAR` is not Groovy, but keeping it as one name lets the
+        // validator explain why it is not a valid identifier.
+        if self.peek(0).is_some_and(|c| c.is_alphanumeric() || c == '_' || c == '$') {
+            while let Some(c) = self.peek(0) {
+                if c.is_alphanumeric() || c == '_' || c == '$' {
+                    s.push(c);
+                    self.bump();
+                } else {
+                    break;
+                }
+            }
+            return TokKind::Ident(s);
+        }
+        TokKind::Num(s)
+    }
+
+    fn string(&mut self, start: Pos) -> Result<TokKind, Diagnostic> {
+        let q = self.bump().unwrap();
+        let triple = self.peek(0) == Some(q) && self.peek(1) == Some(q);
+        if triple {
+            self.bump();
+            self.bump();
+        } else if self.peek(0) == Some(q) {
+            // Empty string.
+            self.bump();
+            return Ok(TokKind::Str {
+                value: String::new(),
+                interp: false,
+            });
+        }
+        let gstring = q == '"';
+        let mut value = String::new();
+        let mut interp = false;
+        loop {
+            let Some(c) = self.peek(0) else {
+                return Err(self.err(start, "Unterminated string literal"));
+            };
+            if triple {
+                if c == q && self.peek(1) == Some(q) && self.peek(2) == Some(q) {
+                    self.bump();
+                    self.bump();
+                    self.bump();
+                    break;
+                }
+            } else if c == q {
+                self.bump();
+                break;
+            } else if c == '\n' {
+                return Err(self.err(start, "Unterminated string literal"));
+            }
+            if c == '\\' {
+                self.bump();
+                if let Some(e) = self.bump() {
+                    value.push(match e {
+                        'n' => '\n',
+                        't' => '\t',
+                        other => other,
+                    });
+                }
+                continue;
+            }
+            if gstring && c == '$' {
+                if self.peek(1) == Some('{') {
+                    interp = true;
+                    value.push_str(&self.interpolation(start)?);
+                    continue;
+                }
+                // Like Groovy, a `$` must start `${...}` or a name: `"$(date)"`,
+                // `"$1"` and `"cost: $5"` do not compile.
+                if !self.peek(1).is_some_and(is_identifier_start) {
+                    return Err(self.err(self.pos(), ILLEGAL_DOLLAR));
+                }
+                interp = true;
+            }
+            value.push(c);
+            self.bump();
+        }
+        Ok(TokKind::Str { value, interp })
+    }
+
+    /// Consume `${ ... }` inside a GString and return its raw text.
+    fn interpolation(&mut self, start: Pos) -> Result<String, Diagnostic> {
+        if self.interp_depth >= crate::parser::MAX_DEPTH {
+            return Err(self.err(
+                self.pos(),
+                format!("Nesting is too deep to check (more than {} levels)", crate::parser::MAX_DEPTH),
+            ));
+        }
+        self.interp_depth += 1;
+        let result = self.interpolation_inner(start);
+        self.interp_depth -= 1;
+        result
+    }
+
+    fn interpolation_inner(&mut self, start: Pos) -> Result<String, Diagnostic> {
+        let mut text = String::new();
+        text.push(self.bump().unwrap()); // $
+        text.push(self.bump().unwrap()); // {
+        let mut depth = 1;
+        // The last meaningful character, to tell `/` as division (after a
+        // value) from a slashy string (after an operator or delimiter).
+        let mut prev = '{';
+        while depth > 0 {
+            let Some(c) = self.peek(0) else {
+                return Err(self.err(start, "Unterminated ${...} in string"));
+            };
+            match c {
+                '{' => depth += 1,
+                '}' => depth -= 1,
+                '\'' | '"' => {
+                    let p = self.pos();
+                    let before = self.i;
+                    self.string(p)?;
+                    text.extend(&self.chars[before..self.i]);
+                    prev = '"';
+                    continue;
+                }
+                '/' if self.peek(1) == Some('/') => {
+                    // A line comment; a `}` in it does not end the `${...}`.
+                    while self.peek(0).is_some_and(|c| c != '\n') {
+                        text.push(self.bump().unwrap());
+                    }
+                    continue;
+                }
+                '/' if self.peek(1) == Some('*') => {
+                    // A comment does not change what the next `/` means.
+                    while !self.starts_with("*/") {
+                        if self.bump().is_none() {
+                            return Err(self.err(start, "Unterminated ${...} in string"));
+                        }
+                    }
+                    self.bump();
+                    self.bump();
+                    text.push_str("/**/");
+                    continue;
+                }
+                '/' if !prev.is_alphanumeric() && !matches!(prev, ')' | ']' | '_' | '"') => {
+                    // A slashy string, as in `${m[/"/]}`; a `}` or quote in
+                    // it does not end the `${...}`.
+                    let p = self.pos();
+                    let before = self.i;
+                    self.slashy(p)?;
+                    text.extend(&self.chars[before..self.i]);
+                    prev = '"';
+                    continue;
+                }
+                _ => {}
+            }
+            if !c.is_whitespace() {
+                prev = c;
+            }
+            text.push(c);
+            self.bump();
+        }
+        Ok(text)
+    }
+
+    fn slashy(&mut self, start: Pos) -> Result<TokKind, Diagnostic> {
+        self.bump();
+        let mut value = String::new();
+        let mut interp = false;
+        loop {
+            match self.peek(0) {
+                None => return Err(self.err(start, "Unterminated slashy string")),
+                Some('/') => {
+                    self.bump();
+                    break;
+                }
+                Some('\\') if self.peek(1) == Some('/') => {
+                    self.bump();
+                    self.bump();
+                    value.push('/');
+                }
+                Some('$') if self.peek(1) == Some('{') => {
+                    interp = true;
+                    value.push_str(&self.interpolation(start)?);
+                }
+                Some(c) => {
+                    value.push(c);
+                    self.bump();
+                }
+            }
+        }
+        Ok(TokKind::Str { value, interp })
+    }
+
+    fn dollar_slashy(&mut self, start: Pos) -> Result<TokKind, Diagnostic> {
+        self.bump();
+        self.bump();
+        let mut value = String::new();
+        loop {
+            if self.starts_with("/$") {
+                self.bump();
+                self.bump();
+                break;
+            }
+            if self.starts_with("$$") || self.starts_with("$/") {
+                self.bump();
+                value.push(self.bump().unwrap());
+                continue;
+            }
+            match self.bump() {
+                Some(c) => value.push(c),
+                None => return Err(self.err(start, "Unterminated dollar-slashy string")),
+            }
+        }
+        Ok(TokKind::Str { value, interp: true })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn kinds(src: &str) -> Vec<TokKind> {
+        tokenize(src).unwrap().into_iter().map(|t| t.kind).collect()
+    }
+
+    #[test]
+    fn strings() {
+        assert_eq!(
+            kinds("sh 'a' \"b ${x + '}'} c\""),
+            vec![
+                TokKind::Ident("sh".into()),
+                TokKind::Str {
+                    value: "a".into(),
+                    interp: false
+                },
+                TokKind::Str {
+                    value: "b ${x + '}'} c".into(),
+                    interp: true
+                },
+                TokKind::Eof
+            ]
+        );
+    }
+
+    #[test]
+    fn slashy_vs_division() {
+        let k = kinds("x = a / b; y = /re+/");
+        assert!(k.contains(&TokKind::Punct("/")));
+        assert!(k.contains(&TokKind::Str {
+            value: "re+".into(),
+            interp: false
+        }));
+    }
+
+    #[test]
+    fn dollar_in_gstrings() {
+        for ok in [
+            "\"$x and ${y} and \\$5 and $_z\"",
+            "'$(date) $1 $'",
+            "/^v\\d+$/",
+            "$/a $ b $$ c/$",
+            "\"\"\"${x}\n$y\"\"\"",
+        ] {
+            assert!(tokenize(ok).is_ok(), "{ok}");
+        }
+        for bad in [
+            "\"echo $(date)\"",
+            "\"$1\"",
+            "\"cost: $5\"",
+            "\"a $\"",
+            "\"a$$b\"",
+            "\"\"\"x $\n\"\"\"",
+        ] {
+            let e = tokenize(bad).expect_err(bad);
+            assert!(
+                e.message.starts_with("illegal string body character after dollar sign"),
+                "{bad}: {}",
+                e.message
+            );
+        }
+        // The error points at the `$`.
+        assert_eq!(tokenize("x = \"a $(b)\"").unwrap_err().pos, Pos { line: 1, col: 8 });
+    }
+
+    #[test]
+    fn only_groovy_whitespace_separates_tokens() {
+        assert!(tokenize("a \t\x0c\r\nb").is_ok());
+        for (src, name) in [("echo\u{a0}'x'", "U+00A0"), ("a\u{2003}b", "U+2003"), ("a\x0bb", "U+000B")] {
+            let e = tokenize(src).expect_err(src);
+            assert_eq!(e.message, format!("Unexpected character {name}"));
+        }
+        // Inside strings and comments anything goes.
+        assert!(tokenize("x = 'a\u{a0}b' // c\u{a0}d").is_ok());
+    }
+
+    #[test]
+    fn newline_flag() {
+        let toks = tokenize("a\nb").unwrap();
+        assert!(!toks[0].nl_before);
+        assert!(toks[1].nl_before);
+    }
+}

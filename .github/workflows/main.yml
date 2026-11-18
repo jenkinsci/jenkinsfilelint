@@ -26,8 +26,11 @@ jobs:
         python-version: ${{ matrix.python-version }}
 
     - name: Install dependencies
+      # The offline engine is built from crates/ with the runner's Rust, so
+      # the tests run against this commit's engine, not the one on PyPI.
       run: |
         python -m pip install --upgrade pip
+        pip install ./crates/jenkinsfilelint
         pip install -e ".[dev]"
 
     - name: Run pre-commit hooks
@@ -37,6 +40,7 @@ jobs:
     - name: Test CLI installation
       run: |
         jenkinsfilelint --help
+        jenkinsfilelint-engine --version
 
     - name: Run unit tests
       run: |
@@ -65,6 +69,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install ./crates/jenkinsfilelint
           pip install -e ".[dev]"
 
       - name: Build the server image with local config

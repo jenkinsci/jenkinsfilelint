@@ -1,0 +1,2 @@
+# Keep the cases byte for byte (one of them tests CRLF line endings).
+*.groovy -text

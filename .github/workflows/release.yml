@@ -1,21 +1,110 @@
 name: Release Package
 
+# Publishes two packages to PyPI when a GitHub release is published:
+#   jenkinsfilelint-engine  prebuilt wheels of the offline engine (Rust)
+#   jenkinsfilelint         the pure-Python package, which pins the engine
+# The engine goes first, so jenkinsfilelint never points at an engine version
+# that is not on PyPI yet. Pull requests and manual runs build and test both
+# without publishing. A manual run with "publish: testpypi" goes through the
+# same jobs against TestPyPI, as a dry run of a release.
+
 on:
   release:
-    branches: [main]
     types: [published]
+  pull_request:
+    branches: [main]
+    paths:
+      - 'crates/**'
+      - 'pyproject.toml'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Where to upload the packages
+        type: choice
+        options: [none, testpypi]
+        default: none
+
+permissions:
+  contents: read
+
+env:
+  MATURIN_VERSION: v1.15.0
 
 jobs:
-  deploy:
+  engine-wheels:
+    name: Engine wheel (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {runner: ubuntu-latest, target: x86_64-unknown-linux-gnu, manylinux: auto}
+          - {runner: ubuntu-latest, target: aarch64-unknown-linux-gnu, manylinux: auto}
+          - {runner: ubuntu-latest, target: x86_64-unknown-linux-musl, manylinux: musllinux_1_2}
+          - {runner: ubuntu-latest, target: aarch64-unknown-linux-musl, manylinux: musllinux_1_2}
+          # 32-bit builds. A 32-bit Python on a 64-bit OS reports the 64-bit
+          # machine, so pyproject.toml requires the engine there and pip
+          # needs one of these wheels.
+          # The default image for i686 on x86_64, quay.io/pypa/manylinux2014_i686,
+          # makes maturin-action install libatomic with yum from the CentOS 7
+          # vault, which is not reliably reachable. The cross image that
+          # maturin-action uses on arm64 runners builds the same wheel.
+          - {runner: ubuntu-latest, target: i686-unknown-linux-gnu, manylinux: auto, container: 'ghcr.io/rust-cross/manylinux2014-cross:i686'}
+          - {runner: ubuntu-latest, target: armv7-unknown-linux-gnueabihf, manylinux: auto}
+          - {runner: ubuntu-latest, target: i686-unknown-linux-musl, manylinux: musllinux_1_2}
+          - {runner: ubuntu-latest, target: armv7-unknown-linux-musleabihf, manylinux: musllinux_1_2}
+          - {runner: macos-latest, target: x86_64-apple-darwin}
+          - {runner: macos-latest, target: aarch64-apple-darwin}
+          - {runner: windows-latest, target: x86_64-pc-windows-msvc}
+          - {runner: windows-latest, target: i686-pc-windows-msvc}
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        persist-credentials: false
+    - name: Build wheel
+      uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b  # v1.51.0
+      with:
+        maturin-version: ${{ env.MATURIN_VERSION }}
+        working-directory: crates/jenkinsfilelint
+        target: ${{ matrix.target }}
+        manylinux: ${{ matrix.manylinux || 'auto' }}
+        container: ${{ matrix.container }}
+        args: --release --out dist
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      with:
+        name: engine-wheel-${{ matrix.target }}
+        path: crates/jenkinsfilelint/dist/*.whl
+        if-no-files-found: error
 
+  engine-sdist:
+    name: Engine sdist
     runs-on: ubuntu-latest
-    environment:
-      name: pypi
-      url: https://pypi.org/p/jenkinsfilelint
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        persist-credentials: false
+    - name: Build sdist
+      uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b  # v1.51.0
+      with:
+        maturin-version: ${{ env.MATURIN_VERSION }}
+        working-directory: crates/jenkinsfilelint
+        command: sdist
+        args: --out dist
+    - name: Install from sdist (builds with Rust)
+      run: |
+        python3 -m venv /tmp/venv
+        /tmp/venv/bin/pip install crates/jenkinsfilelint/dist/*.tar.gz
+        /tmp/venv/bin/jenkinsfilelint-engine --version
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      with:
+        name: engine-sdist
+        path: crates/jenkinsfilelint/dist/*.tar.gz
+        if-no-files-found: error
 
-    permissions:
-      id-token: write  # required for PyPI Trusted Publishing (OIDC)
-
+  python-dist:
+    name: jenkinsfilelint sdist and wheel
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       with:
@@ -25,11 +114,211 @@ jobs:
       uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
       with:
         python-version: '3.x'
+    - name: Check the engine version
+      # pyproject.toml must pin the version in Cargo.toml, and the version
+      # must change when the engine does: the engine upload skips a version
+      # that is already on PyPI, so a changed engine with an unchanged
+      # version would never reach users, and the release would still be green.
+      run: python crates/jenkinsfilelint/scripts/check_engine_version.py
     - name: Install build tools
       run: python -m pip install --upgrade pip build twine
     - name: Build distribution
       run: python -m build
     - name: Check distribution
       run: twine check dist/*
-    - name: Publish to PyPI
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      with:
+        name: python-dist
+        path: dist/
+        if-no-files-found: error
+
+  test:
+    # Install the exact files that will be published, on the platform each
+    # wheel is for, and run jenkinsfilelint --offline. No Rust is involved:
+    # --only-binary refuses to build the engine from source.
+    name: Test ${{ matrix.target }}
+    needs: [engine-wheels, python-dist]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {runner: ubuntu-latest, target: x86_64-unknown-linux-gnu}
+          - {runner: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu}
+          - {runner: ubuntu-latest, target: x86_64-unknown-linux-musl, image: 'python:3-alpine'}
+          - {runner: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl, image: 'python:3-alpine'}
+          # 32-bit userlands on a 64-bit kernel, the case that needs these
+          # wheels: the container's Python is 32-bit, its machine is x86_64.
+          - {runner: ubuntu-latest, target: i686-unknown-linux-gnu, image: 'python:3-slim', platform: linux/386}
+          - {runner: ubuntu-latest, target: i686-unknown-linux-musl, image: 'python:3-alpine', platform: linux/386}
+          - {runner: ubuntu-latest, target: armv7-unknown-linux-gnueabihf, image: 'python:3-slim', platform: linux/arm/v7, qemu: arm}
+          - {runner: ubuntu-latest, target: armv7-unknown-linux-musleabihf, image: 'python:3-alpine', platform: linux/arm/v7, qemu: arm}
+          - {runner: macos-15-intel, target: x86_64-apple-darwin}
+          - {runner: macos-latest, target: aarch64-apple-darwin}
+          - {runner: windows-latest, target: x86_64-pc-windows-msvc}
+          # 32-bit Python on 64-bit Windows, which reports AMD64.
+          - {runner: windows-latest, target: i686-pc-windows-msvc, arch: x86}
+    defaults:
+      run:
+        shell: bash
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        persist-credentials: false
+        sparse-checkout: tests
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+      with:
+        name: engine-wheel-${{ matrix.target }}
+        path: wheels/engine
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+      with:
+        name: python-dist
+        path: wheels/python
+    - name: Write the test script
+      run: |
+        cat > smoke-test.sh <<'EOF'
+        set -eux
+        python -m pip install --only-binary jenkinsfilelint-engine wheels/engine/*.whl
+        python -m pip install --only-binary jenkinsfilelint-engine wheels/python/*.whl
+        jenkinsfilelint-engine --version
+        jenkinsfilelint --offline --verbose tests/Jenkinsfile
+        if jenkinsfilelint --offline tests/Jenkinsfile.fail; then
+          echo "tests/Jenkinsfile.fail should fail"
+          exit 1
+        fi
+        EOF
+    - name: Set up Python
+      if: ${{ !matrix.image }}
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+      with:
+        python-version: '3.x'
+        architecture: ${{ matrix.arch }}
+    - name: Test
+      if: ${{ !matrix.image }}
+      run: bash smoke-test.sh
+    - name: Set up QEMU
+      # Lets this x86_64 runner run the 32-bit ARM container below.
+      if: ${{ matrix.qemu }}
+      run: >
+        docker run --privileged --rm
+        tonistiigi/binfmt@sha256:1b804311fe87047a4c96d38b4b3ef6f62fca8cd125265917a9e3dc3c996c39e6
+        --install ${{ matrix.qemu }}
+    - name: Download the dependencies for the container
+      # The container then needs no network: name resolution inside these
+      # containers has failed in CI, once for pypi.org.
+      if: ${{ matrix.image }}
+      run: |
+        python3 -m pip download --only-binary=:all: --platform any --dest wheels/deps requests
+    - name: Test in a container
+      if: ${{ matrix.image }}
+      env:
+        IMAGE: ${{ matrix.image }}
+        PLATFORM: ${{ matrix.platform }}
+      run: >
+        docker run --rm ${PLATFORM:+--platform "$PLATFORM"}
+        -v "$PWD:/work" -w /work -e PIP_ROOT_USER_ACTION=ignore
+        -e PIP_NO_INDEX=1 -e PIP_FIND_LINKS=wheels/deps "$IMAGE"
+        sh smoke-test.sh
+
+  # The publish jobs serve both a release (PyPI) and a dry run (TestPyPI).
+  publish-engine:
+    name: Publish jenkinsfilelint-engine
+    needs: [test, engine-sdist]
+    if: github.event_name == 'release' || inputs.publish == 'testpypi'
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event_name == 'release' && 'pypi' || 'testpypi' }}
+      url: ${{ github.event_name == 'release' && 'https://pypi.org' || 'https://test.pypi.org' }}/p/jenkinsfilelint-engine
+    permissions:
+      id-token: write  # required for PyPI Trusted Publishing (OIDC)
+    steps:
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+      with:
+        pattern: engine-*
+        path: dist
+        merge-multiple: true
+    - name: Publish to ${{ github.event_name == 'release' && 'PyPI' || 'TestPyPI' }}
       uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086  # v1.14.3
+      with:
+        repository-url: ${{ github.event_name == 'release' && 'https://upload.pypi.org/legacy/' || 'https://test.pypi.org/legacy/' }}
+        # The engine has its own version, so most releases re-upload files
+        # that are already on PyPI. Bump it in Cargo.toml when it changes.
+        skip-existing: true
+
+  publish:
+    name: Publish jenkinsfilelint
+    needs: [publish-engine]
+    if: github.event_name == 'release' || inputs.publish == 'testpypi'
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event_name == 'release' && 'pypi' || 'testpypi' }}
+      url: ${{ github.event_name == 'release' && 'https://pypi.org' || 'https://test.pypi.org' }}/p/jenkinsfilelint
+    permissions:
+      id-token: write  # required for PyPI Trusted Publishing (OIDC)
+    steps:
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+      with:
+        name: python-dist
+        path: dist
+    - name: Publish to ${{ github.event_name == 'release' && 'PyPI' || 'TestPyPI' }}
+      uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086  # v1.14.3
+      with:
+        repository-url: ${{ github.event_name == 'release' && 'https://upload.pypi.org/legacy/' || 'https://test.pypi.org/legacy/' }}
+        # A dry run re-run on the same commit has the same version.
+        skip-existing: ${{ github.event_name != 'release' }}
+
+  verify:
+    # Install what was just uploaded from the index, as a user would.
+    name: Install from the index (${{ matrix.os }})
+    needs: [publish]
+    if: github.event_name == 'release' || inputs.publish == 'testpypi'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        persist-credentials: false
+        sparse-checkout: tests
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+      with:
+        name: python-dist
+        path: wheels/python
+    - name: Set up Python
+      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+      with:
+        python-version: '3.x'
+    - name: Install jenkinsfilelint
+      env:
+        INDEX: ${{ github.event_name == 'release' && 'https://pypi.org/simple/' || 'https://test.pypi.org/simple/' }}
+      run: |
+        wheel=$(ls wheels/python/*.whl)
+        version=${wheel##*/jenkinsfilelint-}
+        version=${version%%-*}
+        # Dependencies other than the engine come from PyPI, never TestPyPI.
+        python -m pip install requests
+        # A new upload can take a minute to show up in the index.
+        for attempt in 1 2 3 4 5 6 7 8 9 10; do
+          if python -m pip install --no-cache-dir --only-binary jenkinsfilelint-engine \
+              --index-url "$INDEX" "jenkinsfilelint==$version"; then
+            break
+          fi
+          if [ "$attempt" = 10 ]; then
+            exit 1
+          fi
+          sleep 30
+        done
+        python -m pip list | grep jenkinsfilelint
+    - name: Check offline mode
+      run: |
+        jenkinsfilelint-engine --version
+        jenkinsfilelint --offline --verbose tests/Jenkinsfile
+        if jenkinsfilelint --offline tests/Jenkinsfile.fail; then
+          echo "tests/Jenkinsfile.fail should fail"
+          exit 1
+        fi
