@@ -43,9 +43,17 @@ jobs:
           - {runner: ubuntu-latest, target: aarch64-unknown-linux-gnu, manylinux: auto}
           - {runner: ubuntu-latest, target: x86_64-unknown-linux-musl, manylinux: musllinux_1_2}
           - {runner: ubuntu-latest, target: aarch64-unknown-linux-musl, manylinux: musllinux_1_2}
+          # 32-bit builds. A 32-bit Python on a 64-bit OS reports the 64-bit
+          # machine, so pyproject.toml requires the engine there and pip
+          # needs one of these wheels.
+          - {runner: ubuntu-latest, target: i686-unknown-linux-gnu, manylinux: auto}
+          - {runner: ubuntu-latest, target: armv7-unknown-linux-gnueabihf, manylinux: auto}
+          - {runner: ubuntu-latest, target: i686-unknown-linux-musl, manylinux: musllinux_1_2}
+          - {runner: ubuntu-latest, target: armv7-unknown-linux-musleabihf, manylinux: musllinux_1_2}
           - {runner: macos-latest, target: x86_64-apple-darwin}
           - {runner: macos-latest, target: aarch64-apple-darwin}
           - {runner: windows-latest, target: x86_64-pc-windows-msvc}
+          - {runner: windows-latest, target: i686-pc-windows-msvc}
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       with:
@@ -101,20 +109,11 @@ jobs:
       uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
       with:
         python-version: '3.x'
-    - name: Check the engine pin
-      shell: python
-      run: |
-        import pathlib, re
-        cargo = pathlib.Path("crates/jenkinsfilelint/Cargo.toml").read_text()
-        pyproject = pathlib.Path("pyproject.toml").read_text()
-        version = re.search(r'^version = "([^"]+)"', cargo, re.M).group(1)
-        pin = re.search(r"jenkinsfilelint-engine==([^;\s\"]+)", pyproject).group(1)
-        assert pin == version, f"pyproject.toml pins jenkinsfilelint-engine=={pin}, Cargo.toml says {version}"
-        print(f"jenkinsfilelint-engine=={pin}")
-    - name: Check the engine version was bumped if the engine changed
-      # The engine upload skips a version that is already on PyPI. Without
-      # this check, a changed engine with an unchanged version would never
-      # reach users, and the release would still be green.
+    - name: Check the engine version
+      # pyproject.toml must pin the version in Cargo.toml, and the version
+      # must change when the engine does: the engine upload skips a version
+      # that is already on PyPI, so a changed engine with an unchanged
+      # version would never reach users, and the release would still be green.
       run: python crates/jenkinsfilelint/scripts/check_engine_version.py
     - name: Install build tools
       run: python -m pip install --upgrade pip build twine
@@ -141,11 +140,19 @@ jobs:
         include:
           - {runner: ubuntu-latest, target: x86_64-unknown-linux-gnu}
           - {runner: ubuntu-24.04-arm, target: aarch64-unknown-linux-gnu}
-          - {runner: ubuntu-latest, target: x86_64-unknown-linux-musl, alpine: true}
-          - {runner: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl, alpine: true}
+          - {runner: ubuntu-latest, target: x86_64-unknown-linux-musl, image: 'python:3-alpine'}
+          - {runner: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl, image: 'python:3-alpine'}
+          # 32-bit userlands on a 64-bit kernel, the case that needs these
+          # wheels: the container's Python is 32-bit, its machine is x86_64.
+          - {runner: ubuntu-latest, target: i686-unknown-linux-gnu, image: 'python:3-slim', platform: linux/386}
+          - {runner: ubuntu-latest, target: i686-unknown-linux-musl, image: 'python:3-alpine', platform: linux/386}
+          - {runner: ubuntu-latest, target: armv7-unknown-linux-gnueabihf, image: 'python:3-slim', platform: linux/arm/v7, qemu: arm}
+          - {runner: ubuntu-latest, target: armv7-unknown-linux-musleabihf, image: 'python:3-alpine', platform: linux/arm/v7, qemu: arm}
           - {runner: macos-15-intel, target: x86_64-apple-darwin}
           - {runner: macos-latest, target: aarch64-apple-darwin}
           - {runner: windows-latest, target: x86_64-pc-windows-msvc}
+          # 32-bit Python on 64-bit Windows, which reports AMD64.
+          - {runner: windows-latest, target: i686-pc-windows-msvc, arch: x86}
     defaults:
       run:
         shell: bash
@@ -176,18 +183,30 @@ jobs:
         fi
         EOF
     - name: Set up Python
-      if: ${{ !matrix.alpine }}
+      if: ${{ !matrix.image }}
       uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
       with:
         python-version: '3.x'
+        architecture: ${{ matrix.arch }}
     - name: Test
-      if: ${{ !matrix.alpine }}
+      if: ${{ !matrix.image }}
       run: bash smoke-test.sh
-    - name: Test in Alpine Linux
-      if: ${{ matrix.alpine }}
+    - name: Set up QEMU
+      # Lets this x86_64 runner run the 32-bit ARM container below.
+      if: ${{ matrix.qemu }}
       run: >
-        docker run --rm -v "$PWD:/work" -w /work -e PIP_ROOT_USER_ACTION=ignore
-        python:3-alpine sh -c 'apk add --no-cache bash && bash smoke-test.sh'
+        docker run --privileged --rm
+        tonistiigi/binfmt@sha256:1b804311fe87047a4c96d38b4b3ef6f62fca8cd125265917a9e3dc3c996c39e6
+        --install ${{ matrix.qemu }}
+    - name: Test in a container
+      if: ${{ matrix.image }}
+      env:
+        IMAGE: ${{ matrix.image }}
+        PLATFORM: ${{ matrix.platform }}
+      run: >
+        docker run --rm ${PLATFORM:+--platform "$PLATFORM"}
+        -v "$PWD:/work" -w /work -e PIP_ROOT_USER_ACTION=ignore "$IMAGE"
+        sh -c 'command -v bash >/dev/null || apk add --no-cache bash; bash smoke-test.sh'
 
   # The publish jobs serve both a release (PyPI) and a dry run (TestPyPI).
   publish-engine:

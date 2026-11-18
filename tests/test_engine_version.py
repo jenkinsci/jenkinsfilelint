@@ -16,6 +16,7 @@ spec = importlib.util.spec_from_file_location("check_engine_version", SCRIPT)
 check_engine_version = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(check_engine_version)
 check = check_engine_version.check
+check_pin = check_engine_version.check_pin
 
 pytestmark = pytest.mark.skipif(shutil.which("git") is None, reason="needs git")
 
@@ -77,11 +78,61 @@ def failed(lines):
     return lines[0].startswith("error:")
 
 
-def test_no_release_yet(repo):
+def test_no_release_tag_fails(repo):
+    """Without a tag there is nothing to compare with: fail, not pass."""
     repo.engine("0.1.0")
     repo.commit("add the engine")
-    assert check(repo.path) == [
-        "No release tag found: nothing to compare the engine with."
+
+    lines = check(repo.path)
+
+    assert failed(lines)
+    assert lines[0] == (
+        "error: no release tag to compare the engine with (no v* tag is reachable)."
+    )
+
+
+def test_shallow_clone_fails(repo, tmp_path):
+    repo.engine("0.1.0")
+    repo.commit("add the engine")
+    repo.release("v1.6.0")
+    repo.engine("0.1.0", source="fn main() { fix(); }\n")
+    repo.commit("fix the engine")
+    shallow = tmp_path / "shallow"
+    subprocess.run(
+        [
+            "git",
+            "clone",
+            "--quiet",
+            "--depth",
+            "1",
+            "--no-tags",
+            repo.path.as_uri(),
+            str(shallow),
+        ],
+        check=True,
+        capture_output=True,
+    )
+
+    lines = check(shallow)
+
+    assert failed(lines)
+    assert "this is a shallow clone" in lines[0]
+
+
+def test_pin_matches(repo):
+    repo.engine("0.2.0")
+    repo.write(
+        "pyproject.toml", 'dependencies = ["jenkinsfilelint-engine==0.2.0; x"]\n'
+    )
+    assert not failed(check_pin(repo.path))
+
+
+def test_pin_differs(repo):
+    repo.engine("0.2.0")
+    repo.write("pyproject.toml", 'dependencies = ["jenkinsfilelint-engine==0.1.0"]\n')
+    assert check_pin(repo.path) == [
+        "error: pyproject.toml pins jenkinsfilelint-engine==0.1.0, "
+        "but crates/jenkinsfilelint/Cargo.toml says 0.2.0."
     ]
 
 

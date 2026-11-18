@@ -25,8 +25,8 @@ Jenkinsfile:10:13: error: Unknown stage section "step". Starting with version 0.
 pip install jenkinsfilelint-engine
 ```
 
-PyPI has prebuilt wheels for Linux (x86_64, aarch64; glibc and musl), macOS
-(x86_64, arm64) and Windows (x86_64), for any Python 3.10+. The wheel puts the
+PyPI has prebuilt wheels for Linux (x86_64, aarch64, i686, armv7; glibc and
+musl), macOS (x86_64, arm64) and Windows (x86_64, x86), for any Python 3.10+. The wheel puts the
 `jenkinsfilelint-engine` binary in the environment's scripts directory;
 `python -m jenkinsfilelint_engine` runs it too, and
 `jenkinsfilelint_engine.find_bin()` returns its path. On other platforms pip

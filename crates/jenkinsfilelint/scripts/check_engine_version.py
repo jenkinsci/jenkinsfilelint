@@ -1,19 +1,26 @@
 #!/usr/bin/env python3
-"""Fail when the engine changed since the last release but its version did not.
+"""Check the version of the engine: its pin, and that it changes with the engine.
+
+1. pyproject.toml must pin jenkinsfilelint-engine to the version in
+   crates/jenkinsfilelint/Cargo.toml.
+2. The engine must not have changed since the last release while its
+   version stayed the same.
 
 A release uploads jenkinsfilelint-engine only if its version is not on PyPI
 yet. So when the engine's code changes and its version stays the same, the
 release is green, nothing new is uploaded, and `pip install jenkinsfilelint`
 keeps installing the old engine.
 
-This script compares the files that go into the engine with the last release
-tag. If they differ, the version in Cargo.toml must differ too.
+For the second check, this script compares the files that go into the engine
+with the last release tag. If they differ, the version in Cargo.toml must
+differ too.
 
 Usage:
     python3 crates/jenkinsfilelint/scripts/check_engine_version.py [--base TAG]
 
 Without --base, the base is the last `v*` tag before HEAD. It needs the
-repository's tags (`git fetch --tags`; `fetch-depth: 0` in GitHub Actions).
+repository's history and tags (`fetch-depth: 0` in GitHub Actions); without
+them it fails rather than pass without comparing anything.
 """
 
 import argparse
@@ -25,6 +32,7 @@ from typing import List, Optional
 
 CRATE = "crates/jenkinsfilelint"
 CARGO_TOML = f"{CRATE}/Cargo.toml"
+PYPROJECT_TOML = "pyproject.toml"
 
 # What is built into the wheels. Tests, scripts and documents are not.
 ENGINE_PATHS = [
@@ -48,10 +56,31 @@ def git(repo: Path, *args: str) -> "subprocess.CompletedProcess[str]":
 
 
 def cargo_version(text: str) -> str:
+    """The version in the text of crates/jenkinsfilelint/Cargo.toml."""
     match = re.search(r'^version = "([^"]+)"', text, re.MULTILINE)
     if not match:
         raise ValueError(f"no version in {CARGO_TOML}")
     return match.group(1)
+
+
+def pinned_version(text: str) -> str:
+    """The jenkinsfilelint-engine version that the text of pyproject.toml pins."""
+    match = re.search(r"jenkinsfilelint-engine==([^;\s\"]+)", text)
+    if not match:
+        raise ValueError(f"no jenkinsfilelint-engine== pin in {PYPROJECT_TOML}")
+    return match.group(1)
+
+
+def check_pin(repo: Path) -> List[str]:
+    """Like check(): the pin in pyproject.toml against Cargo.toml."""
+    version = cargo_version((repo / CARGO_TOML).read_text(encoding="utf-8"))
+    pin = pinned_version((repo / PYPROJECT_TOML).read_text(encoding="utf-8"))
+    if pin != version:
+        return [
+            f"error: {PYPROJECT_TOML} pins jenkinsfilelint-engine=={pin}, "
+            f"but {CARGO_TOML} says {version}."
+        ]
+    return [f"{PYPROJECT_TOML} pins jenkinsfilelint-engine=={pin}, as in {CARGO_TOML}."]
 
 
 def last_release_tag(repo: Path) -> Optional[str]:
@@ -74,7 +103,15 @@ def check(repo: Path, base: Optional[str] = None) -> List[str]:
     error, which starts with "error:"."""
     base = base or last_release_tag(repo)
     if base is None:
-        return ["No release tag found: nothing to compare the engine with."]
+        shallow = git(repo, "rev-parse", "--is-shallow-repository").stdout.strip()
+        why = (
+            "this is a shallow clone" if shallow == "true" else "no v* tag is reachable"
+        )
+        return [
+            f"error: no release tag to compare the engine with ({why}).",
+            "Fetch the history and tags (fetch-depth: 0 in GitHub Actions), "
+            "or name the release to compare with: --base TAG.",
+        ]
 
     released = git(repo, "show", f"{base}:{CARGO_TOML}")
     if released.returncode != 0:
@@ -113,9 +150,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     repo = Path(__file__).resolve().parents[3]
-    lines = check(repo, args.base)
-    failed = lines[0].startswith("error:")
-    print("\n".join(lines), file=sys.stderr if failed else sys.stdout)
+    failed = False
+    for lines in (check_pin(repo), check(repo, args.base)):
+        error = lines[0].startswith("error:")
+        failed |= error
+        print("\n".join(lines), file=sys.stderr if error else sys.stdout)
     return 1 if failed else 0
 
 
