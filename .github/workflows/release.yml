@@ -203,6 +203,11 @@ jobs:
         docker run --privileged --rm
         tonistiigi/binfmt@sha256:1b804311fe87047a4c96d38b4b3ef6f62fca8cd125265917a9e3dc3c996c39e6
         --install ${{ matrix.qemu }}
+    - name: Download the dependencies for the container
+      # The container then needs no network: name resolution inside these
+      # containers has failed in CI, once for pypi.org.
+      if: ${{ matrix.image }}
+      run: python3 -m pip download --only-binary=:all: --platform any --dest wheels/deps requests
     - name: Test in a container
       if: ${{ matrix.image }}
       env:
@@ -210,8 +215,9 @@ jobs:
         PLATFORM: ${{ matrix.platform }}
       run: >
         docker run --rm ${PLATFORM:+--platform "$PLATFORM"}
-        -v "$PWD:/work" -w /work -e PIP_ROOT_USER_ACTION=ignore "$IMAGE"
-        sh -c 'command -v bash >/dev/null || apk add --no-cache bash; bash smoke-test.sh'
+        -v "$PWD:/work" -w /work -e PIP_ROOT_USER_ACTION=ignore
+        -e PIP_NO_INDEX=1 -e PIP_FIND_LINKS=wheels/deps "$IMAGE"
+        sh smoke-test.sh
 
   # The publish jobs serve both a release (PyPI) and a dry run (TestPyPI).
   publish-engine:
