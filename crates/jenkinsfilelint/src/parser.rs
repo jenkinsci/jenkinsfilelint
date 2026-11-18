@@ -451,20 +451,9 @@ impl Parser {
         }
         // Generic arguments.
         if self.peek_at(k).is_punct("<") {
-            let mut depth = 0;
-            loop {
-                let t = self.peek_at(k);
-                if t.is_punct("<") {
-                    depth += 1;
-                } else if t.is_punct(">") {
-                    depth -= 1;
-                } else if t.is_punct(">>=") || matches!(t.kind, TokKind::Eof) || t.is_punct("{") || t.is_punct(";") {
-                    return false;
-                }
-                k += 1;
-                if depth == 0 {
-                    break;
-                }
+            match self.generic_args_end(k) {
+                Some(end) => k = end,
+                None => return false,
             }
         }
         // Array type.
@@ -496,24 +485,39 @@ impl Parser {
         false
     }
 
-    fn skip_type(&mut self) -> PResult<()> {
-        self.qualified_name()?;
-        if self.peek().is_punct("<") {
-            let mut depth = 0;
-            loop {
-                let t = self.next();
-                if t.is_punct("<") {
-                    depth += 1;
-                } else if t.is_punct(">") {
-                    depth -= 1;
-                } else if matches!(t.kind, TokKind::Eof) {
-                    return Err(Diagnostic::error(t.pos, "Unclosed generic type"));
-                }
-                if depth == 0 {
-                    break;
-                }
+    /// When the token `k` ahead is the `<` of generic type arguments, as in
+    /// `List<Map<String, ?>>`, the offset just past their closing `>`.
+    /// None when what follows is not a list of types.
+    fn generic_args_end(&self, mut k: usize) -> Option<usize> {
+        let mut depth = 0usize;
+        loop {
+            match &self.peek_at(k).kind {
+                TokKind::Punct("<") => depth += 1,
+                TokKind::Punct(">") => depth -= 1,
+                TokKind::Ident(_) | TokKind::Punct("," | "." | "?" | "[" | "]" | "&") => {}
+                _ => return None,
+            }
+            k += 1;
+            if depth == 0 {
+                return Some(k);
             }
         }
+    }
+
+    /// Consume generic type arguments when the next token is their `<`.
+    fn skip_generic_args(&mut self) -> PResult<()> {
+        if self.peek().is_punct("<") {
+            let Some(end) = self.generic_args_end(0) else {
+                return Err(Diagnostic::error(self.peek().pos, "Unclosed generic type"));
+            };
+            self.i += end;
+        }
+        Ok(())
+    }
+
+    fn skip_type(&mut self) -> PResult<()> {
+        self.qualified_name()?;
+        self.skip_generic_args()?;
         while self.peek().is_punct("[") && self.peek_at(1).is_punct("]") {
             self.next();
             self.next();
@@ -963,13 +967,12 @@ impl Parser {
                         return self.unary();
                     }
                 }
+                // Like Groovy, keep no trace of the parentheses: Jenkins reads
+                // `stage(('A'))` and `A = ('a')` as if they were not there.
                 self.next();
                 let inner = self.grouped(true, |p| p.expr())?;
                 self.expect(")")?;
-                Ok(Expr::Paren {
-                    inner: Box::new(inner),
-                    pos,
-                })
+                Ok(inner)
             }
             TokKind::Punct("[") => self.list_or_map(),
             TokKind::Punct("{") => self.closure(),
@@ -991,19 +994,7 @@ impl Parser {
         }
         let mut type_only = false;
         if self.peek_at(k).is_punct("<") {
-            let mut depth = 0;
-            loop {
-                match &self.peek_at(k).kind {
-                    TokKind::Punct("<") => depth += 1,
-                    TokKind::Punct(">") => depth -= 1,
-                    TokKind::Ident(_) | TokKind::Punct("," | "." | "?" | "[" | "]") => {}
-                    _ => return None,
-                }
-                k += 1;
-                if depth == 0 {
-                    break;
-                }
-            }
+            k = self.generic_args_end(k)?;
             type_only = true;
         }
         while self.peek_at(k).is_punct("[") && self.peek_at(k + 1).is_punct("]") {
@@ -1015,22 +1006,7 @@ impl Parser {
 
     fn new_expr(&mut self, pos: Pos) -> PResult<Expr> {
         let ty = self.qualified_name()?;
-        if self.peek().is_punct("<") {
-            let mut depth = 0;
-            loop {
-                let t = self.next();
-                if t.is_punct("<") {
-                    depth += 1;
-                } else if t.is_punct(">") {
-                    depth -= 1;
-                } else if matches!(t.kind, TokKind::Eof) {
-                    return Err(Diagnostic::error(t.pos, "Unclosed generic type"));
-                }
-                if depth == 0 {
-                    break;
-                }
-            }
-        }
+        self.skip_generic_args()?;
         if self.peek().is_punct("[") {
             // Array creation: new String[3] or new String[] { ... }
             while self.peek().is_punct("[") {

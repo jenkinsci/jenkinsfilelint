@@ -56,6 +56,26 @@ const PUNCTS: &[&str] = &[
 /// Keywords after which a `/` starts a slashy string rather than a division.
 const REGEX_AFTER_KEYWORDS: &[&str] = &["return", "in", "case", "assert", "throw", "else", "new"];
 
+/// Groovy's message for a `$` in a GString that starts neither `${...}` nor
+/// a name.
+const ILLEGAL_DOLLAR: &str =
+    "illegal string body character after dollar sign; either escape a literal dollar sign \"\\$5\" or bracket the value expression \"${5}\"";
+
+/// What may follow `$` in a GString: Java's identifier start, except `$`.
+fn is_identifier_start(c: char) -> bool {
+    c.is_alphabetic() || c == '_'
+}
+
+/// An error for a character no token can start with. Invisible ones, such
+/// as a no-break space, are named by their code point.
+fn unexpected_char(c: char) -> String {
+    if c.is_whitespace() || c.is_control() || c == '\u{feff}' {
+        format!("Unexpected character U+{:04X}", c as u32)
+    } else {
+        format!("Unexpected character '{c}'")
+    }
+}
+
 pub fn tokenize(src: &str) -> Result<Vec<Token>, Diagnostic> {
     Lexer::new(src).run()
 }
@@ -148,7 +168,10 @@ impl<'a> Lexer<'a> {
                         nl = true;
                         self.bump();
                     }
-                    Some(c) if c.is_whitespace() => {
+                    // Groovy separates tokens with spaces, tabs and form
+                    // feeds only: a no-break space pasted from a web page
+                    // is an error there, so it is one here too.
+                    Some(' ' | '\t' | '\x0c' | '\r') => {
                         self.bump();
                     }
                     Some('\\') if self.peek(1) == Some('\n') => {
@@ -220,7 +243,7 @@ impl<'a> Lexer<'a> {
                 TokKind::Ident(s)
             } else {
                 let Some(p) = PUNCTS.iter().find(|p| self.starts_with(p)) else {
-                    return Err(self.err(pos, format!("Unexpected character '{c}'")));
+                    return Err(self.err(pos, unexpected_char(c)));
                 };
                 for _ in 0..p.chars().count() {
                     self.bump();
@@ -341,9 +364,12 @@ impl<'a> Lexer<'a> {
                     value.push_str(&self.interpolation(start)?);
                     continue;
                 }
-                if self.peek(1).is_some_and(|d| d.is_alphabetic() || d == '_') {
-                    interp = true;
+                // Like Groovy, a `$` must start `${...}` or a name: `"$(date)"`,
+                // `"$1"` and `"cost: $5"` do not compile.
+                if !self.peek(1).is_some_and(is_identifier_start) {
+                    return Err(self.err(self.pos(), ILLEGAL_DOLLAR));
                 }
+                interp = true;
             }
             value.push(c);
             self.bump();
@@ -516,6 +542,47 @@ mod tests {
             value: "re+".into(),
             interp: false
         }));
+    }
+
+    #[test]
+    fn dollar_in_gstrings() {
+        for ok in [
+            "\"$x and ${y} and \\$5 and $_z\"",
+            "'$(date) $1 $'",
+            "/^v\\d+$/",
+            "$/a $ b $$ c/$",
+            "\"\"\"${x}\n$y\"\"\"",
+        ] {
+            assert!(tokenize(ok).is_ok(), "{ok}");
+        }
+        for bad in [
+            "\"echo $(date)\"",
+            "\"$1\"",
+            "\"cost: $5\"",
+            "\"a $\"",
+            "\"a$$b\"",
+            "\"\"\"x $\n\"\"\"",
+        ] {
+            let e = tokenize(bad).expect_err(bad);
+            assert!(
+                e.message.starts_with("illegal string body character after dollar sign"),
+                "{bad}: {}",
+                e.message
+            );
+        }
+        // The error points at the `$`.
+        assert_eq!(tokenize("x = \"a $(b)\"").unwrap_err().pos, Pos { line: 1, col: 8 });
+    }
+
+    #[test]
+    fn only_groovy_whitespace_separates_tokens() {
+        assert!(tokenize("a \t\x0c\r\nb").is_ok());
+        for (src, name) in [("echo\u{a0}'x'", "U+00A0"), ("a\u{2003}b", "U+2003"), ("a\x0bb", "U+000B")] {
+            let e = tokenize(src).expect_err(src);
+            assert_eq!(e.message, format!("Unexpected character {name}"));
+        }
+        // Inside strings and comments anything goes.
+        assert!(tokenize("x = 'a\u{a0}b' // c\u{a0}d").is_ok());
     }
 
     #[test]

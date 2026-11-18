@@ -330,6 +330,15 @@ error: Expected a block for input
 # Jenkins also reports: Missing required section "stages"
 error: Expected a block for matrix
 
+[e86_parenthesized_big_integer]
+error: BigIntegers cannot be used as constants in Declarative. The maximum value for an integer is 9,223,372,036,854,775,807 and the minimum value for an integer is -9,223,372,036,854,775,808.
+
+[e87_parallel_step_with_a_map]
+error: Expected one of "steps", "stages", or "parallel" for stage "S"
+
+[e88_missing_agent_beside_helper_pipeline]
+error: Missing required section "agent"
+
 [p01_kubernetes_agent]
 # Differs: Depends on installed plugins or controller configuration, which the offline linter cannot see.
 # Jenkins: Invalid agent type "kubernetes" specified. Must be one of [any, docker, dockerfile, label, none]
@@ -488,6 +497,18 @@ error
 
 [s25_unclosed_generic_type]
 # Jenkins: Missing closing bracket '>' for generics types
+error
+
+[s26_dollar_paren_in_gstring]
+# Jenkins: illegal string body character after dollar sign;
+error
+
+[s27_dollar_digit_in_gstring]
+# Jenkins: illegal string body character after dollar sign;
+error
+
+[s28_no_break_space]
+# Jenkins: unexpected char: 0xA0
 error
 
 [v01_minimal]
@@ -664,6 +685,18 @@ valid
 [v61_method_definitions]
 valid
 
+[v62_dollar_in_other_strings]
+valid
+
+[v63_parenthesized_stage_name]
+valid
+
+[v64_closure_as_named_argument]
+valid
+
+[v65_pipeline_in_helper_method]
+valid
+
 [x01_scripted_pipeline]
 # Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
 # Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
@@ -722,6 +755,11 @@ valid
 valid
 
 [x13_shared_lib_other_pipeline_block]
+# Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
+# Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
+valid
+
+[x14_pipeline_in_non_call_method]
 # Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
 # Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
 valid

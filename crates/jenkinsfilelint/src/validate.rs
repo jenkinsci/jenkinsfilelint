@@ -82,21 +82,23 @@ const WHEN_CONDITIONS: &[&str] = &[
 const WHEN_FLAGS: &[&str] = &["beforeAgent", "beforeInput", "beforeOptions"];
 const INPUT_FIELDS: &[&str] = &["message", "id", "ok", "submitter", "submitterParameter", "parameters"];
 
+/// Check the Declarative Pipelines of a file, found where Jenkins looks for
+/// them: the `pipeline` blocks at the top level, or else those in the
+/// `call` method of a shared library step. Pipeline blocks in other methods
+/// are not checked, as Jenkins does not check them either.
 pub fn validate(stmts: &[Stmt]) -> Report {
     let mut v = Validator::default();
-    let mut seen_pipeline = false;
-    for stmt in stmts {
-        match stmt.section() {
-            Some(sec) if sec.name == "pipeline" => {
-                if seen_pipeline {
-                    v.err(sec.pos, "Multiple occurrences of the pipeline section");
-                }
-                seen_pipeline = true;
-                v.pipeline(&sec);
-            }
-            _ => {
-                // Shared library steps: def call() { pipeline { ... } }
-                if let Stmt::MethodDef { body, .. } = stmt {
+    let top: Vec<Section> = stmts.iter().filter_map(|s| s.section()).filter(|s| s.name == "pipeline").collect();
+    for (i, sec) in top.iter().enumerate() {
+        if i > 0 {
+            v.err(sec.pos, "Multiple occurrences of the pipeline section");
+        }
+        v.pipeline(sec);
+    }
+    if top.is_empty() {
+        for stmt in stmts {
+            if let Stmt::MethodDef { name, body, .. } = stmt {
+                if name == "call" {
                     v.library_body(body);
                 }
             }
@@ -151,15 +153,6 @@ fn axis_name(arg: &Arg) -> Option<&str> {
         Arg::Pos(Expr::Ident { name, .. }) => Some(name),
         _ => None,
     }
-}
-
-/// Groovy keeps no trace of parentheses in its syntax tree, so Jenkins reads
-/// `('a')` exactly like `'a'`.
-fn unparen(mut e: &Expr) -> &Expr {
-    while let Expr::Paren { inner, .. } = e {
-        e = inner;
-    }
-    e
 }
 
 /// What Groovy parses as one constant, or a GString: a string, a number
@@ -217,7 +210,6 @@ fn for_each_closure<'a>(e: &'a Expr, f: &mut dyn FnMut(&'a [Stmt])) {
         Expr::List { items, .. } => items.iter().for_each(|i| for_each_closure(i, f)),
         Expr::Map { entries, .. } => entries.iter().for_each(|(_, v)| for_each_closure(v, f)),
         Expr::Prop { obj, .. } => for_each_closure(obj, f),
-        Expr::Paren { inner, .. } => for_each_closure(inner, f),
         _ => {}
     }
 }
@@ -320,8 +312,11 @@ impl Validator {
             return;
         };
         let secs = self.sections(body, TOP_SECTIONS, &|n| format!("Undefined section \"{n}\""), false);
+        // A required section that is there but wrong (`agent` without a
+        // value, a second `stages`) already has its own error.
+        let named: HashSet<&str> = body.iter().filter_map(|s| s.section()).map(|s| s.name).collect();
         for required in ["stages", "agent"] {
-            if !secs.iter().any(|s| s.name == required) && !self.diags.iter().any(|d| d.message.contains(&format!("\"{required}\""))) {
+            if !named.contains(required) {
                 self.err(sec.pos, format!("Missing required section \"{required}\""));
             }
         }
@@ -651,10 +646,12 @@ impl Validator {
             self.method_args(arg_expr(a));
         }
         // Block-scoped steps such as dir('x') { ... } hold more steps. An
-        // empty block is fine there: only an empty `steps` is an error.
+        // empty block is fine there: only an empty `steps` is an error. A
+        // closure passed as a named argument is a value, not a block of
+        // steps, and Jenkins does not check what is inside it.
         for a in args {
-            if let Expr::Closure { body, pos, .. } = arg_expr(a) {
-                if name == "parallel" || body.is_empty() {
+            if let Arg::Pos(Expr::Closure { body, pos, .. }) = a {
+                if body.is_empty() {
                     continue;
                 }
                 self.steps(*pos, body);
@@ -663,8 +660,10 @@ impl Validator {
     }
 
     /// `parallel a: { ... }, b: { ... }, failFast: true` as the only step.
+    /// Jenkins reads neither `parallel()` nor `parallel([a: { ... }])`, with
+    /// a map, as parallel branches.
     fn parallel_step(&mut self, pos: Pos, args: &[Arg]) {
-        if args.is_empty() {
+        if args.is_empty() || args.iter().any(|a| matches!(a, Arg::Pos(Expr::Map { .. }))) {
             let stage = self.stage.clone();
             self.err(
                 pos,
@@ -684,14 +683,6 @@ impl Validator {
                     ..
                 } => self.steps(*pos, body),
                 Arg::Named { pos, .. } => self.err(*pos, "Expected closure or failFast"),
-                Arg::Pos(Expr::Map { entries, pos }) => {
-                    for (_, v) in entries {
-                        if let Expr::Closure { body, pos, .. } = v {
-                            self.steps(*pos, body);
-                        }
-                    }
-                    let _ = pos;
-                }
                 Arg::Pos(e) => self.err(e.pos(), "Expected closure or failFast"),
             }
         }
@@ -829,7 +820,6 @@ impl Validator {
     /// Jenkins accepts a constant, a GString, a method call, or constants
     /// and GStrings joined with `+`.
     fn env_value(&mut self, value: &Expr) {
-        let value = unparen(value);
         match value {
             v if is_constant(v) => {}
             Expr::Call { callee, .. } if matches!(callee.as_ref(), Expr::Ident { name, .. } if name == "$") => {
@@ -847,7 +837,7 @@ impl Validator {
                     );
                     return;
                 }
-                for side in [unparen(lhs), unparen(rhs)] {
+                for side in [lhs.as_ref(), rhs.as_ref()] {
                     match side {
                         s if is_constant(s) => {}
                         Expr::Binary { .. } => self.env_value(side),

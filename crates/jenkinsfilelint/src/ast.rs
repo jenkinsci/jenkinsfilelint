@@ -79,10 +79,6 @@ pub enum Expr {
         args: Vec<Arg>,
         pos: Pos,
     },
-    Paren {
-        inner: Box<Expr>,
-        pos: Pos,
-    },
 }
 
 #[derive(Debug, Clone)]
@@ -136,8 +132,7 @@ impl Expr {
             | Expr::Binary { pos, .. }
             | Expr::Ternary { pos, .. }
             | Expr::Assign { pos, .. }
-            | Expr::New { pos, .. }
-            | Expr::Paren { pos, .. } => *pos,
+            | Expr::New { pos, .. } => *pos,
         }
     }
 
@@ -166,7 +161,6 @@ impl Expr {
             Expr::Ternary { .. } => "(... ? ... : ...)".into(),
             Expr::Assign { target, .. } => format!("{} = ...", target.render()),
             Expr::New { ty, .. } => format!("new {ty}(...)"),
-            Expr::Paren { inner, .. } => format!("({})", inner.render()),
         }
     }
 }
