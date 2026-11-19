@@ -16,6 +16,7 @@ pub fn parse(tokens: Vec<Token>) -> Result<Vec<Stmt>, Diagnostic> {
         i: 0,
         in_group: false,
         depth: 0,
+        command_start: 0,
     };
     let stmts = p.stmts_until(None)?;
     Ok(stmts)
@@ -52,6 +53,10 @@ struct Parser {
     /// How many nested statements and expressions are being parsed. Capped
     /// at MAX_DEPTH so that absurd nesting gives an error, not a crash.
     depth: usize,
+    /// Where a command expression may start: a statement, the value of an
+    /// assignment, a command's first argument. Only there does Groovy take
+    /// a number with letters after it, `6ce8`, as `6 ce8`.
+    command_start: usize,
 }
 
 type PResult<T> = Result<T, Diagnostic>;
@@ -620,6 +625,7 @@ impl Parser {
     /// with a string, which names the method: `"a"${n}"b"` is
     /// `"a"($({ n }))."b"`.
     fn expr_stmt(&mut self) -> PResult<Expr> {
+        self.command_start = self.i;
         let e = self.expr()?;
         // `a[0] "x"` and `env.(name) "x"` are command calls too, and so is
         // a string with arguments, which names the method: `'echo' 'hi'`
@@ -729,6 +735,7 @@ impl Parser {
 
     fn command_args(&mut self) -> PResult<Vec<Arg>> {
         let mut args = Vec::new();
+        self.command_start = self.i;
         loop {
             if self.named_key_ahead() {
                 let (key, pos) = self.named_key();
@@ -1081,6 +1088,15 @@ impl Parser {
                 if name == "in" || name == "instanceof" {
                     return Err(self.unexpected("an expression"));
                 }
+                // The lexer keeps `6ce8` whole, for the validator to explain
+                // `1BAR = 'x'`; Groovy reads `6 ce8`, which only a command
+                // expression can be.
+                if name.starts_with(|c: char| c.is_ascii_digit()) && self.i != self.command_start {
+                    return Err(Diagnostic::error(
+                        pos,
+                        format!("Unexpected '{name}': a name cannot start with a digit"),
+                    ));
+                }
                 self.next();
                 Ok(Expr::Ident { name, pos })
             }
@@ -1271,6 +1287,7 @@ impl Parser {
             i: 0,
             in_group: false,
             depth: self.depth,
+            command_start: usize::MAX,
         };
         let expr = if raw.braced { sub.closure()? } else { sub.expr()? };
         if !sub.at_eof() {

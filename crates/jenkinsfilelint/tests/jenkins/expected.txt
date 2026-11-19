@@ -611,6 +611,10 @@ error
 # Jenkins: unexpected token: name
 error
 
+[s43_digit_led_name_in_placeholder]
+# Jenkins: expecting '}', found 'ce8dcfac9a9'
+error
+
 [v01_minimal]
 valid
 
@@ -1007,6 +1011,11 @@ valid
 valid
 
 [x20_command_chains_scripted]
+# Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
+# Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
+valid
+
+[x21_digit_led_names_scripted]
 # Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
 # Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
 valid
