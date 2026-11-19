@@ -10,7 +10,13 @@ from pathlib import Path
 from typing import List, Optional, Set, Tuple
 from .linter import JenkinsfileLinter, NOT_DECLARATIVE_MESSAGE
 from .local import LocalJenkins, handle_server_command
-from .offline import OfflineEngineError, find_engine, lint_files
+from .offline import (
+    OfflineEngineError,
+    audit_files,
+    audit_report,
+    find_engine,
+    lint_files,
+)
 from . import __version__
 
 
@@ -261,6 +267,68 @@ def _run_offline_validation(args: argparse.Namespace, automatic: bool = False) -
     sys.exit(0 if all_valid else 1)
 
 
+SEVERITIES = ("high", "medium", "low")
+
+
+def _audit_options(args: argparse.Namespace) -> dict:
+    return {
+        "persona": args.persona or "regular",
+        "min_severity": args.min_severity or "low",
+        "min_confidence": args.min_confidence or "low",
+    }
+
+
+def _run_audit(args: argparse.Namespace) -> None:
+    """Run the security checks with the offline engine: findings on stdout,
+    or the engine's JSON or SARIF report as is."""
+    selected = [f for f in args.jenkinsfile if _skip_reason(f, args) is None]
+    text = args.format == "text"
+    try:
+        engine = find_engine() if selected or not text else None
+        if engine and args.verbose:
+            print(
+                f"✓ Offline engine: {engine}", file=sys.stdout if text else sys.stderr
+            )
+        if not text:
+            output, errors, code = audit_report(
+                selected, args.format, engine, **_audit_options(args)
+            )
+            sys.stderr.write(errors)
+            print(output, end="")
+            sys.exit(code)
+        results = (
+            audit_files(selected, engine, **_audit_options(args)) if selected else {}
+        )
+    except OfflineEngineError as exc:
+        print(f"✗ {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    counts = {severity: 0 for severity in SEVERITIES}
+    failed = False
+    for jenkinsfile in args.jenkinsfile:
+        reason = _skip_reason(jenkinsfile, args)
+        if reason:
+            if args.verbose:
+                print(f"⊘ {jenkinsfile}: Skipped ({reason})")
+            continue
+        result = results[jenkinsfile]
+        for line in result.errors:
+            sys.stdout.flush()  # keep the output in file order when piped
+            print(line, file=sys.stderr)
+            failed = True
+        for finding in result.findings:
+            print(finding.render(jenkinsfile))
+            counts[finding.severity] = counts.get(finding.severity, 0) + 1
+        if args.verbose and not result.findings and not result.errors:
+            print(f"✓ {jenkinsfile}: No findings")
+
+    total = sum(counts.values())
+    if total:
+        parts = ", ".join(f"{counts[s]} {s}" for s in SEVERITIES if counts.get(s))
+        print(f"{total} finding{'' if total == 1 else 's'} ({parts})")
+    sys.exit(1 if total or failed else 0)
+
+
 def main():
     """Main entry point for jenkinsfilelint.
 
@@ -343,6 +411,39 @@ def main():
         "parameters; use a Jenkins server or --local for that. This is also what "
         "happens when no Jenkins server is configured.",
     )
+    mode.add_argument(
+        "--audit",
+        action="store_true",
+        help="Run security checks instead of validating, offline: find secrets "
+        "interpolated into shell steps and other ways a pipeline can be attacked. "
+        "Each finding links to its documentation.",
+    )
+    audit = parser.add_argument_group("audit options (with --audit)")
+    audit.add_argument(
+        "--persona",
+        choices=("regular", "pedantic", "auditor"),
+        help="How much to show: regular (default) shows what is worth fixing, "
+        "pedantic adds lower-confidence findings and hardening advice, auditor "
+        "shows everything.",
+    )
+    audit.add_argument(
+        "--min-severity",
+        choices=("low", "medium", "high"),
+        help="Leave out findings below this severity.",
+    )
+    audit.add_argument(
+        "--min-confidence",
+        choices=("low", "medium", "high"),
+        help="Leave out findings below this confidence.",
+    )
+    audit.add_argument(
+        "--format",
+        choices=("text", "json", "sarif"),
+        default="text",
+        help="Output format (default: text). sarif is for GitHub code scanning "
+        "and other tools, and exits with 0 when there are findings, so that the "
+        "report can be uploaded.",
+    )
     parser.add_argument(
         "-v",
         "--verbose",
@@ -380,11 +481,24 @@ def main():
 
     args = parser.parse_args()
 
-    if args.offline:
+    if not args.audit:
+        for option in ("persona", "min_severity", "min_confidence"):
+            if getattr(args, option):
+                flag = "--" + option.replace("_", "-")
+                parser.error(f"argument {flag}: requires --audit")
+        if args.format != "text":
+            parser.error("argument --format: requires --audit")
+    if args.offline or args.audit:
+        offline_flag = "--audit" if args.audit else "--offline"
         for option in ("jenkins_url", "username", "token"):
             if getattr(args, option):
                 flag = "--" + option.replace("_", "-")
-                parser.error(f"argument --offline: not allowed with argument {flag}")
+                parser.error(
+                    f"argument {offline_flag}: not allowed with argument {flag}"
+                )
+    if args.audit:
+        _run_audit(args)
+    elif args.offline:
         _run_offline_validation(args)
     elif args.local:
         _run_local_validation(args)

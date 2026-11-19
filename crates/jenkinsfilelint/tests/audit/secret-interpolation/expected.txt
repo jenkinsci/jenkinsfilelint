@@ -1,0 +1,102 @@
+# What the audit finds in each case, with --persona auditor: one line per
+# finding, as line:column severity confidence persona variable, or none.
+# tp cases are true positives, tn cases true negatives.
+
+[tn01_single_quotes]
+none
+
+[tn02_escaped_dollar]
+none
+
+[tn03_outside_with_credentials]
+none
+
+[tn04_secret_file_paths]
+none
+
+[tn05_reassigned_local]
+none
+
+[tn06_other_stage]
+none
+
+[tn07_ignore_comments]
+none
+
+[tn08_no_secrets]
+none
+
+[tn09_shadowing_declaration]
+none
+
+[tp01_username_password]
+7:33 low high pedantic USER
+7:41 high high regular PASS
+
+[tp02_dollar_name]
+7:40 high high regular TOKEN
+
+[tp03_env_prefix]
+7:40 high high regular TOKEN
+8:40 high high regular TOKEN
+
+[tp04_pipeline_environment]
+9:29 low high pedantic CREDS_USR
+9:42 high high regular CREDS_PSW
+10:25 high medium pedantic CREDS
+
+[tp05_stage_environment]
+9:29 low high pedantic CREDS_USR
+9:42 high high regular CREDS_PSW
+
+[tp06_local_variable]
+9:28 high high regular TOKEN
+10:46 high high regular TOKEN
+
+[tp07_concatenation]
+7:44 high high regular TOKEN
+8:44 high high regular TOKEN
+
+[tp08_windows_shells]
+7:37 high high regular TOKEN
+8:47 high high regular TOKEN
+9:41 high high regular TOKEN
+
+[tp09_triple_quoted]
+9:53 high high regular TOKEN
+
+[tp10_scripted]
+4:32 high high regular TOKEN
+
+[tp11_ssh_key]
+7:39 low high pedantic SSH_USER
+8:32 high high regular PHRASE
+
+[tp12_aws_map_binding]
+7:61 low high pedantic AK
+8:65 high high regular SK
+
+[tp13_git_username_password]
+7:42 low high pedantic GIT_USERNAME
+7:58 high high regular GIT_PASSWORD
+
+[tp14_shared_library]
+3:28 high high regular TOKEN
+
+[tp15_other_steps]
+7:34 low high pedantic TOKEN
+8:57 low high pedantic TOKEN
+
+[tp16_placeholder_expressions]
+7:40 high high regular TOKEN
+8:40 high high regular TOKEN
+
+[tp17_local_in_placeholder]
+9:37 low high pedantic USER
+9:37 high high regular PASS
+
+[tp18_multiple_bindings]
+11:27 high high regular A_TOKEN
+11:41 high high regular B_AUTH
+11:63 high high regular STORE_PASS
+11:77 low high pedantic ALIAS

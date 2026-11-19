@@ -26,6 +26,7 @@ hook, but also works as a standalone CLI tool.
   - [Local mode (with Docker, no Jenkins server needed)](#local-mode-with-docker-no-jenkins-server-needed)
   - [What happens on commit](#what-happens-on-commit)
 - [CLI](#cli)
+- [Security audit (preview)](#security-audit-preview)
 - [Filtering files](#filtering-files)
 - [Parallel validation](#parallel-validation)
 - [Configuration](#configuration)
@@ -219,6 +220,36 @@ configured starts by saying so:
 
 The exit code is `0` when every file is valid and `1` when any file has an
 error or could not be checked.
+
+## Security audit (preview)
+
+`--audit` checks Jenkinsfiles and shared library files for security problems
+instead of validating them, offline:
+
+```console
+$ jenkinsfilelint --audit Jenkinsfile
+Jenkinsfile:12:41: high: secret-interpolation: PASS is a secret, and Groovy interpolates it into the sh script: ...
+  help: https://github.com/jenkinsci/jenkinsfilelint/blob/main/docs/audit/secret-interpolation.md
+1 finding (1 high)
+```
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/jenkinsci/jenkinsfilelint
+    rev: # use the latest version
+    hooks:
+      - id: jenkinsfilelint-audit
+```
+
+The first rule, [secret-interpolation](docs/audit/secret-interpolation.md),
+finds secrets that Groovy interpolates into shell steps. `--persona`,
+`--min-severity` and `--min-confidence` choose what to see, a
+`// jenkinsfilelint: ignore[rule]` comment turns off one finding, and
+`--format sarif` writes a report for GitHub code scanning. See
+[docs/audit](docs/audit/README.md) for all of it, and
+[#65](https://github.com/jenkinsci/jenkinsfilelint/issues/65) for the rules
+to come.
 
 ## Filtering files
 
