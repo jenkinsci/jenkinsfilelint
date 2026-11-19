@@ -830,11 +830,13 @@ impl Parser {
             }
             let rhs = if op == "as" || op == "instanceof" || op == "!instanceof" {
                 let tpos = self.peek().pos;
+                // The type's first name: `Integer` in `x as Integer`.
+                let name = match &self.peek().kind {
+                    TokKind::Ident(n) => n.clone(),
+                    _ => "type".into(),
+                };
                 self.skip_type()?;
-                Expr::Ident {
-                    name: "type".into(),
-                    pos: tpos,
-                }
+                Expr::Ident { name, pos: tpos }
             } else {
                 self.binary(prec + 1)?
             };

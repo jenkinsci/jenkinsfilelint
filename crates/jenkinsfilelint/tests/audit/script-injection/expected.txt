@@ -1,0 +1,128 @@
+# What the audit finds in each case, with --persona auditor: one line per
+# finding, as line:column severity confidence persona variable, or none.
+# tp cases are true positives, tn cases true negatives.
+
+[tn01_environment_in_single_quotes]
+none
+
+[tn02_escaped_dollar]
+none
+
+[tn03_other_steps]
+none
+
+[tn04_safe_values]
+none
+
+[tn05_reassigned]
+none
+
+[tn06_ignore_comment]
+none
+
+[tn07_step_results]
+none
+
+[tn08_build_variables]
+none
+
+[tn09_conditions]
+none
+
+[tp01_pull_request]
+6:35 high high regular CHANGE_TITLE
+7:34 high high regular CHANGE_BRANCH
+9:37 high high regular CHANGE_AUTHOR_DISPLAY_NAME
+
+[tp02_local_variable]
+8:41 high high regular CHANGE_BRANCH
+10:24 high high regular CHANGE_BRANCH
+
+[tp03_environment_block]
+10:26 high high regular CHANGE_TITLE
+11:35 high high regular CHANGE_BRANCH
+
+[tp04_with_env]
+3:18 high high regular CHANGE_TITLE
+7:26 high high regular CHANGE_BRANCH
+
+[tp05_declared_parameters]
+12:38 medium high regular params.VERSION
+12:65 low high auditor params.TARGET
+12:92 low high auditor params.DRY_RUN
+13:26 medium high regular NOTES
+
+[tp06_undeclared_parameter]
+6:32 medium medium regular params.NAMESPACE
+7:62 medium medium regular params.TAG
+
+[tp07_scripted_parameters]
+9:22 medium high regular params.BRANCH
+9:54 low high auditor params.REGION
+
+[tp08_ghprb]
+3:26 high high regular ghprbPullTitle
+4:39 high high regular ghprbPullTitle
+5:26 high high regular params.ghprbSourceBranch
+7:30 high high regular ghprbCommentBody
+8:31 low high pedantic ghprbPullAuthorLogin
+
+[tp09_gitlab]
+6:45 high high regular gitlabSourceBranch
+6:87 low low auditor gitlabTargetBranch
+7:40 high high regular gitlabMergeRequestTitle
+8:43 medium medium pedantic gitlabUserEmail
+9:42 low high pedantic gitlabUserUsername
+
+[tp10_gerrit]
+2:14 high high regular GERRIT_CHANGE_SUBJECT
+3:24 high high regular GERRIT_TOPIC
+3:52 high high regular GERRIT_CHANGE_OWNER_NAME
+4:14 low low auditor GERRIT_CHANGE_COMMIT_MESSAGE
+5:26 low low auditor GERRIT_BRANCH
+
+[tp11_webhook_open_token]
+18:34 high high regular ref
+19:26 high high regular pr_title
+19:38 high high regular x_github_event
+
+[tp12_webhook_secret_token]
+15:14 high medium regular title
+16:22 low low auditor sha
+17:22 low high auditor clean_ref
+
+[tp13_windows_shells]
+2:23 high high regular CHANGE_BRANCH
+3:31 high high regular CHANGE_TITLE
+4:32 medium medium regular params.MESSAGE
+
+[tp14_docker]
+2:57 high high regular CHANGE_BRANCH
+3:57 medium medium regular params.DB
+7:22 high high regular CHANGE_BRANCH
+7:51 high high regular CHANGE_TITLE
+
+[tp15_shared_library]
+2:30 high high regular CHANGE_BRANCH
+3:27 medium medium regular params.VERSION
+
+[tp16_expressions]
+2:28 high high regular CHANGE_BRANCH
+3:14 high high regular CHANGE_BRANCH
+4:14 high high regular CHANGE_TITLE
+5:14 high high regular CHANGE_TITLE
+6:14 high high regular CHANGE_TITLE
+
+[tp17_how_it_gets_there]
+2:42 high high regular CHANGE_BRANCH
+3:18 high high regular CHANGE_TITLE
+4:8 medium medium regular params.COMMAND
+7:8 high high regular CHANGE_TITLE
+
+[tp18_other_inputs]
+2:14 low high pedantic CHANGE_AUTHOR
+2:35 low high pedantic CHANGE_FORK
+2:54 medium medium pedantic CHANGE_AUTHOR_EMAIL
+3:14 low low auditor BRANCH_NAME
+3:33 low low auditor TAG_NAME
+3:49 low low auditor CHANGE_TARGET

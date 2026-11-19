@@ -46,7 +46,8 @@ Both Go and Rust produce small static binaries. Rust won on three points:
 src/lexer.rs     tokens; all Groovy string forms; newline tracking
 src/parser.rs    recursive-descent parser -> small AST (ast.rs)
 src/validate.rs  declarative structure checks, official message wording
-src/audit/       --audit: security rules, findings, ignore comments, SARIF
+src/audit/       --audit: security rules, findings, ignore comments, SARIF;
+                 taint.rs follows values from sources to the steps that run them
 src/main.rs      CLI: text, JSON or SARIF output, exit codes
 python/          jenkinsfilelint_engine: finds the binary installed by the wheel
 scripts/corpus_check.py  agreement test against the plugin's own samples

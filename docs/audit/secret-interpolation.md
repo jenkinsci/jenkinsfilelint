@@ -1,7 +1,8 @@
 # secret-interpolation
 
 A secret from `withCredentials` or `credentials()` is interpolated by Groovy
-into the script of a `sh`, `bat`, `powershell` or `pwsh` step.
+into the script of a `sh`, `bat`, `powershell` or `pwsh` step, or into a
+command line that Docker Pipeline runs in a shell.
 
 | Severity | Confidence | Persona |
 |---|---|---|
@@ -26,9 +27,15 @@ It also finds the secret when it gets there another way:
 - `sh "... $PASS ..."` and `sh "... ${env.PASS} ..."`
 - `sh "... ${PASS.trim()} ..."`, or any expression that uses the secret
 - `sh 'curl -u admin:' + PASS`, joined with `+`
-- `def cmd = "... ${PASS} ..."` and later `sh cmd` or `sh "${cmd}"`
+- `def cmd = "... ${PASS} ..."` and later `sh cmd` or `sh "${cmd}"`, and
+  `def pw = env.PASS` and later `sh "... ${pw} ..."`
+- an environment variable set from the secret, with `environment`,
+  `withEnv` or `env.X = ...`, and later interpolated
 - `sh script: "...", returnStdout: true`, and `"""..."""` strings, with or
   without `.stripIndent()`
+- the arguments of `docker.build(image, args)`, and of `run(args, command)`
+  and `withRun(args, command)` on an image, which Docker Pipeline joins
+  into a `sh` command line
 
 The secrets it knows:
 

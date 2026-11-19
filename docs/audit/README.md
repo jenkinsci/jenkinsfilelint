@@ -6,9 +6,11 @@ shared library files with the same parser as the syntax check.
 
 ```console
 $ jenkinsfilelint --audit Jenkinsfile
+Jenkinsfile:8:36: high: script-injection: CHANGE_BRANCH is the name of the pull request's branch, and Groovy interpolates it into the sh script: ...
+  help: https://github.com/jenkinsci/jenkinsfilelint/blob/main/docs/audit/script-injection.md
 Jenkinsfile:12:41: high: secret-interpolation: PASS is a secret, and Groovy interpolates it into the sh script: ...
   help: https://github.com/jenkinsci/jenkinsfilelint/blob/main/docs/audit/secret-interpolation.md
-1 finding (1 high)
+2 findings (2 high)
 ```
 
 The plans and the rules to come are in
@@ -18,7 +20,11 @@ The plans and the rules to come are in
 
 | Rule | Finds |
 |---|---|
+| [script-injection](script-injection.md) | A pull request title, branch name, webhook payload or build parameter interpolated by Groovy into a shell step |
 | [secret-interpolation](secret-interpolation.md) | A secret interpolated by Groovy into a shell step |
+
+Both follow a value through local variables, environment variables, `+`
+and string methods to the step that runs it, the way Groovy evaluates it.
 
 ## Choosing what to see
 
@@ -45,7 +51,7 @@ sh "deploy --token ${TOKEN}"
 ```
 
 Several rules go in one comment, separated by commas:
-`ignore[secret-interpolation, other-rule]`. Text after the `]` is free.
+`ignore[secret-interpolation, script-injection]`. Text after the `]` is free.
 
 ## Output
 

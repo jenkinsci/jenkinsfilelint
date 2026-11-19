@@ -88,8 +88,7 @@ pub enum Expr {
 /// A piece of a GString: text, or a placeholder.
 #[derive(Debug, Clone)]
 pub enum StrPart {
-    // Not read yet: script-injection will look at the text around a
-    // placeholder, such as shell quotes.
+    // Not read yet: kept for checks of the text around a placeholder.
     #[allow(dead_code)]
     Text(String),
     Placeholder(Placeholder),
@@ -251,5 +250,84 @@ impl Expr {
             }
             _ => None,
         }
+    }
+}
+
+/// A statement or an expression, for `visit`.
+#[derive(Clone, Copy)]
+pub enum Node<'a> {
+    Stmt(&'a Stmt),
+    Expr(&'a Expr),
+}
+
+/// Call `f` on every statement and expression in `stmts`, at any depth:
+/// in nested blocks, closures and GString placeholders too. A node comes
+/// before the nodes inside it.
+pub fn visit<'a>(stmts: &'a [Stmt], f: &mut impl FnMut(Node<'a>)) {
+    for s in stmts {
+        f(Node::Stmt(s));
+        match s {
+            Stmt::Expr(e) => visit_expr(e, f),
+            Stmt::Decl { value, .. } => {
+                if let Some(v) = value {
+                    visit_expr(v, f);
+                }
+            }
+            Stmt::MethodDef { body, .. } => visit(body, f),
+            Stmt::Control { bodies, .. } => bodies.iter().for_each(|b| visit(b, f)),
+            Stmt::Other { .. } => {}
+        }
+    }
+}
+
+fn visit_expr<'a>(e: &'a Expr, f: &mut impl FnMut(Node<'a>)) {
+    f(Node::Expr(e));
+    let args = |args: &'a [Arg], f: &mut _| {
+        for a in args {
+            match a {
+                Arg::Pos(v) | Arg::Named { value: v, .. } => visit_expr(v, f),
+            }
+        }
+    };
+    match e {
+        Expr::Str { parts, .. } => {
+            for p in parts {
+                if let StrPart::Placeholder(Placeholder { expr: Some(x), .. }) = p {
+                    visit_expr(x, f);
+                }
+            }
+        }
+        Expr::List { items, .. } => items.iter().for_each(|i| visit_expr(i, f)),
+        Expr::Map { entries, .. } => {
+            for (k, v) in entries {
+                visit_expr(k, f);
+                visit_expr(v, f);
+            }
+        }
+        Expr::Closure { body, .. } => visit(body, f),
+        Expr::Call { callee, args: a, .. } => {
+            visit_expr(callee, f);
+            args(a, f);
+        }
+        Expr::New { args: a, .. } => args(a, f),
+        Expr::Prop { obj, .. } | Expr::Unary { expr: obj, .. } => visit_expr(obj, f),
+        Expr::Index { obj, index, .. } => {
+            visit_expr(obj, f);
+            index.iter().for_each(|i| visit_expr(i, f));
+        }
+        Expr::Binary { lhs, rhs, .. } => {
+            visit_expr(lhs, f);
+            visit_expr(rhs, f);
+        }
+        Expr::Ternary { cond, then, other, .. } => {
+            visit_expr(cond, f);
+            visit_expr(then, f);
+            visit_expr(other, f);
+        }
+        Expr::Assign { target, value, .. } => {
+            visit_expr(target, f);
+            visit_expr(value, f);
+        }
+        Expr::Ident { .. } | Expr::Num { .. } => {}
     }
 }

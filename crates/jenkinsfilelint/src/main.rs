@@ -566,6 +566,7 @@ mod tests {
                 let got: Vec<String> = match super::audit_source(&std::fs::read_to_string(&path).unwrap(), &filter) {
                     Ok(findings) => findings
                         .iter()
+                        .filter(|f| dir.ends_with(f.rule))
                         .map(|f| {
                             let var = f.message.split(' ').next().unwrap_or("");
                             let at = f.span.start;
