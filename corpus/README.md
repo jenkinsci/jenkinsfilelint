@@ -5,10 +5,16 @@ offline engine against Jenkins itself at scale: every file Jenkins's own
 validator accepts should pass offline, and every error it reports should be
 reported offline too, with the same message where the validator words it.
 
-`manifest.tsv` lists the files, one per line: the Git blob hash, the
-repository, the commit and the path. It pins exactly which version of each
-file was checked. The files themselves are other people's code and stay
-out of this repository; `fetch.py` downloads them into a local cache.
+`collect.py` writes `manifest.tsv`, which lists the files, one per line:
+the Git blob hash, the repository, the commit and the path. It pins exactly
+which version of each file was checked. The files themselves are other
+people's code and stay out of this repository; `fetch.py` downloads them
+into a local cache.
+
+The manifest is not in Git yet: at about 3 MB, every pre-commit user
+would download it with each release, since pre-commit fetches the whole
+tree of the version it runs. It will be published with the documentation
+site instead.
 
 ## Running it
 
