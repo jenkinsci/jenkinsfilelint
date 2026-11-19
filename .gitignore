@@ -32,3 +32,8 @@ htmlcov/
 
 # Rust
 crates/*/target/
+
+# Files downloaded by corpus/fetch.py, and the manifest corpus/collect.py
+# writes, which is to be published with the documentation site
+corpus/.cache/
+corpus/manifest.tsv

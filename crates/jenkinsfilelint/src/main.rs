@@ -418,7 +418,8 @@ mod tests {
             format!("pipeline {{\n agent any\n stages {{\n stage('A') {{\n steps {{\n script {{\n{body}\n }}\n }}\n }}\n }}\n}}\n")
         };
         let cases = [
-            "{".repeat(100_000),
+            // Closures in closures: a bare `{` statement is an error of its own.
+            format!("x = {}", "{ -> ".repeat(100_000)),
             wrap(format!("def x = {}1{}", "(".repeat(100_000), ")".repeat(100_000))),
             wrap(format!("{}echo 'x'{}", "[1].each { ".repeat(100_000), " }".repeat(100_000))),
             wrap(format!("def x = {}true", "!".repeat(100_000))),

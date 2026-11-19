@@ -224,10 +224,12 @@ impl Stmt {
 
 impl Expr {
     /// The method a callee names, as Declarative reads it: `foo` in
-    /// `foo(...)`, and in `this.foo(...)`, which Groovy compiles the same.
+    /// `foo(...)`, in `this.foo(...)` and in `'foo'(...)`, which Groovy
+    /// compiles the same.
     pub fn method_name(&self) -> Option<&str> {
         match self {
             Expr::Ident { name, .. } => Some(name),
+            Expr::Str { value, interp: false, .. } => Some(value),
             Expr::Prop { obj, name, .. } if matches!(obj.as_ref(), Expr::Ident { name, .. } if name == "this") => Some(name),
             _ => None,
         }
