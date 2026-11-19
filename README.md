@@ -249,7 +249,9 @@ titles, branch names, webhook payloads and build parameters that Groovy
 interpolates into shell steps, where anyone who opens a pull request or
 starts the build can run commands.
 [secret-interpolation](docs/audit/secret-interpolation.md) finds secrets
-that Groovy interpolates into shell steps. `--persona`,
+that Groovy interpolates into shell steps.
+[controller-execution](docs/audit/controller-execution.md) finds `agent` and
+`node` blocks that run their steps on the Jenkins controller. `--persona`,
 `--min-severity` and `--min-confidence` choose what to see, a
 `// jenkinsfilelint: ignore[rule]` comment turns off one finding, and
 `--format sarif` writes a report for GitHub code scanning. See

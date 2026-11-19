@@ -1,0 +1,46 @@
+# What the audit finds in each case, with --persona auditor: one line per
+# finding, as line:column severity confidence persona label, or none.
+# tp cases are true positives, tn cases true negatives.
+
+[tn01_agents]
+none
+
+[tn02_not_the_controller]
+none
+
+[tn03_computed_label]
+none
+
+[tn04_other_uses]
+none
+
+[tn05_ignore_comment]
+none
+
+[tp01_agent_label]
+2:19 high high regular built-in
+
+[tp02_master]
+3:15 high high regular master
+
+[tp03_stage_agent]
+11:27 high high regular built-in
+
+[tp04_agent_node]
+4:19 high high regular built-in
+
+[tp05_docker_agent]
+5:19 high high regular master
+
+[tp06_scripted_node]
+1:6 high high regular master
+6:13 high high regular built-in
+10:6 high high regular built-in
+
+[tp07_label_expressions]
+2:6 high high regular built-in
+7:6 high medium regular master
+12:19 high medium regular built-in
+
+[tp08_shared_library]
+3:10 high high regular master
