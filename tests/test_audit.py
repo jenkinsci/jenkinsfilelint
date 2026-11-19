@@ -131,6 +131,7 @@ class TestAuditFiles:
                 got = [
                     f"{x.line}:{x.column} {x.severity} {x.confidence}"
                     for x in results[path].findings
+                    if x.rule == rule.name
                 ]
                 assert got == expected[n], n
 
@@ -150,8 +151,9 @@ class TestAuditReport:
         assert sarif["version"] == "2.1.0"
         run = sarif["runs"][0]
         assert run["tool"]["driver"]["name"] == "jenkinsfilelint"
-        rule = run["tool"]["driver"]["rules"][0]
-        assert rule["id"] == "secret-interpolation"
+        rules = {r["id"]: r for r in run["tool"]["driver"]["rules"]}
+        assert set(rules) >= {"script-injection", "secret-interpolation"}
+        rule = rules["secret-interpolation"]
         assert rule["properties"]["tags"] == ["security"]
         assert rule["helpUri"] == HELP
         levels = [
@@ -193,6 +195,21 @@ class TestAuditCLI:
             f"{f}:2:25: high: secret-interpolation: PASS is a secret"
         )
         assert out[-1] == "2 findings (1 high, 1 low)"
+
+    def test_script_injection(self, tmp_path, capsys):
+        f = write(
+            tmp_path, "Jenkinsfile", 'node {\n    sh "echo ${env.CHANGE_TITLE}"\n}\n'
+        )
+        assert run_cli(["--audit", f]) == 1
+        out = capsys.readouterr().out.splitlines()
+        assert out[0].startswith(
+            f"{f}:2:14: high: script-injection: CHANGE_TITLE is the pull request title"
+        )
+        assert (
+            out[1]
+            == f"  help: {HELP.replace('secret-interpolation', 'script-injection')}"
+        )
+        assert out[-1] == "1 finding (1 high)"
 
     def test_one_finding(self, tmp_path, capsys):
         f = write(tmp_path, "Jenkinsfile", LEAKS)

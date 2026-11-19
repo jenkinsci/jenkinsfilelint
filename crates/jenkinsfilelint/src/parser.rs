@@ -604,7 +604,8 @@ impl Parser {
     /// with a string: `"a"${n}"b"` is `"a".$({ n })."b"`.
     fn expr_stmt(&mut self) -> PResult<Expr> {
         let e = self.expr()?;
-        let commandable = matches!(e, Expr::Ident { .. } | Expr::Prop { .. });
+        // `a[0] "x"` and `env.(name) "x"` are command calls too.
+        let commandable = matches!(e, Expr::Ident { .. } | Expr::Prop { .. } | Expr::Index { .. });
         let chained_call = matches!(e, Expr::Call { parens: true, .. } | Expr::Str { .. }) && self.chain_name().is_some();
         if (commandable && self.starts_command_arg()) || chained_call {
             let mut call = if chained_call { e } else { self.command_call(e)? };
@@ -830,11 +831,13 @@ impl Parser {
             }
             let rhs = if op == "as" || op == "instanceof" || op == "!instanceof" {
                 let tpos = self.peek().pos;
+                // The type's first name: `Integer` in `x as Integer`.
+                let name = match &self.peek().kind {
+                    TokKind::Ident(n) => n.clone(),
+                    _ => "type".into(),
+                };
                 self.skip_type()?;
-                Expr::Ident {
-                    name: "type".into(),
-                    pos: tpos,
-                }
+                Expr::Ident { name, pos: tpos }
             } else {
                 self.binary(prec + 1)?
             };
@@ -885,6 +888,39 @@ impl Parser {
             match &t.kind {
                 TokKind::Punct(p @ ("." | "?." | "*." | ".&" | ".@" | "::" | "??.")) => {
                     self.next();
+                    // A member named in parentheses. Groovy 2.4 compiles a
+                    // name or a plain string there as the member's name:
+                    // `this.(echo)` and `this.('echo')` are `this.echo`. Any
+                    // other expression names it at run time, like
+                    // `env[expr]`. It also takes a block, `a.{ ... }`.
+                    if self.peek().is_punct("(") || self.peek().is_punct("{") {
+                        let name = if self.peek().is_punct("(") {
+                            self.next();
+                            let name = self.grouped(true, |p| p.expr())?;
+                            self.expect(")")?;
+                            name
+                        } else {
+                            self.closure()?
+                        };
+                        e = match name {
+                            Expr::Str {
+                                value: name,
+                                interp: false,
+                                ..
+                            }
+                            | Expr::Ident { name, .. } => Expr::Prop {
+                                obj: Box::new(e),
+                                name,
+                                pos: t.pos,
+                            },
+                            name => Expr::Index {
+                                obj: Box::new(e),
+                                index: vec![name],
+                                pos: t.pos,
+                            },
+                        };
+                        continue;
+                    }
                     let name = match self.next().kind {
                         TokKind::Ident(n) => n,
                         TokKind::Str { value, .. } => value,
@@ -932,7 +968,11 @@ impl Parser {
                 // Job DSL's configure blocks do, and `stage 'S' { }` is
                 // `stage('S'({ }))` to Groovy.
                 TokKind::Punct("{")
-                    if !t.nl_before && matches!(e, Expr::Ident { .. } | Expr::Prop { .. } | Expr::Call { .. } | Expr::Str { .. }) =>
+                    if !t.nl_before
+                        && matches!(
+                            e,
+                            Expr::Ident { .. } | Expr::Prop { .. } | Expr::Index { .. } | Expr::Call { .. } | Expr::Str { .. }
+                        ) =>
                 {
                     let closure = self.closure()?;
                     e = attach_closure(e, closure);
@@ -1406,6 +1446,42 @@ mod tests {
         ] {
             let e = fails(src);
             assert_eq!((e.pos.line, e.pos.col), (line, col), "{src}: {}", e.message);
+        }
+    }
+
+    #[test]
+    fn dynamic_member_names() {
+        let render = |src: &str| match &ok(src)[0] {
+            Stmt::Expr(e) => e.render(),
+            other => panic!("{src}: {other:?}"),
+        };
+        // A name or a plain string in parentheses is the member's name.
+        assert_eq!(render("env.(name)"), "env.name");
+        assert_eq!(render("this.('echo') 'x'"), "this.echo(...)");
+        assert_eq!(render("this.((echo))()"), "this.echo(...)");
+        // Any other expression names it at run time.
+        assert_eq!(render("env.(a.split('=')[0]) = 1"), "env[...] = ...");
+        assert_eq!(render("this.(\"$n\") 'x'"), "this[...](...)");
+        assert_eq!(render("a?.{ 2 }"), "a[...]");
+        // Indexes and dynamic members start command calls and take closures.
+        assert_eq!(render("a[0] 'x'"), "a[...](...)");
+        assert_eq!(render("m['k'] x: 1"), "m[...](...)");
+        assert_eq!(render("a[0] { }"), "a[...](...)");
+        assert_eq!(render("this.(n) 'a' b 'c'"), "this.n(...).b(...)");
+        for src in [
+            "a.\n{ 2 }",
+            "env.(n)++",
+            "println env\n    .(n)",
+            "def p = 'a'.&(n)",
+            "println o.@(n)",
+        ] {
+            ok(src);
+        }
+        // Still expressions: `a[0] -1` subtracts, and `a[0] [0]` indexes.
+        assert_eq!(render("a[0] -1"), "a[...] - 1");
+        assert_eq!(render("a[0] [0]"), "a[...][...]");
+        for src in ["env.() = 1", "env.(a = 1", "env.(a b) = 1"] {
+            fails(src);
         }
     }
 

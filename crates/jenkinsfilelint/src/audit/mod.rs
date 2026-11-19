@@ -8,7 +8,9 @@
 //! the line above the statement it is in.
 
 pub mod sarif;
+mod script_injection;
 mod secret_interpolation;
+mod taint;
 
 use std::fmt;
 
@@ -79,7 +81,7 @@ impl Rule {
     }
 }
 
-pub static RULES: &[&Rule] = &[&secret_interpolation::RULE];
+pub static RULES: &[&Rule] = &[&script_injection::RULE, &secret_interpolation::RULE];
 
 #[derive(Debug, Clone)]
 pub struct Finding {
@@ -133,8 +135,10 @@ pub fn audit(stmts: &[Stmt], comments: &[Comment], filter: &Filter) -> Vec<Findi
             applies && rules.contains(&f.rule)
         })
     };
-    let mut findings: Vec<Finding> = secret_interpolation::check(stmts)
+    let flows = taint::flows(stmts);
+    let mut findings: Vec<Finding> = script_injection::check(&flows)
         .into_iter()
+        .chain(secret_interpolation::check(&flows))
         .filter(|f| filter.shows(f) && !ignored(f))
         .collect();
     findings.sort_by_key(|f| (f.span.start, f.rule));

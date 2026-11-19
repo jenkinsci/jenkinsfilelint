@@ -228,9 +228,11 @@ instead of validating them, offline:
 
 ```console
 $ jenkinsfilelint --audit Jenkinsfile
+Jenkinsfile:8:36: high: script-injection: CHANGE_BRANCH is the name of the pull request's branch, and Groovy interpolates it into the sh script: ...
+  help: https://github.com/jenkinsci/jenkinsfilelint/blob/main/docs/audit/script-injection.md
 Jenkinsfile:12:41: high: secret-interpolation: PASS is a secret, and Groovy interpolates it into the sh script: ...
   help: https://github.com/jenkinsci/jenkinsfilelint/blob/main/docs/audit/secret-interpolation.md
-1 finding (1 high)
+2 findings (2 high)
 ```
 
 ```yaml
@@ -242,8 +244,12 @@ repos:
       - id: jenkinsfilelint-audit
 ```
 
-The first rule, [secret-interpolation](docs/audit/secret-interpolation.md),
-finds secrets that Groovy interpolates into shell steps. `--persona`,
+[script-injection](docs/audit/script-injection.md) finds pull request
+titles, branch names, webhook payloads and build parameters that Groovy
+interpolates into shell steps, where anyone who opens a pull request or
+starts the build can run commands.
+[secret-interpolation](docs/audit/secret-interpolation.md) finds secrets
+that Groovy interpolates into shell steps. `--persona`,
 `--min-severity` and `--min-confidence` choose what to see, a
 `// jenkinsfilelint: ignore[rule]` comment turns off one finding, and
 `--format sarif` writes a report for GitHub code scanning. See
