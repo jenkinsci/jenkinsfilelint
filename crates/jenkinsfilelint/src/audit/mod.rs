@@ -7,6 +7,7 @@
 //! turned off with `// jenkinsfilelint: ignore[rule-id]` on its line or on
 //! the line above the statement it is in.
 
+mod controller_execution;
 pub mod sarif;
 mod script_injection;
 mod secret_interpolation;
@@ -81,7 +82,7 @@ impl Rule {
     }
 }
 
-pub static RULES: &[&Rule] = &[&script_injection::RULE, &secret_interpolation::RULE];
+pub static RULES: &[&Rule] = &[&script_injection::RULE, &secret_interpolation::RULE, &controller_execution::RULE];
 
 #[derive(Debug, Clone)]
 pub struct Finding {
@@ -139,6 +140,7 @@ pub fn audit(stmts: &[Stmt], comments: &[Comment], filter: &Filter) -> Vec<Findi
     let mut findings: Vec<Finding> = script_injection::check(&flows)
         .into_iter()
         .chain(secret_interpolation::check(&flows))
+        .chain(controller_execution::check(stmts))
         .filter(|f| filter.shows(f) && !ignored(f))
         .collect();
     findings.sort_by_key(|f| (f.span.start, f.rule));
