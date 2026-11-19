@@ -155,7 +155,7 @@ the check changes.
 ## How precise it is
 
 On 1,756 public Jenkinsfiles from GitHub that use these values, it reports
-2,970 findings in 624 files with the regular persona: 982 high, from pull
+2,994 findings in 630 files with the regular persona: 1,006 high, from pull
 requests and webhooks, and 1,988 medium, from build parameters. In a random
 sample of 90, each was a value from these sources that reached a shell
 unescaped. Whether it can be exploited depends on who can open pull
