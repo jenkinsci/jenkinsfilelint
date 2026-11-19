@@ -67,9 +67,9 @@ class TestAuditFiles:
         f = write(tmp_path, "Jenkinsfile", LEAKS)
         result = audit_files([f])[f]
         assert result.errors == []
-        assert [(x.line, x.column, x.severity, x.confidence) for x in result.findings] == [
-            (2, 25, "high", "high")
-        ]
+        assert [
+            (x.line, x.column, x.severity, x.confidence) for x in result.findings
+        ] == [(2, 25, "high", "high")]
         finding = result.findings[0]
         assert finding.rule == "secret-interpolation"
         assert finding.message.startswith("PASS is a secret")
@@ -117,7 +117,9 @@ class TestAuditFiles:
         """The rule's cases through the Python side, in one engine run."""
         for rule in CASES.iterdir():
             expected, name = {}, None
-            for line in (rule / "expected.txt").read_text(encoding="utf-8").splitlines():
+            for line in (
+                (rule / "expected.txt").read_text(encoding="utf-8").splitlines()
+            ):
                 if line.startswith("["):
                     name = line.strip("[]")
                     expected[name] = []
@@ -152,10 +154,19 @@ class TestAuditReport:
         assert rule["id"] == "secret-interpolation"
         assert rule["properties"]["tags"] == ["security"]
         assert rule["helpUri"] == HELP
-        levels = [(r["level"], r["locations"][0]["physicalLocation"]["region"]) for r in run["results"]]
+        levels = [
+            (r["level"], r["locations"][0]["physicalLocation"]["region"])
+            for r in run["results"]
+        ]
         assert levels == [
-            ("note", {"startLine": 2, "startColumn": 17, "endLine": 2, "endColumn": 24}),
-            ("error", {"startLine": 2, "startColumn": 25, "endLine": 2, "endColumn": 32}),
+            (
+                "note",
+                {"startLine": 2, "startColumn": 17, "endLine": 2, "endColumn": 24},
+            ),
+            (
+                "error",
+                {"startLine": 2, "startColumn": 25, "endLine": 2, "endColumn": 32},
+            ),
         ]
 
     def test_engine_fails(self):
@@ -174,9 +185,13 @@ class TestAuditCLI:
         f = write(tmp_path, "Jenkinsfile", LEAKS)
         assert run_cli(["--audit", "--persona", "pedantic", f]) == 1
         out = capsys.readouterr().out.splitlines()
-        assert re.match(rf"{re.escape(f)}:2:17: low: secret-interpolation: USER ", out[0])
+        assert re.match(
+            rf"{re.escape(f)}:2:17: low: secret-interpolation: USER ", out[0]
+        )
         assert out[1] == f"  help: {HELP}"
-        assert out[2].startswith(f"{f}:2:25: high: secret-interpolation: PASS is a secret")
+        assert out[2].startswith(
+            f"{f}:2:25: high: secret-interpolation: PASS is a secret"
+        )
         assert out[-1] == "2 findings (1 high, 1 low)"
 
     def test_one_finding(self, tmp_path, capsys):
@@ -235,7 +250,8 @@ class TestAuditCLI:
     def test_engine_missing(self, tmp_path, capsys):
         f = write(tmp_path, "Jenkinsfile", LEAKS)
         with patch(
-            "jenkinsfilelint.cli.find_engine", side_effect=OfflineEngineError("no engine")
+            "jenkinsfilelint.cli.find_engine",
+            side_effect=OfflineEngineError("no engine"),
         ):
             assert run_cli(["--audit", f]) == 1
         assert capsys.readouterr().err == "✗ no engine\n"
@@ -245,7 +261,10 @@ class TestAuditCLI:
         [
             (["--persona", "auditor"], "argument --persona: requires --audit"),
             (["--min-severity", "high"], "argument --min-severity: requires --audit"),
-            (["--min-confidence", "low"], "argument --min-confidence: requires --audit"),
+            (
+                ["--min-confidence", "low"],
+                "argument --min-confidence: requires --audit",
+            ),
             (["--format", "sarif"], "argument --format: requires --audit"),
             (
                 ["--audit", "--jenkins-url", "http://j"],
