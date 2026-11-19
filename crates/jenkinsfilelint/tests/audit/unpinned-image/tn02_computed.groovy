@@ -15,3 +15,15 @@ pipeline {
         }
     }
 }
+
+// A variable in single quotes, which something expands later.
+pipeline {
+    agent { docker { image '$BUILDER_IMAGE' } }
+    stages {
+        stage('Build') {
+            steps {
+                sh 'make'
+            }
+        }
+    }
+}

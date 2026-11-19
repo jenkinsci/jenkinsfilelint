@@ -99,6 +99,10 @@ fn report(image: &Expr, stmt_line: usize, used_by: &str, findings: &mut Vec<Find
     else {
         return;
     };
+    // `image '$IMAGE'`: a variable that something expands later.
+    if value.contains('$') {
+        return;
+    }
     let base = value.split('@').next().unwrap_or(value);
     let name = match base.rsplit_once('/') {
         Some((repo, last)) => format!("{repo}/{}", last.split(':').next().unwrap_or(last)),

@@ -71,6 +71,15 @@ as well start another build that skips the question.
 input 'Continue with the slow tests?'
 ```
 
+## How precise it is
+
+On 17,367 public Jenkinsfiles and shared library steps from GitHub, it
+reports 1,123 findings in 840 files. In a random sample of 40, every one was
+an `input` without a `submitter`, but only 24 guarded a deployment, a
+release, `terraform apply` or another step worth approving. The other 16
+asked for a value, such as a version or a region, or asked to continue after
+a failure. See [When to ignore it](#when-to-ignore-it).
+
 ## References
 
 - Jenkins: [Pipeline: Input Step](https://www.jenkins.io/doc/pipeline/steps/pipeline-input-step/)
