@@ -87,21 +87,23 @@ pub enum Expr {
 
 /// A piece of a GString: text, or a placeholder.
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // read by the audits planned for 1.7.0
 pub enum StrPart {
+    // Not read yet: script-injection will look at the text around a
+    // placeholder, such as shell quotes.
+    #[allow(dead_code)]
     Text(String),
     Placeholder(Placeholder),
 }
 
 /// A `$name` or `${...}` placeholder of a GString.
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // read by the audits planned for 1.7.0
 pub struct Placeholder {
     /// What it evaluates. `$a.b` and `${a.b}` are the expression `a.b`, and
     /// so is the lazy `${ -> a.b }`. A `${...}` that holds statements, such
     /// as `${def v = 1; v}`, is a closure, as Groovy reads it. `${}` is None.
     pub expr: Option<Expr>,
     /// `${...}` rather than `$name`.
+    #[allow(dead_code)] // for fixes that rewrite a placeholder
     pub braced: bool,
     /// From the `$` to just past the placeholder.
     pub span: Span,

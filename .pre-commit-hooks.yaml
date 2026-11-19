@@ -13,3 +13,10 @@
   language: python
   types: [file]
   files: ^.*(Jenkinsfile.*|.*\.groovy)$
+- id: jenkinsfilelint-audit
+  name: jenkinsfilelint (audit)
+  description: Find security problems in Jenkinsfiles and Groovy files offline, such as secrets interpolated into shell steps.
+  entry: jenkinsfilelint --audit
+  language: python
+  types: [file]
+  files: ^.*(Jenkinsfile.*|.*\.groovy)$

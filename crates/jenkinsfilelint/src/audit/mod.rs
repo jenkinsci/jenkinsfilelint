@@ -1,0 +1,186 @@
+//! Security audits: ways a pipeline can be attacked or can leak secrets.
+//!
+//! Each rule reports findings with a severity (how bad it is if real), a
+//! confidence (how likely it is real) and the persona that sees it:
+//! `regular` shows what is worth fixing, `pedantic` adds lower-confidence
+//! findings and hardening advice, `auditor` shows everything. A finding is
+//! turned off with `// jenkinsfilelint: ignore[rule-id]` on its line or on
+//! the line above the statement it is in.
+
+pub mod sarif;
+mod secret_interpolation;
+
+use std::fmt;
+
+use crate::ast::Stmt;
+use crate::diag::Span;
+use crate::lexer::Comment;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Severity {
+    Low,
+    Medium,
+    High,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Confidence {
+    Low,
+    Medium,
+    High,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Persona {
+    Regular,
+    Pedantic,
+    Auditor,
+}
+
+macro_rules! names {
+    ($ty:ident { $($variant:ident => $name:literal),* }) => {
+        impl $ty {
+            pub fn parse(s: &str) -> Option<Self> {
+                match s {
+                    $($name => Some($ty::$variant),)*
+                    _ => None,
+                }
+            }
+            pub fn name(self) -> &'static str {
+                match self {
+                    $($ty::$variant => $name,)*
+                }
+            }
+        }
+        impl fmt::Display for $ty {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str(self.name())
+            }
+        }
+    };
+}
+
+names!(Severity { Low => "low", Medium => "medium", High => "high" });
+names!(Confidence { Low => "low", Medium => "medium", High => "high" });
+names!(Persona { Regular => "regular", Pedantic => "pedantic", Auditor => "auditor" });
+
+/// A rule, as its documentation and SARIF describe it.
+pub struct Rule {
+    pub id: &'static str,
+    /// One line, for SARIF and the list of rules.
+    pub summary: &'static str,
+    /// The severity of its most serious findings.
+    pub severity: Severity,
+}
+
+impl Rule {
+    pub fn help_url(&self) -> String {
+        format!("https://github.com/jenkinsci/jenkinsfilelint/blob/main/docs/audit/{}.md", self.id)
+    }
+}
+
+pub static RULES: &[&Rule] = &[&secret_interpolation::RULE];
+
+#[derive(Debug, Clone)]
+pub struct Finding {
+    pub rule: &'static str,
+    pub severity: Severity,
+    pub confidence: Confidence,
+    /// The least thorough persona that shows it.
+    pub persona: Persona,
+    pub message: String,
+    pub span: Span,
+    /// Where the statement it is in starts: an ignore comment on the line
+    /// above that turns it off, even when the finding is further down, as
+    /// in a multi-line string.
+    pub stmt_line: usize,
+}
+
+/// Which findings to show.
+#[derive(Debug, Clone, Copy)]
+pub struct Filter {
+    pub persona: Persona,
+    pub min_severity: Severity,
+    pub min_confidence: Confidence,
+}
+
+impl Default for Filter {
+    fn default() -> Self {
+        Filter {
+            persona: Persona::Regular,
+            min_severity: Severity::Low,
+            min_confidence: Confidence::Low,
+        }
+    }
+}
+
+impl Filter {
+    fn shows(&self, f: &Finding) -> bool {
+        f.persona <= self.persona && f.severity >= self.min_severity && f.confidence >= self.min_confidence
+    }
+}
+
+/// Run every rule on a parsed file and keep the findings the filter shows
+/// and no comment turns off, in file order.
+pub fn audit(stmts: &[Stmt], comments: &[Comment], filter: &Filter) -> Vec<Finding> {
+    let ignores: Vec<(usize, Vec<&str>)> = comments
+        .iter()
+        .filter_map(|c| ignored_rules(&c.text).map(|rules| (c.pos.line, rules)))
+        .collect();
+    let ignored = |f: &Finding| {
+        ignores.iter().any(|(line, rules)| {
+            let applies = *line == f.span.start.line || *line == f.stmt_line || *line + 1 == f.stmt_line;
+            applies && rules.contains(&f.rule)
+        })
+    };
+    let mut findings: Vec<Finding> = secret_interpolation::check(stmts)
+        .into_iter()
+        .filter(|f| filter.shows(f) && !ignored(f))
+        .collect();
+    findings.sort_by_key(|f| (f.span.start, f.rule));
+    findings
+}
+
+/// The rules that `jenkinsfilelint: ignore[a, b] why` turns off. The
+/// directive may follow other text in the comment.
+fn ignored_rules(comment: &str) -> Option<Vec<&str>> {
+    let rest = &comment[comment.find("jenkinsfilelint:")? + "jenkinsfilelint:".len()..];
+    let list = rest.trim_start().strip_prefix("ignore[")?;
+    let list = &list[..list.find(']')?];
+    Some(list.split(',').map(str::trim).filter(|r| !r.is_empty()).collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ignore_directives() {
+        assert_eq!(
+            ignored_rules(" jenkinsfilelint: ignore[secret-interpolation]"),
+            Some(vec!["secret-interpolation"])
+        );
+        assert_eq!(
+            ignored_rules(" TODO; jenkinsfilelint: ignore[a, b] the token is fake"),
+            Some(vec!["a", "b"])
+        );
+        assert_eq!(ignored_rules("jenkinsfilelint:ignore[]"), Some(vec![]));
+        assert_eq!(ignored_rules(" jenkinsfilelint: ignore secret-interpolation"), None);
+        assert_eq!(ignored_rules(" jenkinsfilelint: ignore[unclosed"), None);
+        assert_eq!(ignored_rules(" just a comment"), None);
+    }
+
+    #[test]
+    fn names_round_trip() {
+        for s in [Severity::Low, Severity::Medium, Severity::High] {
+            assert_eq!(Severity::parse(s.name()), Some(s));
+        }
+        for c in [Confidence::Low, Confidence::Medium, Confidence::High] {
+            assert_eq!(Confidence::parse(c.name()), Some(c));
+        }
+        for p in [Persona::Regular, Persona::Pedantic, Persona::Auditor] {
+            assert_eq!(Persona::parse(&p.to_string()), Some(p));
+        }
+        assert_eq!(Persona::parse("everyone"), None);
+    }
+}

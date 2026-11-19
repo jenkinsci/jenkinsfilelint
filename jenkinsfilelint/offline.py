@@ -10,7 +10,7 @@ import json
 import os
 import subprocess
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 # Path of an engine binary to use instead of the installed one.
 ENGINE_ENV = "JENKINSFILELINT_ENGINE"
@@ -36,6 +36,35 @@ class OfflineResult:
     declarative: bool
     # Diagnostics as ``file:line:col: severity: message``.
     lines: List[str]
+
+
+@dataclass
+class Finding:
+    """One finding of ``--audit``."""
+
+    rule: str
+    severity: str
+    confidence: str
+    message: str
+    line: int
+    column: int
+    help: str
+
+    def render(self, path: str) -> str:
+        """``file:line:col: severity: rule: message``, and where to read more."""
+        return (
+            f"{path}:{self.line}:{self.column}: {self.severity}: {self.rule}: "
+            f"{self.message}\n  help: {self.help}"
+        )
+
+
+@dataclass
+class AuditResult:
+    """The findings in one file, or why it could not be audited."""
+
+    findings: List[Finding]
+    # Syntax errors and read errors, as ``file:line:col: error: message``.
+    errors: List[str]
 
 
 def find_engine() -> str:
@@ -81,9 +110,19 @@ def lint_files(
         return results
 
     engine = engine or find_engine()
+    reports = _reports(engine, ["--format", "json", "--", *existing], len(existing))
+    # The engine reports files in the order given. Match by position, not by
+    # the "file" field, which is lossy for file names that are not UTF-8.
+    for path, report in zip(existing, reports):
+        results[path] = _parse(engine, report, lambda r, path=path: _result(path, r))
+
+    return results
+
+
+def _run(engine: str, args: List[str]) -> "subprocess.CompletedProcess[str]":
     try:
-        proc = subprocess.run(
-            [engine, "--format", "json", "--", *existing],
+        return subprocess.run(
+            [engine, *args],
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -93,28 +132,88 @@ def lint_files(
     except OSError as exc:
         raise OfflineEngineError(f"Could not run {engine}: {exc}") from exc
 
+
+def _reports(engine: str, args: List[str], count: int) -> list:
+    """Run the engine and return its JSON array of per-file reports."""
+    proc = _run(engine, args)
     try:
         reports = json.loads(proc.stdout)
     except ValueError:
         detail = (proc.stderr or proc.stdout).strip() or f"exit code {proc.returncode}"
         raise OfflineEngineError(f"Unexpected output from {engine}: {detail}") from None
 
-    if not isinstance(reports, list) or len(reports) != len(existing):
+    if not isinstance(reports, list) or len(reports) != count:
         raise OfflineEngineError(
             f"{engine} returned {len(reports) if isinstance(reports, list) else 'no'} "
-            f"result(s) for {len(existing)} file(s)"
+            f"result(s) for {count} file(s)"
         )
-    # The engine reports files in the order given. Match by position, not by
-    # the "file" field, which is lossy for file names that are not UTF-8.
-    for path, report in zip(existing, reports):
-        try:
-            results[path] = _result(path, report)
-        except (KeyError, TypeError, AttributeError):
-            raise OfflineEngineError(
-                f"Unexpected output from {engine}: {json.dumps(report)[:200]}"
-            ) from None
+    return reports
 
-    return results
+
+def _parse(engine: str, report: dict, read):
+    """Read one report with *read*, or fail on a report of another shape."""
+    try:
+        return read(report)
+    except (KeyError, TypeError, AttributeError):
+        raise OfflineEngineError(
+            f"Unexpected output from {engine}: {json.dumps(report)[:200]}"
+        ) from None
+
+
+def _audit_args(persona: str, min_severity: str, min_confidence: str) -> List[str]:
+    return [
+        "--audit",
+        "--persona",
+        persona,
+        "--min-severity",
+        min_severity,
+        "--min-confidence",
+        min_confidence,
+    ]
+
+
+def audit_files(
+    paths: List[str],
+    engine: Optional[str] = None,
+    persona: str = "regular",
+    min_severity: str = "low",
+    min_confidence: str = "low",
+) -> Dict[str, AuditResult]:
+    """Run the security checks on files with one run of the engine.
+
+    Raises:
+        OfflineEngineError: if the engine is missing or fails.
+    """
+    engine = engine or find_engine()
+    options = _audit_args(persona, min_severity, min_confidence)
+    reports = _reports(engine, [*options, "--format", "json", "--", *paths], len(paths))
+    return {
+        path: _parse(engine, report, lambda r, path=path: _audit_result(path, r))
+        for path, report in zip(paths, reports)
+    }
+
+
+def audit_report(
+    paths: List[str],
+    fmt: str,
+    engine: Optional[str] = None,
+    persona: str = "regular",
+    min_severity: str = "low",
+    min_confidence: str = "low",
+) -> Tuple[str, str, int]:
+    """Run the security checks and return the engine's report as is, in
+    ``json`` or ``sarif``: its output, its error output and its exit code.
+
+    Raises:
+        OfflineEngineError: if the engine is missing or fails.
+    """
+    engine = engine or find_engine()
+    options = _audit_args(persona, min_severity, min_confidence)
+    proc = _run(engine, [*options, "--format", fmt, "--", *paths])
+    if proc.returncode not in (0, 1) or not proc.stdout.strip():
+        detail = proc.stderr.strip() or f"exit code {proc.returncode}"
+        raise OfflineEngineError(f"Unexpected output from {engine}: {detail}")
+    return proc.stdout, proc.stderr, proc.returncode
 
 
 def _result(path: str, report: dict) -> OfflineResult:
@@ -140,3 +239,31 @@ def _result(path: str, report: dict) -> OfflineResult:
             for d in diagnostics
         ],
     )
+
+
+def _audit_result(path: str, report: dict) -> AuditResult:
+    """Turn the engine's audit of one file into a result.
+
+    Raises:
+        KeyError, TypeError, AttributeError: if the report is not shaped as
+        the engine documents it.
+    """
+    if "error" in report:
+        return AuditResult([], [f"Error reading file {path}: {report['error']}"])
+    findings = [
+        Finding(
+            rule=f["rule"],
+            severity=f["severity"],
+            confidence=f["confidence"],
+            message=f["message"],
+            line=f["line"],
+            column=f["column"],
+            help=f["help"],
+        )
+        for f in report["findings"]
+    ]
+    errors = [
+        f"{path}:{d['line']}:{d['column']}: error: {d['message']}"
+        for d in report["diagnostics"]
+    ]
+    return AuditResult(findings, errors)

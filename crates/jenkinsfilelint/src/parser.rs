@@ -599,13 +599,16 @@ impl Parser {
     /// An expression statement, including Groovy's command form
     /// `step arg1, key: value` and its command chains: `a b c d` is
     /// `a(b).c(d)`, and a name with no argument after it reads a property,
-    /// so `a b c` is `a(b).c`.
+    /// so `a b c` is `a(b).c`. A chain may also start with a call in
+    /// parentheses, `library('lib@main') _` is `library('lib@main')._`, or
+    /// with a string: `"a"${n}"b"` is `"a".$({ n })."b"`.
     fn expr_stmt(&mut self) -> PResult<Expr> {
         let e = self.expr()?;
         let commandable = matches!(e, Expr::Ident { .. } | Expr::Prop { .. });
-        if commandable && self.starts_command_arg() {
-            let mut call = self.command_call(e)?;
-            while let Some(TokKind::Ident(name)) = self.starts_command_arg().then(|| self.peek().kind.clone()) {
+        let chained_call = matches!(e, Expr::Call { parens: true, .. } | Expr::Str { .. }) && self.chain_name().is_some();
+        if (commandable && self.starts_command_arg()) || chained_call {
+            let mut call = if chained_call { e } else { self.command_call(e)? };
+            while let Some(name) = self.chain_name() {
                 let pos = self.next().pos;
                 let prop = Expr::Prop {
                     obj: Box::new(call),
@@ -636,6 +639,19 @@ impl Parser {
             }
         }
         Ok(e)
+    }
+
+    /// The next name in a command chain: a word, or a string, as in
+    /// `foo 'a' 'b'` (`foo('a').'b'`), on the same line.
+    fn chain_name(&self) -> Option<String> {
+        if !self.starts_command_arg() {
+            return None;
+        }
+        match &self.peek().kind {
+            TokKind::Ident(name) => Some(name.clone()),
+            TokKind::Str { value, .. } => Some(value.clone()),
+            _ => None,
+        }
     }
 
     /// The arguments of `callee` in command form, and a closure after them.
@@ -912,7 +928,12 @@ impl Parser {
                         pos: t.pos,
                     };
                 }
-                TokKind::Punct("{") if !t.nl_before && matches!(e, Expr::Ident { .. } | Expr::Prop { .. } | Expr::Call { .. }) => {
+                // A string is a method name too: `'a.b.C' { }` calls a.b.C, as
+                // Job DSL's configure blocks do, and `stage 'S' { }` is
+                // `stage('S'({ }))` to Groovy.
+                TokKind::Punct("{")
+                    if !t.nl_before && matches!(e, Expr::Ident { .. } | Expr::Prop { .. } | Expr::Call { .. } | Expr::Str { .. }) =>
+                {
                     let closure = self.closure()?;
                     e = attach_closure(e, closure);
                 }
@@ -1408,6 +1429,42 @@ mod tests {
             panic!("echo 'x' y");
         };
         assert_eq!(e.render(), "echo(...).y");
+        // A chain may start with a call in parentheses.
+        let Stmt::Expr(e) = &ok("library('lib@main') _")[0] else {
+            panic!("library");
+        };
+        assert_eq!(e.render(), "library(...)._");
+        let Stmt::Expr(Expr::Call { callee, .. }) = &ok("foo(1) bar baz")[0] else {
+            panic!("foo(1) bar baz");
+        };
+        assert_eq!(callee.render(), "foo(...).bar");
+        ok("foo(1) bar { echo 'x' }");
+        // Words that are operators still are.
+        ok("def x = foo(1) as String\nif (foo(1) in [1]) { }");
+        // Quoted names, and chains that start with a string (#67, #68).
+        let Stmt::Expr(e) = &ok("foo 'a' b 'c'")[0] else {
+            panic!("foo 'a' b 'c'");
+        };
+        assert_eq!(e.render(), "foo(...).b(...)");
+        let Stmt::Expr(e) = &ok("sh script: \"find -name \"${n}\" | egrep .\"")[0] else {
+            panic!("#68");
+        };
+        assert_eq!(e.render(), "sh(...).$(...). | egrep .");
+        for src in [
+            "n << 'a.b.C' {\n    x()\n}",
+            "'a.b.C' { x() }",
+            "\"a${b}\" { x() }",
+            "def a = \"x\" foo 1",
+            "def a = \"x\"${n}",
+            "\"x\" foo",
+        ] {
+            ok(src);
+        }
+        // `stage 'S' { }` gives the closure to 'S', as Groovy does.
+        let Stmt::Expr(Expr::Call { args, .. }) = &ok("stage 'S' { echo 'x' }")[0] else {
+            panic!("stage 'S'");
+        };
+        assert!(matches!(&args[..], [Arg::Pos(Expr::Call { .. })]), "{args:?}");
     }
 
     #[test]
@@ -1474,7 +1531,9 @@ mod tests {
     #[test]
     fn syntax_errors() {
         fails("pipeline {\n  agent any\n");
-        fails("sh 'x' 'y'");
+        // Two strings with a comma missing between them: `sh 'x' 'y'` is the
+        // chain `sh('x').'y'` to Groovy, but nothing follows a string.
+        fails("sh 'x' 'y' ,");
         fails("stage('a') { sh 'x' }}");
         fails("sh \"unterminated");
         // A newline still ends the statement outside brackets, and inside

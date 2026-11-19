@@ -137,6 +137,21 @@ pub fn tokenize(src: &str) -> Result<Vec<Token>, Diagnostic> {
     Lexer::new(src).run()
 }
 
+/// A `//` comment: where it is and the text after the slashes.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Comment {
+    pub pos: Pos,
+    pub text: String,
+}
+
+/// Tokenize a whole file, and keep its `//` comments, which can turn off
+/// an audit finding.
+pub fn tokenize_with_comments(src: &str) -> Result<(Vec<Token>, Vec<Comment>), Diagnostic> {
+    let mut lexer = Lexer::new(src);
+    lexer.lex()?;
+    Ok((lexer.out, lexer.comments))
+}
+
 /// Tokenize text that starts at `start` in the file, such as what is
 /// inside a `${...}` placeholder, so that positions point into the file.
 pub fn tokenize_at(src: &str, start: Pos) -> Result<Vec<Token>, Diagnostic> {
@@ -159,6 +174,7 @@ struct Lexer<'a> {
     /// Whether the text is a whole file, where a shebang line or a byte
     /// order mark can come first.
     start_of_file: bool,
+    comments: Vec<Comment>,
 }
 
 impl<'a> Lexer<'a> {
@@ -172,6 +188,7 @@ impl<'a> Lexer<'a> {
             out: Vec::new(),
             interp_depth: 0,
             start_of_file: true,
+            comments: Vec::new(),
         }
     }
 
@@ -220,6 +237,11 @@ impl<'a> Lexer<'a> {
     }
 
     fn run(mut self) -> Result<Vec<Token>, Diagnostic> {
+        self.lex()?;
+        Ok(self.out)
+    }
+
+    fn lex(&mut self) -> Result<(), Diagnostic> {
         let _ = self.src;
         // Shebang line.
         if self.start_of_file && self.starts_with("#!") {
@@ -257,12 +279,18 @@ impl<'a> Lexer<'a> {
                         self.bump();
                     }
                     Some('/') if self.peek(1) == Some('/') => {
+                        let pos = self.pos();
+                        self.bump();
+                        self.bump();
+                        let mut text = String::new();
                         while let Some(c) = self.peek(0) {
                             if c == '\n' {
                                 break;
                             }
+                            text.push(c);
                             self.bump();
                         }
+                        self.comments.push(Comment { pos, text });
                     }
                     Some('/') if self.peek(1) == Some('*') => {
                         let start = self.pos();
@@ -291,7 +319,7 @@ impl<'a> Lexer<'a> {
                     pos,
                     nl_before: true,
                 });
-                return Ok(self.out);
+                return Ok(());
             };
             let kind = if c == '\'' || c == '"' {
                 self.string(pos)?

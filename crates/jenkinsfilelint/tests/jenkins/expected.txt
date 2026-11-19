@@ -349,6 +349,16 @@ error: Expected a step
 # Jenkins: Expected a symbol
 error
 
+[e92_call_then_word_in_steps]
+error: Expected a step
+
+[e93_misquoted_gstring_in_steps]
+error: Expected a step
+
+[e94_stage_name_with_closure]
+# Jenkins: Expected a stage; No stages specified
+error
+
 [p01_kubernetes_agent]
 # Differs: Depends on installed plugins or controller configuration, which the offline linter cannot see.
 # Jenkins: Invalid agent type "kubernetes" specified. Must be one of [any, docker, dockerfile, label, none]
@@ -543,6 +553,10 @@ error
 
 [s34_slashy_placeholder_error]
 # Jenkins: expecting '}', found '+'
+error
+
+[s35_quoted_method_name_unclosed]
+# Jenkins: unexpected token: }
 error
 
 [v01_minimal]
@@ -785,6 +799,51 @@ valid
 [v83_command_as_assigned_value]
 valid
 
+[v84_command_chain_after_call]
+valid
+
+[v85_library_step_underscore]
+valid
+
+[v86_quoted_method_name_after_operator]
+valid
+
+[v87_quoted_method_name_with_closure]
+valid
+
+[v88_double_quoted_method_name]
+valid
+
+[v89_quoted_method_name_with_parens]
+valid
+
+[v90_command_with_string_and_closure]
+valid
+
+[v91_chain_after_named_argument]
+valid
+
+[v92_chain_from_string]
+valid
+
+[v93_chain_from_string_with_argument]
+valid
+
+[v94_chain_from_string_dollar_closure]
+valid
+
+[v95_chain_from_string_statement]
+valid
+
+[v96_gstring_method_name]
+valid
+
+[v97_step_with_string_and_closure]
+valid
+
+[v98_chain_quoted_names]
+valid
+
 [x01_scripted_pipeline]
 # Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
 # Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
@@ -848,6 +907,26 @@ valid
 valid
 
 [x14_pipeline_in_non_call_method]
+# Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
+# Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
+valid
+
+[x15_library_step_underscore_scripted]
+# Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
+# Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
+valid
+
+[x16_job_dsl_configure_block]
+# Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
+# Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
+valid
+
+[x17_misquoted_gstring_in_method]
+# Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
+# Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
+valid
+
+[x18_quoted_method_name_in_script]
 # Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
 # Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
 valid
