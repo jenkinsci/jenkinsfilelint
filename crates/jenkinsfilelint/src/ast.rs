@@ -223,6 +223,16 @@ impl Stmt {
 }
 
 impl Expr {
+    /// The method a callee names, as Declarative reads it: `foo` in
+    /// `foo(...)`, and in `this.foo(...)`, which Groovy compiles the same.
+    pub fn method_name(&self) -> Option<&str> {
+        match self {
+            Expr::Ident { name, .. } => Some(name),
+            Expr::Prop { obj, name, .. } if matches!(obj.as_ref(), Expr::Ident { name, .. } if name == "this") => Some(name),
+            _ => None,
+        }
+    }
+
     pub fn section(&self) -> Option<Section<'_>> {
         match self {
             Expr::Ident { name, pos } => Some(Section {
@@ -233,7 +243,7 @@ impl Expr {
                 parens: false,
             }),
             Expr::Call { callee, args, parens, pos } => {
-                let Expr::Ident { name, .. } = callee.as_ref() else { return None };
+                let name = callee.method_name()?;
                 let mut rest: Vec<&Arg> = args.iter().collect();
                 let mut body = None;
                 if let Some(Arg::Pos(Expr::Closure { body: b, .. })) = rest.last() {

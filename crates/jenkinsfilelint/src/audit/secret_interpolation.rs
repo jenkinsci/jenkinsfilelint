@@ -77,7 +77,7 @@ pub fn check(flows: &[Flow]) -> Vec<Finding> {
 /// X_PSW for a user name and password.
 pub fn credentials(name: &str, value: &Expr) -> Option<Vec<(String, Kind)>> {
     let Expr::Call { callee, .. } = value else { return None };
-    if !matches!(callee.as_ref(), Expr::Ident { name, .. } if name == "credentials") {
+    if callee.method_name() != Some("credentials") {
         return None;
     }
     Some(vec![
@@ -98,9 +98,9 @@ pub fn bindings(e: &Expr, vars: &mut HashMap<String, Kind>) {
                     named.push((key.clone(), value));
                 }
             }
-            match callee.as_ref() {
-                Expr::Ident { name, .. } => name.clone(),
-                _ => return,
+            match callee.method_name() {
+                Some(name) => name.to_string(),
+                None => return,
             }
         }
         Expr::Map { entries, .. } => {

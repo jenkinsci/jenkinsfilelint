@@ -265,10 +265,7 @@ pub fn undeclared_parameter() -> &'static Input {
 /// The name of a call, `name(...)`, or the class of a map, `[$class: 'name', ...]`.
 fn declaration(e: &Expr) -> Option<&str> {
     match e {
-        Expr::Call { callee, .. } => match callee.as_ref() {
-            Expr::Ident { name, .. } => Some(name),
-            _ => None,
-        },
+        Expr::Call { callee, .. } => callee.method_name(),
         Expr::Map { .. } => match field(e, "$class")? {
             Expr::Str { value, .. } => Some(value),
             _ => None,

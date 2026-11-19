@@ -165,7 +165,7 @@ impl Walker {
     fn environment(&mut self, stmts: &[Stmt]) {
         for s in stmts {
             let Stmt::Expr(Expr::Call { callee, args, .. }) = s else { continue };
-            if !matches!(callee.as_ref(), Expr::Ident { name, .. } if name == "environment") {
+            if callee.method_name() != Some("environment") {
                 continue;
             }
             for a in args {
@@ -221,8 +221,8 @@ impl Walker {
     fn expr(&mut self, e: &Expr, line: usize) {
         match e {
             Expr::Call { callee, args, .. } => {
-                match callee.as_ref() {
-                    Expr::Ident { name, .. } => match name.as_str() {
+                match (callee.method_name(), callee.as_ref()) {
+                    (Some(name), _) => match name {
                         "withCredentials" => return self.with_credentials(args),
                         "withEnv" => return self.with_env(args, line),
                         // `block` binds the variables of an `environment`
@@ -264,7 +264,7 @@ impl Walker {
                             }
                         }
                     },
-                    Expr::Prop { obj, name, .. } => self.docker(obj, name, args, line),
+                    (None, Expr::Prop { obj, name, .. }) => self.docker(obj, name, args, line),
                     _ => {}
                 }
                 self.expr(callee, line);

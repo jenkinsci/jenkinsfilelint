@@ -589,14 +589,18 @@ impl Validator {
                 return;
             }
         };
-        let name = match callee {
-            Expr::Ident { name, .. } => name.as_str(),
-            Expr::Prop { .. } => {
-                self.err(e.pos(), "Method calls on objects not allowed outside \"script\" blocks.");
-                return;
-            }
-            _ => {
-                self.err(e.pos(), "Expected a step");
+        let name = match callee.method_name() {
+            Some(name) => name,
+            None => {
+                let message = match callee {
+                    Expr::Prop { obj, .. } if matches!(obj.as_ref(), Expr::Ident { .. }) => {
+                        "Method calls on objects not allowed outside \"script\" blocks."
+                    }
+                    // `a.b.c 'x'`, `'a'.b 'x'`, `a[0] 'x'`, `this.("$n") 'x'`
+                    Expr::Prop { .. } | Expr::Index { .. } => "Expected a symbol",
+                    _ => "Expected a step",
+                };
+                self.err(e.pos(), message);
                 return;
             }
         };
@@ -699,8 +703,8 @@ impl Validator {
                 }
             }
             Expr::Call { callee, args, .. } => {
-                if let Expr::Ident { name, .. } = callee.as_ref() {
-                    let reason = match name.as_str() {
+                if let Some(name) = callee.method_name() {
+                    let reason = match name {
                         "node" => Some("The node step cannot be called as an argument to a method in Declarative Pipelines"),
                         "stage" => Some("The stage step cannot be used in Declarative Pipelines"),
                         "properties" => Some("The properties step cannot be used in Declarative Pipelines"),
@@ -822,7 +826,7 @@ impl Validator {
     fn env_value(&mut self, value: &Expr) {
         match value {
             v if is_constant(v) => {}
-            Expr::Call { callee, .. } if matches!(callee.as_ref(), Expr::Ident { name, .. } if name == "$") => {
+            Expr::Call { callee, .. } if callee.method_name() == Some("$") => {
                 self.err(
                     value.pos(),
                     "${...} cannot be used as a value directly. Did you mean \"${...}\"? (add quotes)",
