@@ -30,6 +30,12 @@ pytest tests/ -v --cov=jenkinsfilelint
 cases in `crates/jenkinsfilelint/tests/jenkins/`. For the engine itself, see
 [crates/jenkinsfilelint/README.md](crates/jenkinsfilelint/README.md#development).
 
+A change to the parser, the validator or an audit rule should also be checked
+on public Jenkinsfiles. `corpus/diff.py` compares the engine with the one on
+`main` on about 17,000 public files, and asks Jenkins which of them was
+right. [corpus/README.md](corpus/README.md#checking-a-change) shows how.
+Paste its summary into the pull request.
+
 ## The offline engine and releases
 
 `crates/jenkinsfilelint` is published to PyPI as `jenkinsfilelint-engine`, a

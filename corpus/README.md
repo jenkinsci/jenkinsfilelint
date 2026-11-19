@@ -48,6 +48,64 @@ Each `false-error`, `missed` or `other-message` file becomes a small test
 case in `crates/jenkinsfilelint/tests/jenkins/`, checked with Jenkins, before
 the engine changes.
 
+## Checking a change
+
+`diff.py` shows what a change to the engine changes on these files. It
+builds the engine of `origin/main` (or `--base REF`) and the engine of the
+checkout, runs both on every file, and lists the differences:
+
+```console
+$ python3 corpus/diff.py --base a846990
+17,373 files. Base: a846990eff2b (a846990). Head: 4b2d3f010b4e.
+
+Verdicts
+  now rejected               34
+  now accepted              128
+  error changed              48
+
+Checked with Jenkins
+  fixed                     177
+  still right                30
+  still wrong                 2
+  no answer                   1
+
+Findings                            added removed changed
+  script-injection (auditor)          85      42       0
+  script-injection (pedantic)         11       0       0
+  script-injection (regular)         113     165       0
+  secret-interpolation (pedantic)      33      32       0
+  secret-interpolation (regular)      54       4       0
+  of these, in files whose verdict changed: 296 added, 243 removed, 0 changed
+```
+
+That is the change of #71, which fixed what `compare.py` found. Every
+file that changed verdict either now agrees with Jenkins or is one of the
+known gaps.
+
+- **Verdicts** count the files whose validation errors changed.
+- **Checked with Jenkins** asks Jenkins about those files, or reads its
+  answers from the cache of `compare.py`:
+  - a file is "fixed" when the engine now agrees with Jenkins, and "broken"
+    when it no longer does;
+  - `diff.py` exits with 1 when a file broke;
+  - `--no-jenkins` skips the check.
+- **Findings** count the audit findings added, removed or changed, by rule and
+  by the least thorough persona that shows them. A file that no longer parses
+  loses its findings, as Jenkins does not run it.
+
+The summary names no repository, so it can go in a pull request.
+`.cache/diff/changes.tsv` lists every difference with its file.
+
+### How precise a rule is
+
+To measure a rule's precision, add `--sample N`. The script then writes
+`.cache/diff/sample-<rule>.md`, with N added findings of each rule picked at
+random and the code around them. Check each one by hand, and count how many
+are real. `--seed` picks another sample.
+
+With `--base none`, every finding counts as added, which samples all of a
+rule's findings rather than only its new ones.
+
 ## Results
 
 On 2026-11-19, against the Jenkins of `ghcr.io/jenkinsci/jenkinsfilelint-server`,
@@ -81,4 +139,5 @@ are left out.
 
 Some of these files have real vulnerabilities. Report them to their
 maintainers privately, not in public issues, and do not name them in this
-repository.
+repository. `changes.tsv` and the samples of `diff.py` name the files: keep
+them out of pull requests and issues, and paste only the summary.
