@@ -38,8 +38,9 @@ pub fn lint(src: &str) -> Report {
 /// from being read as Groovy.
 pub fn audit_source(src: &str, filter: &Filter) -> Result<Vec<Finding>, Diagnostic> {
     let (tokens, comments) = lexer::tokenize_with_comments(src)?;
+    let annotations = audit::annotations(&tokens);
     let stmts = parser::parse(tokens)?;
-    Ok(audit::audit(&stmts, &comments, filter))
+    Ok(audit::audit(&stmts, &comments, &annotations, filter))
 }
 
 const USAGE: &str = "Usage: jenkinsfilelint-engine [--format text|json] [--] <Jenkinsfile>...

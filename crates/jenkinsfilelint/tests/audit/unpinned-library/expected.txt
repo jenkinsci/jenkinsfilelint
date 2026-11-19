@@ -1,0 +1,39 @@
+# What the audit finds in each case, with --persona auditor: one line per
+# finding, as line:column severity confidence persona library, or none.
+# tp cases are true positives, tn cases true negatives.
+
+[tn01_pinned]
+none
+
+[tn02_other_annotations]
+none
+
+[tn03_lib_elsewhere]
+none
+
+[tn04_ignore_comment]
+none
+
+[tp01_annotation_branch]
+1:10 medium medium regular pipeline-library
+
+[tp02_annotation_list]
+1:11 medium medium regular shared
+
+[tp03_annotation_named]
+1:18 medium medium regular shared
+
+[tp04_library_step]
+1:9 medium medium regular shared
+3:21 medium medium regular utils
+11:41 medium medium regular deploy
+
+[tp05_declarative_libraries]
+7:13 medium medium regular shared
+
+[tp06_no_version]
+2:10 medium low pedantic shared
+4:9 medium low pedantic utils
+
+[tp07_computed_version]
+2:9 medium low auditor shared

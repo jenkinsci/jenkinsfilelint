@@ -12,12 +12,13 @@ pub mod sarif;
 mod script_injection;
 mod secret_interpolation;
 mod taint;
+mod unpinned_library;
 
 use std::fmt;
 
 use crate::ast::Stmt;
-use crate::diag::Span;
-use crate::lexer::Comment;
+use crate::diag::{Pos, Span};
+use crate::lexer::{Comment, TokKind, Token};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Severity {
@@ -82,7 +83,12 @@ impl Rule {
     }
 }
 
-pub static RULES: &[&Rule] = &[&script_injection::RULE, &secret_interpolation::RULE, &controller_execution::RULE];
+pub static RULES: &[&Rule] = &[
+    &script_injection::RULE,
+    &secret_interpolation::RULE,
+    &controller_execution::RULE,
+    &unpinned_library::RULE,
+];
 
 #[derive(Debug, Clone)]
 pub struct Finding {
@@ -125,7 +131,7 @@ impl Filter {
 
 /// Run every rule on a parsed file and keep the findings the filter shows
 /// and no comment turns off, in file order.
-pub fn audit(stmts: &[Stmt], comments: &[Comment], filter: &Filter) -> Vec<Finding> {
+pub fn audit(stmts: &[Stmt], comments: &[Comment], annotations: &[Annotation], filter: &Filter) -> Vec<Finding> {
     let ignores: Vec<(usize, Vec<&str>)> = comments
         .iter()
         .filter_map(|c| ignored_rules(&c.text).map(|rules| (c.pos.line, rules)))
@@ -141,10 +147,68 @@ pub fn audit(stmts: &[Stmt], comments: &[Comment], filter: &Filter) -> Vec<Findi
         .into_iter()
         .chain(secret_interpolation::check(&flows))
         .chain(controller_execution::check(stmts))
+        .chain(unpinned_library::check(stmts, annotations))
         .filter(|f| filter.shows(f) && !ignored(f))
         .collect();
     findings.sort_by_key(|f| (f.span.start, f.rule));
     findings
+}
+
+/// An annotation and the string literals in its arguments: `@Library('a')`,
+/// `@Library(['a', 'b'])`, `@Library(value = 'a', changelog = false)`. The
+/// parser skips annotations, so the audit reads them from the tokens.
+#[derive(Debug)]
+pub struct Annotation {
+    pub name: String,
+    pub strings: Vec<AnnotationString>,
+    /// Where the `@` is.
+    pub pos: Pos,
+}
+
+#[derive(Debug)]
+pub struct AnnotationString {
+    pub value: String,
+    pub interp: bool,
+    pub pos: Pos,
+}
+
+/// The annotations in a file's tokens, before they are parsed.
+pub fn annotations(tokens: &[Token]) -> Vec<Annotation> {
+    let mut out = Vec::new();
+    for (i, t) in tokens.iter().enumerate() {
+        let (true, Some(TokKind::Ident(name))) = (t.is_punct("@"), tokens.get(i + 1).map(|t| &t.kind)) else {
+            continue;
+        };
+        let mut strings = Vec::new();
+        if tokens.get(i + 2).is_some_and(|t| t.is_punct("(") && !t.nl_before) {
+            let mut depth = 0;
+            for t in &tokens[i + 2..] {
+                match &t.kind {
+                    TokKind::Punct("(" | "[") => depth += 1,
+                    TokKind::Punct(")" | "]") => {
+                        depth -= 1;
+                        if depth == 0 {
+                            break;
+                        }
+                    }
+                    // `value = 'a'`: a string after `=` is a value; `changelog = false` has none.
+                    TokKind::Str { value, interp, .. } => strings.push(AnnotationString {
+                        value: value.clone(),
+                        interp: *interp,
+                        pos: t.pos,
+                    }),
+                    TokKind::Eof => break,
+                    _ => {}
+                }
+            }
+        }
+        out.push(Annotation {
+            name: name.clone(),
+            strings,
+            pos: t.pos,
+        });
+    }
+    out
 }
 
 /// The rules that `jenkinsfilelint: ignore[a, b] why` turns off. The

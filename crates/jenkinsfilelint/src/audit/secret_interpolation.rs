@@ -185,7 +185,7 @@ mod tests {
 
     fn messages(src: &str, filter: Filter) -> Vec<String> {
         let (tokens, comments) = tokenize_with_comments(src).unwrap();
-        audit(&parse(tokens).unwrap(), &comments, &filter)
+        audit(&parse(tokens).unwrap(), &comments, &[], &filter)
             .into_iter()
             .map(|f| f.message)
             .collect()
