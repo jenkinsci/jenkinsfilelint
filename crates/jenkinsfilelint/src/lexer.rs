@@ -41,6 +41,9 @@ pub struct RawPlaceholder {
     pub span: Span,
     /// `${...}` rather than `$name`.
     pub braced: bool,
+    /// A line break in it, outside strings it holds and not after a
+    /// backslash.
+    pub multiline: bool,
 }
 
 /// Collects the parts of a string literal while it is read.
@@ -223,6 +226,12 @@ impl<'a> Lexer<'a> {
         Diagnostic::error(pos, msg)
     }
 
+    /// Whether the line before the current one is empty.
+    fn after_blank_line(&self) -> bool {
+        let before: Vec<char> = self.chars[..self.i].iter().rev().take(3).copied().filter(|&c| c != '\r').collect();
+        before.len() >= 2 && before[0] == '\n' && before[1] == '\n'
+    }
+
     /// Whether a `/` at this point begins a slashy string.
     fn regex_allowed(&self) -> bool {
         match self.out.last() {
@@ -325,7 +334,17 @@ impl<'a> Lexer<'a> {
                 self.string(pos)?
             } else if c == '$' && self.peek(1) == Some('/') {
                 self.dollar_slashy(pos)?
-            } else if c == '/' && self.regex_allowed() && self.peek(1) != Some('=') {
+            } else if c == '/' && pos.col == 1 && pos.line > 1 && !self.after_blank_line() {
+                // Groovy 2.4's lexer reads nothing at all here: neither a
+                // division nor a slashy string may start a line right after
+                // another line, though either may after a blank line or with
+                // indentation.
+                return Err(self.err(
+                    pos,
+                    "Unexpected '/' at the start of a line: Groovy cannot read a slashy string or a division there. Indent the line, or end the line before with the operator",
+                ));
+            } else if c == '/' && (self.regex_allowed() || nl) && self.peek(1) != Some('=') {
+                // After a line break, `/` starts a new statement's slashy string.
                 self.slashy(pos)?
             } else if c.is_ascii_digit() || (c == '.' && self.peek(1).is_some_and(|d| d.is_ascii_digit()) && !self.prev_is_value()) {
                 self.number()
@@ -528,7 +547,16 @@ impl<'a> Lexer<'a> {
             if gstring && c == '$' {
                 if self.peek(1) == Some('{') {
                     interp = true;
-                    parts.placeholder(self.braced_placeholder(start, &mut value)?);
+                    let placeholder = self.braced_placeholder(start, &mut value)?;
+                    // Only a triple-quoted string spans lines, `${...}` included,
+                    // unless a backslash continues the line.
+                    if !triple && placeholder.multiline {
+                        return Err(self.err(
+                            start,
+                            "Unterminated string literal: the line ends inside its ${...}. Use a triple-quoted string to span lines",
+                        ));
+                    }
+                    parts.placeholder(placeholder);
                     continue;
                 }
                 // Like Groovy, a `$` must start `${...}` or a name: `"$(date)"`,
@@ -555,7 +583,7 @@ impl<'a> Lexer<'a> {
     fn braced_placeholder(&mut self, start: Pos, value: &mut String) -> Result<RawPlaceholder, Diagnostic> {
         let begin = self.pos();
         let begin_i = self.i;
-        self.interpolation(start)?;
+        let multiline = self.interpolation(start)?;
         // Inside another placeholder, a string is read only to find where
         // that placeholder ends; its value and parts are dropped, and the
         // parser reads the text again. Copying the text there would make
@@ -577,6 +605,7 @@ impl<'a> Lexer<'a> {
                 end: self.pos(),
             },
             braced: true,
+            multiline,
         })
     }
 
@@ -610,11 +639,14 @@ impl<'a> Lexer<'a> {
                 end: self.pos(),
             },
             braced: false,
+            multiline: false,
         }
     }
 
-    /// Consume `${ ... }` inside a GString.
-    fn interpolation(&mut self, start: Pos) -> Result<(), Diagnostic> {
+    /// Consume `${ ... }` inside a GString, and tell whether a line breaks
+    /// in it, outside the strings and comments it holds and not after a
+    /// backslash.
+    fn interpolation(&mut self, start: Pos) -> Result<bool, Diagnostic> {
         if self.interp_depth >= crate::parser::MAX_DEPTH {
             return Err(self.err(
                 self.pos(),
@@ -627,10 +659,11 @@ impl<'a> Lexer<'a> {
         result
     }
 
-    fn interpolation_inner(&mut self, start: Pos) -> Result<(), Diagnostic> {
+    fn interpolation_inner(&mut self, start: Pos) -> Result<bool, Diagnostic> {
         self.bump(); // $
         self.bump(); // {
         let mut depth = 1;
+        let mut multiline = false;
         // The last meaningful character, to tell `/` as division (after a
         // value) from a slashy string (after an operator or delimiter).
         let mut prev = '{';
@@ -673,6 +706,12 @@ impl<'a> Lexer<'a> {
                     prev = '"';
                     continue;
                 }
+                '\\' if self.peek(1) == Some('\n') || (self.peek(1) == Some('\r') && self.peek(2) == Some('\n')) => {
+                    // A backslash continues the line.
+                    while self.bump() != Some('\n') {}
+                    continue;
+                }
+                '\n' => multiline = true,
                 _ => {}
             }
             if !c.is_whitespace() {
@@ -680,7 +719,7 @@ impl<'a> Lexer<'a> {
             }
             self.bump();
         }
-        Ok(())
+        Ok(multiline)
     }
 
     fn slashy(&mut self, start: Pos) -> Result<TokKind, Diagnostic> {
@@ -820,6 +859,7 @@ mod tests {
                 end: Pos { line: end.0, col: end.1 },
             },
             braced,
+            multiline: src.contains('\n'),
         })
     }
 

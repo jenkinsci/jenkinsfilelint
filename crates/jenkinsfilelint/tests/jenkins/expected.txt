@@ -51,8 +51,8 @@ error: Only one of "matrix", "parallel", "stages", or "steps" allowed for stage 
 error: No stages specified
 
 [e12_env_list_value]
-# Jenkins also reports: No variables specified for environment
 error: Environment variable values must either be single quoted, double quoted, or function calls.
+error: No variables specified for environment
 
 [e13_unknown_option]
 # Differs: Option types can come from plugins, so unknown names are not reported.
@@ -121,18 +121,18 @@ error: Empty when closure, remove the property or add some content.
 error: post can not be empty
 
 [e30_agent_label_no_arg]
-# Differs: Known gap: `label` without a value is not reported yet.
-# Jenkins: Expected an agent
 # Jenkins: No agent type specified. Must be one of [any, docker, dockerfile, label, none]
-valid
+# Differs: the types Jenkins lists depend on its plugins.
+error: Expected an agent
+error: No agent type specified. Must be one of [any, docker, dockerfile, kubernetes, label, node, none]
 
 [e31_parallel_and_stages]
 error: Only one of "matrix", "parallel", "stages", or "steps" allowed for stage "S"
 
 [e32_env_no_value]
-# Jenkins also reports: Expected name=value pairs
-# Jenkins also reports: No variables specified for environment
 error: "FOO" is not a valid environment expression. Use "key = value" pairs with valid Java/shell keys.
+error: Expected name=value pairs
+error: No variables specified for environment
 
 [e33_stage_outside_stages]
 error: Missing required section "stages"
@@ -205,8 +205,8 @@ error: Expected a stage
 error: Environment variable values to be concatenated together must be single or double quoted.
 
 [e53_env_negated_variable]
-# Jenkins also reports: No variables specified for environment
 error: Environment variable values must either be single quoted, double quoted, or function calls.
+error: No variables specified for environment
 
 [e54_label_first_in_script_block]
 # Differs: Known gap: Jenkins compiles the text of a script block on its own and loses a label on the block's first statement.
@@ -381,6 +381,21 @@ error: Expected a step
 error: Expected a symbol
 
 [e102_environment_without_values]
+error: No variables specified for environment
+
+[e103_empty_script_block]
+error: Groovy compilation error(s) in script. Error(s): "Ambiguous expression could be either a parameterless closure expression or an isolated open code block; solution: Add an explicit closure parameter list, e.g. {it -> ...}, or force it to be treated as an open block by giving it a label, e.g. L:{...}"
+
+[e104_agent_without_type]
+# Jenkins: No agent type specified. Must be one of [any, docker, dockerfile, label, none]
+# Differs: the types Jenkins lists depend on its plugins.
+error: Expected an agent
+error: No agent type specified. Must be one of [any, docker, dockerfile, kubernetes, label, node, none]
+
+[e105_environment_value_shapes]
+error: Environment variable values must either be single quoted, double quoted, or function calls.
+error: Environment variable values can only be joined together with ‘+’s.
+error: Environment variable values can only be joined together with ‘+’s.
 error: No variables specified for environment
 
 [p01_kubernetes_agent]
@@ -613,6 +628,34 @@ error
 
 [s43_digit_led_name_in_placeholder]
 # Jenkins: expecting '}', found 'ce8dcfac9a9'
+error
+
+[s44_bare_block]
+# Jenkins: Ambiguous expression could be either a parameterless closure expression or an isolated open code block;
+error
+
+[s45_annotation_before_pipeline]
+# Jenkins: unexpected token: pipeline
+error
+
+[s46_try_with_resources]
+# Jenkins: expecting '{', found '('
+error
+
+[s47_constructor_call]
+# Jenkins: Constructor call must be the first statement in a constructor.
+error
+
+[s48_doubled_prefix_operator]
+# Jenkins: unexpected token: -
+error
+
+[s49_line_break_in_placeholder]
+# Jenkins: end of line reached within a simple string 'x' or "x" or /x/;
+error
+
+[s50_slash_at_line_start]
+# Jenkins: unexpected char: '/'
 error
 
 [v01_minimal]
@@ -918,6 +961,12 @@ valid
 [v104_declarations_in_environment]
 valid
 
+[v105_groovy_in_script_from_public_files]
+valid
+
+[v106_agent_strings_and_post_arguments]
+valid
+
 [x01_scripted_pipeline]
 # Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
 # Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
@@ -1016,6 +1065,11 @@ valid
 valid
 
 [x21_digit_led_names_scripted]
+# Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
+# Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
+valid
+
+[x22_groovy_corners_scripted]
 # Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
 # Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
 valid

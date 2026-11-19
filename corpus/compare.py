@@ -14,11 +14,15 @@ category and messages to <cache>/report.tsv:
 
   agree          the same verdict, and the same first error if any
   syntax         both find a Groovy syntax error, worded differently
-  false-error    the engine reports an error that Jenkins does not: a bug
-  missed         Jenkins reports an error that the engine does not
+  false-error    the engine reports an error that Jenkins does not, or a
+                 syntax error in a file Jenkins compiles: a bug
+  missed         Jenkins reports an error that the engine does not, or a
+                 syntax error in a file the engine reads
   needs-plugins  Jenkins reports an error that the engine cannot know
                  without the plugins: step parameters, agent types, tools
   other-message  both report errors, but different ones
+  known          the engine is stricter on purpose: a second pipeline
+                 block, a byte order mark (see tests/jenkins/expected.txt)
   unreadable     the engine cannot read the file (not UTF-8)
   no-answer      Jenkins did not answer
 
@@ -65,9 +69,24 @@ NEEDS_PLUGINS = re.compile(
     r"|Scripts not permitted)"
 )
 
-# Groovy compiler messages start in lower case, or with "Unexpected input";
-# the validator's own start with a capital.
-COMPILER = re.compile(r"^([a-z]|Unexpected input)")
+# Groovy's compiler errors: its parser's start in lower case, or with
+# "Unexpected input"; the validator's own start with a capital.
+COMPILER = re.compile(
+    r"^([a-z]|Unexpected input|Ambiguous expression|Groovy compilation error"
+    r"|Constructor call must be the first)"
+)
+
+# Errors the engine reports on purpose where the validator does not, as
+# tests/jenkins/expected.txt explains: Jenkins refuses to run these files.
+KNOWN = re.compile(
+    r"^(Multiple occurrences of the pipeline section|Unexpected byte order mark)"
+)
+
+# The engine's syntax errors, from its lexer and parser.
+OFFLINE_SYNTAX = re.compile(
+    r"^(Unexpected |Unterminated |Unclosed |illegal string body|Invalid unicode escape"
+    r"|Ambiguous expression|Constructor call must be the first)"
+)
 
 LOOK_AT = ("false-error", "missed", "other-message")
 
@@ -85,12 +104,21 @@ def normalize(message):
 
 
 def jenkins_messages(text):
-    """The error messages in a validator response, without positions."""
+    """The error messages in a validator response, without positions. A
+    message that ends with `;` goes on with a `solution:` line."""
     out = []
-    for line in text.splitlines():
-        m = re.match(r"WorkflowScript: \d+: (.*?)(?: @ line \d+, column \d+\.)?$", line)
-        if m:
-            out.append(normalize(m.group(1)))
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        m = re.match(r"WorkflowScript: \d+: (.*)$", line)
+        if not m:
+            continue
+        message = m.group(1)
+        k = i + 1
+        while message.endswith(";") and k < len(lines) and lines[k].startswith(" "):
+            message += " " + lines[k].strip()
+            k += 1
+        message = re.sub(r" @ line \d+, column \d+\.$", "", message)
+        out.append(normalize(message))
     return out
 
 
@@ -170,6 +198,8 @@ def category(off, jenkins):
         return "no-answer"
     if not off and ok:
         return "agree"
+    if off and KNOWN.match(off[0]):
+        return "known"
     if off and ok:
         return "false-error"
     if not off:
@@ -180,8 +210,15 @@ def category(off, jenkins):
         )
     if off[0] in messages:
         return "agree"
-    if COMPILER.match(messages[0]):
+    ours = bool(OFFLINE_SYNTAX.match(off[0]))
+    theirs = any(COMPILER.match(m) for m in messages)
+    if ours and theirs:
         return "syntax"
+    # Jenkins compiled the file and found only other errors.
+    if ours:
+        return "false-error"
+    if theirs:
+        return "missed"
     return "other-message"
 
 
@@ -232,6 +269,7 @@ def main():
         "agree",
         "syntax",
         "needs-plugins",
+        "known",
         *LOOK_AT,
         "unreadable",
         "no-answer",

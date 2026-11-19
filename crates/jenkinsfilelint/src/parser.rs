@@ -248,10 +248,56 @@ impl Parser {
             if self.at_eof() || self.peek().is_punct("}") {
                 return Ok(Stmt::Other { kind: "annotation", pos });
             }
+            // An annotation belongs to a declaration or an import: a call
+            // such as `pipeline { }` right after `@Library('lib')` does not
+            // compile, which is why the usual form is `@Library('lib') _`.
+            // A bare name declares a variable too: `@Field X = []`,
+            // `@Library('lib') l2`.
+            let after = self.peek_at(1);
+            let bare_name = matches!(self.peek().kind, TokKind::Ident(_))
+                && (after.nl_before || matches!(after.kind, TokKind::Eof | TokKind::Punct("=" | ";")));
+            let declares = self.peek().is_punct("@")
+                || bare_name
+                || matches!(&self.peek().kind, TokKind::Ident(w)
+                    if matches!(w.as_str(), "def" | "import" | "package" | "class" | "interface" | "enum" | "trait")
+                        || MODIFIERS.contains(&w.as_str()))
+                || self.looks_like_typed_decl();
+            // `@NonCPS` then `name(a, b) { }` defines a method, as `def` would.
+            if !declares
+                && matches!(self.peek().kind, TokKind::Ident(_))
+                && self.peek_at(1).is_punct("(")
+                && matches!(self.peek_at(2).kind, TokKind::Ident(_) | TokKind::Punct(")"))
+            {
+                let at = self.i;
+                let name = self.ident_name().unwrap_or_default();
+                self.next();
+                self.skip_balanced("(", ")")?;
+                if self.peek().is_punct("{") {
+                    let body = self.block()?;
+                    return Ok(Stmt::MethodDef { name, body, pos });
+                }
+                self.i = at;
+            }
+            if !declares {
+                return Err(self.unexpected("a declaration after the annotation, as in @Library('lib') _"));
+            }
             return self.stmt();
         }
         if t.is_punct("{") {
-            // A bare block or closure statement.
+            // A block is a statement only with a label, `L: { }`: Groovy
+            // cannot tell a bare one from a closure.
+            let first = self.i == 0 || matches!(self.toks[self.i - 1].kind, TokKind::Punct("{" | "->" | ";"));
+            let labeled = self.toks.get(self.i.wrapping_sub(1)).is_some_and(|p| p.is_punct(":"));
+            if !labeled && !self.closure_has_params() {
+                return Err(Diagnostic::error(
+                    pos,
+                    if first {
+                        "Ambiguous expression could be either a parameterless closure expression or an isolated open code block; solution: Add an explicit closure parameter list, e.g. {it -> ...}, or force it to be treated as an open block by giving it a label, e.g. L:{...}"
+                    } else {
+                        "Ambiguous expression could be a parameterless closure expression, an isolated open code block, or it may continue a previous statement; solution: Add an explicit parameter list, e.g. {it -> ...}, or force it to be treated as an open block by giving it a label, e.g. L:{...}, and also either remove the previous newline, or add an explicit semicolon ';'"
+                    },
+                ));
+            }
             let e = self.closure()?;
             return Ok(Stmt::Expr(e));
         }
@@ -298,8 +344,9 @@ impl Parser {
             "try" => {
                 self.next();
                 let mut bodies = Vec::new();
+                // Groovy 2.4 has no try-with-resources: it came with Groovy 3.
                 if self.peek().is_punct("(") {
-                    self.skip_balanced("(", ")")?;
+                    return Err(self.unexpected("'{': Groovy 2.4 has no try-with-resources"));
                 }
                 bodies.push(self.block()?);
                 let mut handled = false;
@@ -549,6 +596,16 @@ impl Parser {
                 break;
             }
         }
+        // `def class X { }`
+        if let Some(w) = self.ident_name() {
+            if matches!(w.as_str(), "class" | "interface" | "enum" | "trait") {
+                return self.type_decl(pos);
+            }
+        }
+        // Type parameters of a generic method: `def <T> T call(Closure<T> body)`.
+        if self.peek().is_punct("<") {
+            self.skip_generic_args()?;
+        }
         // Multiple assignment: def (a, b) = [1, 2]
         if self.peek().is_punct("(") {
             self.skip_balanced("(", ")")?;
@@ -626,12 +683,29 @@ impl Parser {
     /// `"a"($({ n }))."b"`.
     fn expr_stmt(&mut self) -> PResult<Expr> {
         self.command_start = self.i;
+        let at = self.peek().pos;
         let e = self.expr()?;
+        let calls_constructor = |e: &Expr| matches!(e, Expr::Call { callee, .. } if matches!(callee.as_ref(), Expr::Ident { name, .. } if name == "this" || name == "super"));
+        if calls_constructor(&e)
+            || (matches!(e, Expr::Ident { ref name, .. } if name == "this" || name == "super") && self.starts_command_arg())
+        {
+            return Err(Diagnostic::error(
+                at,
+                "Constructor call must be the first statement in a constructor.",
+            ));
+        }
         // `a[0] "x"` and `env.(name) "x"` are command calls too, and so is
         // a string with arguments, which names the method: `'echo' 'hi'`
         // is `echo('hi')`.
         let commandable = matches!(e, Expr::Ident { .. } | Expr::Prop { .. } | Expr::Index { .. } | Expr::Str { .. });
-        let chained_call = matches!(e, Expr::Call { parens: true, .. }) && self.chain_name().is_some();
+        // A chain also continues after a call with parentheses or a closure:
+        // `library('x') _`, `list.collect { it } join ','`.
+        let called = match &e {
+            Expr::Call { parens: true, .. } => true,
+            Expr::Call { args, .. } => matches!(args.last(), Some(Arg::Pos(Expr::Closure { .. }))),
+            _ => false,
+        };
+        let chained_call = called && self.chain_name().is_some();
         if (commandable && self.starts_command_arg()) || chained_call {
             let mut call = if chained_call { e } else { self.command_call(e)? };
             while let Some(name) = self.chain_name() {
@@ -641,7 +715,21 @@ impl Parser {
                     name,
                     pos,
                 };
-                call = if self.starts_chain_arg() {
+                call = if self.peek().is_punct("(") && !self.peek().nl_before {
+                    // `foo(1) bar(2)`, `if (a) or (b) or (c) { }`
+                    let args = self.call_args()?;
+                    let call = Expr::Call {
+                        callee: Box::new(prop),
+                        args,
+                        parens: true,
+                        pos,
+                    };
+                    if self.peek().is_punct("{") && !self.peek().nl_before {
+                        attach_closure(call, self.closure()?)
+                    } else {
+                        call
+                    }
+                } else if self.starts_chain_arg() {
                     self.command_call(prop)?
                 } else if self.peek().is_punct("{") && !self.peek().nl_before {
                     // `a b c { }` passes the closure to c.
@@ -657,9 +745,19 @@ impl Parser {
             }
             return Ok(call);
         }
-        // A brace on the next line still belongs to `name` / `name(...)`.
+        // A brace on the next line still belongs to a simple expression:
+        // `name`, `name(...)`, and even `'x'`, `1` or `[1]`, as in Groovy;
+        // not to `a + b` or a command, `foo a`.
         if self.peek().is_punct("{") && self.peek().nl_before {
-            if let Expr::Ident { .. } | Expr::Call { parens: true, .. } = e {
+            if let Expr::Ident { .. }
+            | Expr::Prop { .. }
+            | Expr::Index { .. }
+            | Expr::Str { .. }
+            | Expr::Num { .. }
+            | Expr::List { .. }
+            | Expr::Map { .. }
+            | Expr::Call { parens: true, .. } = e
+            {
                 let closure = self.closure()?;
                 return Ok(attach_closure(e, closure));
             }
@@ -742,7 +840,21 @@ impl Parser {
                 let value = self.ternary()?;
                 args.push(Arg::Named { key, value, pos });
             } else {
-                args.push(Arg::Pos(self.ternary()?));
+                // `string x = 'a'` is `string(x = 'a')`.
+                let arg = self.ternary()?;
+                let arg = match self.peek().kind {
+                    TokKind::Punct(p) if ASSIGN_OPS.contains(&p) && !self.peek().nl_before => {
+                        let pos = self.next().pos;
+                        Expr::Assign {
+                            op: p,
+                            target: Box::new(arg),
+                            value: Box::new(self.expr()?),
+                            pos,
+                        }
+                    }
+                    _ => arg,
+                };
+                args.push(Arg::Pos(arg));
             }
             if !self.eat(",") {
                 break;
@@ -765,6 +877,9 @@ impl Parser {
         if !t.nl_before {
             if let TokKind::Punct(p) = t.kind {
                 if ASSIGN_OPS.contains(&p) {
+                    if matches!(lhs, Expr::Ternary { .. }) {
+                        return Err(self.unexpected("end of statement: a conditional cannot be assigned to"));
+                    }
                     let pos = self.next().pos;
                     let value = self.expr_stmt()?;
                     return Ok(Expr::Assign {
@@ -787,7 +902,8 @@ impl Parser {
         let cond = self.binary(0)?;
         if self.peek().is_punct("?") {
             let pos = self.next().pos;
-            let then = self.ternary()?;
+            // Its first branch may assign: `a ? m['k'] = 1 : null`.
+            let then = self.expr()?;
             self.expect(":")?;
             let other = self.ternary()?;
             return Ok(Expr::Ternary {
@@ -902,6 +1018,11 @@ impl Parser {
         if let TokKind::Punct(p) = t.kind {
             if matches!(p, "!" | "-" | "+" | "~" | "++" | "--") {
                 self.next();
+                // Groovy 2.4 takes no sign or step after another: `- -x` and
+                // `-- --x` do not compile, `-(-x)` and `!-x` do.
+                if matches!(p, "-" | "+" | "++" | "--") && matches!(self.peek().kind, TokKind::Punct("-" | "+" | "++" | "--")) {
+                    return Err(self.unexpected("an expression"));
+                }
                 let e = self.unary()?;
                 return Ok(Expr::Unary {
                     op: p,
@@ -977,7 +1098,8 @@ impl Parser {
                         pos: t.pos,
                     };
                 }
-                TokKind::Punct("(") if !t.nl_before => {
+                // Inside brackets a line break is only space: `parameters\n([...])`.
+                TokKind::Punct("(") if !t.nl_before || self.in_group => {
                     let args = self.call_args()?;
                     let pos = e.pos();
                     e = Expr::Call {
@@ -987,12 +1109,28 @@ impl Parser {
                         pos,
                     };
                 }
-                TokKind::Punct("[") if !t.nl_before => {
+                TokKind::Punct("[") if !t.nl_before || self.in_group => {
                     self.next();
                     let index = self.grouped(true, |p| {
                         let mut index = Vec::new();
                         while !p.peek().is_punct("]") {
-                            index.push(p.expr()?);
+                            // Named entries make a map: `x[a: 1]`.
+                            if p.named_key_ahead() {
+                                let (key, kpos) = p.named_key();
+                                let value = p.expr()?;
+                                let k = Expr::Str {
+                                    value: key,
+                                    interp: false,
+                                    parts: Vec::new(),
+                                    pos: kpos,
+                                };
+                                index.push(Expr::Map {
+                                    entries: vec![(k, value)],
+                                    pos: kpos,
+                                });
+                            } else {
+                                index.push(p.expr()?);
+                            }
                             if !p.eat(",") {
                                 break;
                             }
@@ -1011,10 +1149,10 @@ impl Parser {
                 // `stage('S'({ }))` to Groovy.
                 TokKind::Punct("{")
                     if !t.nl_before
-                        && matches!(
+                        && (matches!(
                             e,
                             Expr::Ident { .. } | Expr::Prop { .. } | Expr::Index { .. } | Expr::Call { .. } | Expr::Str { .. }
-                        ) =>
+                        ) || self.toks[self.i - 1].is_punct(")")) =>
                 {
                     let closure = self.closure()?;
                     e = attach_closure(e, closure);
@@ -1049,6 +1187,10 @@ impl Parser {
                 self.next();
                 self.next();
                 self.expr()?;
+            } else if self.typed_arg_ahead() {
+                // Groovy 2.4 takes a declaration as an argument: `f(String s)`.
+                self.skip_type()?;
+                args.push(Arg::Pos(self.expr()?));
             } else {
                 args.push(Arg::Pos(self.expr()?));
             }
@@ -1059,6 +1201,47 @@ impl Parser {
         }
         self.expect(")")?;
         Ok(args)
+    }
+
+    /// At a `{`: whether a parameter list follows, `{ ->`, `{ it ->` or
+    /// `{ String a, b ->`, which makes it a closure even as a statement.
+    fn closure_has_params(&self) -> bool {
+        let mut k = 1;
+        loop {
+            match &self.peek_at(k).kind {
+                TokKind::Punct("->") => return true,
+                TokKind::Ident(_) | TokKind::Punct("," | "." | "<" | ">" | "[" | "]" | "?") => k += 1,
+                _ => return false,
+            }
+        }
+    }
+
+    /// A declaration in an argument list, `f(String s)` or `f(a.B<C> d = x)`:
+    /// a type, then a name and the end of the argument.
+    fn typed_arg_ahead(&self) -> bool {
+        let TokKind::Ident(first) = &self.peek().kind else { return false };
+        let mut ty = first;
+        let mut k = 1;
+        while self.peek_at(k).is_punct(".") {
+            let TokKind::Ident(next) = &self.peek_at(k + 1).kind else {
+                return false;
+            };
+            ty = next;
+            k += 2;
+        }
+        if !(PRIMITIVES.contains(&ty.as_str()) || ty.chars().next().is_some_and(|c| c.is_uppercase())) {
+            return false;
+        }
+        if self.peek_at(k).is_punct("<") {
+            match self.generic_args_end(k) {
+                Some(end) => k = end,
+                None => return false,
+            }
+        }
+        while self.peek_at(k).is_punct("[") && self.peek_at(k + 1).is_punct("]") {
+            k += 2;
+        }
+        matches!(self.peek_at(k).kind, TokKind::Ident(_)) && matches!(self.peek_at(k + 1).kind, TokKind::Punct("," | ")" | "="))
     }
 
     /// After the comma that ends an argument, list item or map entry:

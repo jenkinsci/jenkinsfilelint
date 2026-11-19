@@ -42,12 +42,34 @@ Each `false-error`, `missed` or `other-message` file becomes a small test
 case in `crates/jenkinsfilelint/tests/jenkins/`, checked with Jenkins, before
 the engine changes.
 
+## Results
+
+On 2026-11-19, against the Jenkins of `ghcr.io/jenkinsci/jenkinsfilelint-server`,
+the 17,373 files of the manifest compared as follows:
+
+| Category | Files |
+|---|---|
+| `agree` | 13,025 |
+| `syntax` | 407 |
+| `needs-plugins` | 3,906 |
+| `known` | 11 |
+| `false-error` | 0 |
+| `missed` | 6 |
+| `other-message` | 11 |
+| no answer from Jenkins | 7 |
+
+The six missed errors are Java written in `class` bodies, which the engine
+does not read closely, and `"${A B C}"`, which Jenkins reads in a way not
+yet understood. Seven files got an error from Jenkins with no message.
+
 ## How the files are chosen
 
 GitHub code search returns at most 1,000 results per query, so
 `collect.py` searches by file size: files named `Jenkinsfile` in about a
 hundred size ranges from a few bytes to 400 KB, and `vars/*.groovy` files of
-shared libraries in ten. Files with the same content are listed once.
+shared libraries in ten. Files with the same content are listed once, and
+files in private repositories, which search shows to the user logged in,
+are left out.
 
 ## Security findings
 

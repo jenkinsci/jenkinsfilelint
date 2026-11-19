@@ -349,8 +349,11 @@ impl Validator {
                 self.err(s.pos, "Only \"agent none\", \"agent any\" or \"agent {...}\" are allowed.");
                 return;
             }
+            // A bare word, `agent { any }`, or a string is not an agent on
+            // its own, though it counts as one more beside an agent.
             let types: Vec<Section> = body.iter().filter_map(|st| st.section()).collect();
-            if types.is_empty() {
+            if types.iter().all(|t| t.args.is_empty() && t.body.is_none()) {
+                self.err(s.pos, "Expected an agent");
                 self.err(s.pos, format!("No agent type specified. Must be one of {}", list(AGENT_TYPES)));
                 return;
             }
@@ -374,8 +377,16 @@ impl Validator {
             self.agent_params(t);
             return;
         }
+        // `agent 'any'` too: Jenkins takes the plain string.
         match s.args.as_slice() {
-            [Arg::Pos(Expr::Ident { name, .. })] if name == "any" || name == "none" => {}
+            [Arg::Pos(
+                Expr::Ident { name, .. }
+                | Expr::Str {
+                    value: name,
+                    interp: false,
+                    ..
+                },
+            )] if name == "any" || name == "none" => {}
             _ => self.err(s.pos, "Only \"agent none\", \"agent any\" or \"agent {...}\" are allowed."),
         }
     }
@@ -607,8 +618,14 @@ impl Validator {
         };
         match name {
             "script" => {
-                if !matches!(args.last(), Some(Arg::Pos(Expr::Closure { .. }))) {
-                    self.err(e.pos(), "script step without a block");
+                match args.last() {
+                    Some(Arg::Pos(Expr::Closure { body, .. })) if body.is_empty() => {
+                        // Jenkins compiles the block on its own, where an empty one is
+                        // a bare `{ }`.
+                        self.err(e.pos(), "Groovy compilation error(s) in script. Error(s): \"Ambiguous expression could be either a parameterless closure expression or an isolated open code block; solution: Add an explicit closure parameter list, e.g. {it -> ...}, or force it to be treated as an open block by giving it a label, e.g. L:{...}\"");
+                    }
+                    Some(Arg::Pos(Expr::Closure { .. })) => {}
+                    _ => self.err(e.pos(), "script step without a block"),
                 }
                 return;
             }
@@ -743,7 +760,8 @@ impl Validator {
         let mut seen = HashSet::new();
         for stmt in body {
             let cond = match stmt.section() {
-                Some(c) if c.body.is_some() && c.args.is_empty() => c,
+                // Jenkins ignores arguments before the block: `success("x") { }`.
+                Some(c) if c.body.is_some() => c,
                 _ => {
                     self.err(
                         stmt.pos(),
@@ -785,7 +803,6 @@ impl Validator {
         }
         let mut seen = HashSet::new();
         let mut variables = 0;
-        let errors = self.diags.len();
         for stmt in body {
             // A declaration is an assignment to Jenkins, as it is to Groovy:
             // `def X = 'a'` and `String X = 'a', Y = 'b'` set X (and Y); a
@@ -797,11 +814,13 @@ impl Validator {
             } = stmt
             {
                 if !names.is_empty() {
+                    let mut named = 0;
                     for name in names {
-                        variables += 1;
-                        self.env_name(name, *pos, &mut seen);
+                        named += usize::from(self.env_name(name, *pos, s.pos, &mut seen));
                     }
-                    self.env_value(value);
+                    if self.env_value(value) {
+                        variables += named;
+                    }
                     continue;
                 }
             }
@@ -823,6 +842,7 @@ impl Validator {
                     stmt.pos(),
                     format!("\"{what}\" is not a valid environment expression. Use \"key = value\" pairs with valid Java/shell keys."),
                 );
+                self.err(s.pos, "Expected name=value pairs");
                 continue;
             };
             let Expr::Ident { name, .. } = target.as_ref() else {
@@ -833,61 +853,87 @@ impl Validator {
                         target.render()
                     ),
                 );
+                self.err(s.pos, "Expected name=value pairs");
                 continue;
             };
-            variables += 1;
-            self.env_name(name, *pos, &mut seen);
-            self.env_value(value);
+            let named = self.env_name(name, *pos, s.pos, &mut seen);
+            if self.env_value(value) && named {
+                variables += 1;
+            }
         }
-        if variables == 0 && self.diags.len() == errors {
+        // Jenkins counts the variables it could read: an invalid name, or a
+        // value of the wrong shape, drops one.
+        if variables == 0 {
             self.err(s.pos, "No variables specified for environment");
         }
     }
 
-    fn env_name(&mut self, name: &str, pos: Pos, seen: &mut HashSet<String>) {
+    /// Check a variable's name; false when Jenkins drops the variable.
+    fn env_name(&mut self, name: &str, pos: Pos, block: Pos, seen: &mut HashSet<String>) -> bool {
         if !is_valid_identifier(name) {
             self.err(pos, format!("\"{name}\" is not a valid identifier and cannot be used for an environment variable. Identifiers must start with a letter or underscore and can contain only letters, numbers or underscores."));
+            self.err(block, "Expected name=value pairs");
+            return false;
         }
         if !seen.insert(name.to_string()) {
             self.err(pos, format!("Duplicate environment variable name: \"{name}\""));
         }
+        true
     }
 
     /// Jenkins accepts a constant, a GString, a method call, or constants
     /// and GStrings joined with `+`.
-    fn env_value(&mut self, value: &Expr) {
+    /// Check a variable's value; false when its shape makes Jenkins drop
+    /// the variable.
+    fn env_value(&mut self, value: &Expr) -> bool {
+        const SHAPE: &str = "Environment variable values must either be single quoted, double quoted, or function calls.";
+        const JOINED: &str = "Environment variable values can only be joined together with \u{2018}+\u{2019}s.";
         match value {
-            v if is_constant(v) => {}
+            v if is_constant(v) => true,
             Expr::Call { callee, .. } if callee.method_name() == Some("$") => {
                 self.err(
                     value.pos(),
                     "${...} cannot be used as a value directly. Did you mean \"${...}\"? (add quotes)",
                 );
+                true
             }
-            Expr::Call { .. } => {}
+            Expr::Call { .. } => true,
+            // Groovy compiles `a ?: b` to a conditional, `a as T` to a cast
+            // and `a..b` to a range: none is a binary expression to Jenkins.
+            Expr::Binary { op, .. } if op == "?:" || op == "as" || op.contains("..") => {
+                self.err(value.pos(), SHAPE);
+                false
+            }
+            // But `a[0]` and `a = b` are, as `a == b` is.
+            Expr::Index { pos, .. } | Expr::Assign { pos, .. } => {
+                self.err(*pos, JOINED);
+                false
+            }
             Expr::Binary { op, lhs, rhs, pos } => {
                 if op != "+" {
-                    self.err(
-                        *pos,
-                        "Environment variable values can only be joined together with \u{2018}+\u{2019}s.",
-                    );
-                    return;
+                    self.err(*pos, JOINED);
+                    return false;
                 }
                 for side in [lhs.as_ref(), rhs.as_ref()] {
                     match side {
                         s if is_constant(s) => {}
-                        Expr::Binary { .. } => self.env_value(side),
+                        Expr::Binary { .. } => {
+                            if !self.env_value(side) {
+                                return false;
+                            }
+                        }
                         _ => self.err(
                             side.pos(),
                             "Environment variable values to be concatenated together must be single or double quoted.",
                         ),
                     }
                 }
+                true
             }
-            _ => self.err(
-                value.pos(),
-                "Environment variable values must either be single quoted, double quoted, or function calls.",
-            ),
+            _ => {
+                self.err(value.pos(), SHAPE);
+                false
+            }
         }
     }
 

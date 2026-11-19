@@ -9,7 +9,8 @@ same files later. The files themselves are not stored here.
 
 Code search returns at most 1,000 results per query and allows about ten
 queries a minute, so the search is split by file size, and each size range
-is a query of its own. Needs the GitHub CLI (`gh`), logged in.
+is a query of its own. Needs the GitHub CLI (`gh`), logged in. Files in
+private repositories, which search shows to the user logged in, are left out.
 """
 
 import argparse
@@ -108,6 +109,10 @@ def main():
             if not result or not result.get("items"):
                 break
             for item in result["items"]:
+                # Search runs as the logged-in user, who may see private
+                # repositories: keep their names out of a public manifest.
+                if item["repository"].get("private", True):
+                    continue
                 e = entry(item, query)
                 found.setdefault(e[0], e)
             if len(result["items"]) < 100:
