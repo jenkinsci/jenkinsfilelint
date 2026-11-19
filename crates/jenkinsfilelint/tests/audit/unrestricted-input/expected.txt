@@ -1,0 +1,32 @@
+# What the audit finds in each case, with --persona auditor: one line per
+# finding, as line:column severity confidence persona, then the first word
+# of the message, or none.
+# tp cases are true positives, tn cases true negatives.
+
+[tn01_submitter]
+none
+
+[tn02_computed_submitter]
+none
+
+[tn03_not_the_step]
+none
+
+[tn04_ignore_comment]
+none
+
+[tp01_step]
+6:17 medium high regular input
+
+[tp02_step_named]
+3:23 medium high regular input
+
+[tp03_directive]
+5:13 medium high regular input
+
+[tp04_empty_submitter]
+2:1 medium high regular input
+8:13 medium high regular input
+
+[tp05_shared_library]
+4:9 medium high regular input
