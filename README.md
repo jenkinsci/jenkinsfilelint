@@ -253,7 +253,9 @@ that Groovy interpolates into shell steps.
 [controller-execution](docs/audit/controller-execution.md) finds `agent` and
 `node` blocks that run their steps on the Jenkins controller.
 [unpinned-library](docs/audit/unpinned-library.md) finds shared libraries
-loaded from a branch instead of a tag or commit. `--persona`,
+loaded from a branch instead of a tag or commit.
+[unpinned-image](docs/audit/unpinned-image.md) finds container images
+without a tag or with `latest`. `--persona`,
 `--min-severity` and `--min-confidence` choose what to see, a
 `// jenkinsfilelint: ignore[rule]` comment turns off one finding, and
 `--format sarif` writes a report for GitHub code scanning. See
