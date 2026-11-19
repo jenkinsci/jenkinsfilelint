@@ -596,8 +596,9 @@ impl Validator {
                     Expr::Prop { obj, .. } if matches!(obj.as_ref(), Expr::Ident { .. }) => {
                         "Method calls on objects not allowed outside \"script\" blocks."
                     }
-                    // `a.b.c 'x'`, `'a'.b 'x'`, `a[0] 'x'`, `this.("$n") 'x'`
-                    Expr::Prop { .. } | Expr::Index { .. } => "Expected a symbol",
+                    // `a.b.c 'x'`, `'a'.b 'x'`, `a[0] 'x'`, `this.("$n") 'x'`,
+                    // `"${n}" 'x'`
+                    Expr::Prop { .. } | Expr::Index { .. } | Expr::Str { .. } => "Expected a symbol",
                     _ => "Expected a step",
                 };
                 self.err(e.pos(), message);
@@ -783,7 +784,30 @@ impl Validator {
             return;
         }
         let mut seen = HashSet::new();
+        let mut variables = 0;
+        let errors = self.diags.len();
         for stmt in body {
+            // A declaration is an assignment to Jenkins, as it is to Groovy:
+            // `def X = 'a'` and `String X = 'a', Y = 'b'` set X (and Y); a
+            // declaration without a value sets nothing.
+            if let Stmt::Decl {
+                names,
+                value: Some(value),
+                pos,
+            } = stmt
+            {
+                if !names.is_empty() {
+                    for name in names {
+                        variables += 1;
+                        self.env_name(name, *pos, &mut seen);
+                    }
+                    self.env_value(value);
+                    continue;
+                }
+            }
+            if let Stmt::Decl { value: None, .. } = stmt {
+                continue;
+            }
             let Stmt::Expr(Expr::Assign {
                 op: "=",
                 target,
@@ -811,13 +835,21 @@ impl Validator {
                 );
                 continue;
             };
-            if !is_valid_identifier(name) {
-                self.err(*pos, format!("\"{name}\" is not a valid identifier and cannot be used for an environment variable. Identifiers must start with a letter or underscore and can contain only letters, numbers or underscores."));
-            }
-            if !seen.insert(name.clone()) {
-                self.err(*pos, format!("Duplicate environment variable name: \"{name}\""));
-            }
+            variables += 1;
+            self.env_name(name, *pos, &mut seen);
             self.env_value(value);
+        }
+        if variables == 0 && self.diags.len() == errors {
+            self.err(s.pos, "No variables specified for environment");
+        }
+    }
+
+    fn env_name(&mut self, name: &str, pos: Pos, seen: &mut HashSet<String>) {
+        if !is_valid_identifier(name) {
+            self.err(pos, format!("\"{name}\" is not a valid identifier and cannot be used for an environment variable. Identifiers must start with a letter or underscore and can contain only letters, numbers or underscores."));
+        }
+        if !seen.insert(name.to_string()) {
+            self.err(pos, format!("Duplicate environment variable name: \"{name}\""));
         }
     }
 

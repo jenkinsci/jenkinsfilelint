@@ -32,3 +32,6 @@ htmlcov/
 
 # Rust
 crates/*/target/
+
+# Files downloaded by corpus/fetch.py
+corpus/.cache/

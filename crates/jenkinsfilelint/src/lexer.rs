@@ -417,6 +417,71 @@ impl<'a> Lexer<'a> {
         TokKind::Num(s)
     }
 
+    /// An escape in a quoted string, at its backslash: the character it
+    /// stands for, or None for a backslash before a line break, which
+    /// continues the string on the next line, even in quotes that do not
+    /// span lines. Groovy accepts no other escapes: `"\|"` and `'\s'` do
+    /// not compile.
+    fn escape(&mut self) -> Result<Option<char>, Diagnostic> {
+        let at = self.pos();
+        self.bump();
+        let Some(e) = self.peek(0) else {
+            return Ok(None);
+        };
+        let c = match e {
+            'n' => '\n',
+            't' => '\t',
+            'r' => '\r',
+            'b' => '\u{8}',
+            'f' => '\u{c}',
+            '\\' | '\'' | '"' | '$' => e,
+            '\n' => {
+                self.bump();
+                return Ok(None);
+            }
+            '\r' if self.peek(1) == Some('\n') => {
+                self.bump();
+                self.bump();
+                return Ok(None);
+            }
+            // Octal: up to three digits, the first of three at most 3.
+            '0'..='7' => {
+                let max = if e <= '3' { 3 } else { 2 };
+                let mut code = 0;
+                let mut n = 0;
+                while n < max && self.peek(0).is_some_and(|d| ('0'..='7').contains(&d)) {
+                    code = code * 8 + self.bump().unwrap().to_digit(8).unwrap();
+                    n += 1;
+                }
+                return Ok(char::from_u32(code));
+            }
+            // `\u0041`, also with more than one u.
+            'u' => {
+                while self.peek(0) == Some('u') {
+                    self.bump();
+                }
+                let hex: String = (0..4).filter_map(|k| self.peek(k)).take_while(|d| d.is_ascii_hexdigit()).collect();
+                if hex.len() < 4 {
+                    return Err(self.err(at, "Invalid unicode escape in a string: \\u needs four hexadecimal digits"));
+                }
+                for _ in 0..4 {
+                    self.bump();
+                }
+                return Ok(char::from_u32(u32::from_str_radix(&hex, 16).unwrap()).or(Some('\u{fffd}')));
+            }
+            other => {
+                return Err(self.err(
+                    at,
+                    format!(
+                        "Unexpected escape '\\{other}' in a string. Groovy knows only \\b \\f \\n \\r \\t \\\\ \\' \\\" \\$, octal and \\u escapes: write '\\\\' for a backslash"
+                    ),
+                ))
+            }
+        };
+        self.bump();
+        Ok(Some(c))
+    }
+
     fn string(&mut self, start: Pos) -> Result<TokKind, Diagnostic> {
         let q = self.bump().unwrap();
         let triple = self.peek(0) == Some(q) && self.peek(1) == Some(q);
@@ -454,13 +519,7 @@ impl<'a> Lexer<'a> {
                 return Err(self.err(start, "Unterminated string literal"));
             }
             if c == '\\' {
-                self.bump();
-                if let Some(e) = self.bump() {
-                    let c = match e {
-                        'n' => '\n',
-                        't' => '\t',
-                        other => other,
-                    };
+                if let Some(c) = self.escape()? {
                     value.push(c);
                     parts.text(c);
                 }

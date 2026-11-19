@@ -38,6 +38,9 @@ const ASSIGN_OPS: &[&str] = &[
 ];
 /// Identifiers that act as operators or statements and so cannot start a
 /// command-call argument.
+/// The precedence of comparisons, `in`, `instanceof` and `as`.
+const RELATIONAL: u8 = 7;
+
 const NON_ARG_IDENTS: &[&str] = &["in", "instanceof", "as", "else", "catch", "finally"];
 
 struct Parser {
@@ -437,17 +440,23 @@ impl Parser {
         Ok(Stmt::Other { kind: "class", pos })
     }
 
-    /// `String x = ...`, `List<String> xs`, `void call() {}`.
+    /// `String x = ...`, `List<String> xs`, `void call() {}`, and with a
+    /// qualified type, `java.util.regex.Matcher m`. Like Groovy, take a
+    /// name for a type when it is a primitive or starts with a capital:
+    /// `a.b.C d` declares d, and `a.b.c d` calls c.
     fn looks_like_typed_decl(&self) -> bool {
-        let TokKind::Ident(ty) = &self.peek().kind else { return false };
-        let typeish = PRIMITIVES.contains(&ty.as_str()) || ty.chars().next().is_some_and(|c| c.is_uppercase());
-        if !typeish {
-            return false;
-        }
+        let TokKind::Ident(first) = &self.peek().kind else { return false };
+        let mut ty = first;
         let mut k = 1;
         // Qualified type name.
-        while self.peek_at(k).is_punct(".") && matches!(self.peek_at(k + 1).kind, TokKind::Ident(_)) {
+        while self.peek_at(k).is_punct(".") {
+            let TokKind::Ident(next) = &self.peek_at(k + 1).kind else { break };
+            ty = next;
             k += 2;
+        }
+        let typeish = (k == 1 && PRIMITIVES.contains(&ty.as_str())) || ty.chars().next().is_some_and(|c| c.is_uppercase());
+        if !typeish {
+            return false;
         }
         // Generic arguments.
         if self.peek_at(k).is_punct("<") {
@@ -555,16 +564,23 @@ impl Parser {
         if two_names || !saw_def {
             self.skip_type()?;
         }
-        let name = match self.next().kind {
-            TokKind::Ident(n) => n,
-            TokKind::Str { value, .. } => value,
+        let name_at = self.i;
+        let (name, quoted) = match self.next().kind {
+            TokKind::Ident(n) => (n, false),
+            TokKind::Str { value, .. } => (value, true),
             _ => {
                 self.i -= 1;
                 return Err(self.unexpected("a name"));
             }
         };
-        if self.peek().is_punct("(") {
-            // Method definition.
+        // Only a method's name may be quoted: `def 'run tests'() { }`.
+        if quoted && (!self.peek().is_punct("(") || self.peek().nl_before) {
+            self.i = name_at;
+            return Err(self.unexpected("a variable name"));
+        }
+        if self.peek().is_punct("(") && !self.peek().nl_before {
+            // Method definition. On the next line, `(a, b) = f()` is a
+            // statement of its own.
             self.skip_balanced("(", ")")?;
             if self.peek().is_ident("throws") {
                 self.next();
@@ -601,12 +617,15 @@ impl Parser {
     /// `a(b).c(d)`, and a name with no argument after it reads a property,
     /// so `a b c` is `a(b).c`. A chain may also start with a call in
     /// parentheses, `library('lib@main') _` is `library('lib@main')._`, or
-    /// with a string: `"a"${n}"b"` is `"a".$({ n })."b"`.
+    /// with a string, which names the method: `"a"${n}"b"` is
+    /// `"a"($({ n }))."b"`.
     fn expr_stmt(&mut self) -> PResult<Expr> {
         let e = self.expr()?;
-        // `a[0] "x"` and `env.(name) "x"` are command calls too.
-        let commandable = matches!(e, Expr::Ident { .. } | Expr::Prop { .. } | Expr::Index { .. });
-        let chained_call = matches!(e, Expr::Call { parens: true, .. } | Expr::Str { .. }) && self.chain_name().is_some();
+        // `a[0] "x"` and `env.(name) "x"` are command calls too, and so is
+        // a string with arguments, which names the method: `'echo' 'hi'`
+        // is `echo('hi')`.
+        let commandable = matches!(e, Expr::Ident { .. } | Expr::Prop { .. } | Expr::Index { .. } | Expr::Str { .. });
+        let chained_call = matches!(e, Expr::Call { parens: true, .. }) && self.chain_name().is_some();
         if (commandable && self.starts_command_arg()) || chained_call {
             let mut call = if chained_call { e } else { self.command_call(e)? };
             while let Some(name) = self.chain_name() {
@@ -616,7 +635,7 @@ impl Parser {
                     name,
                     pos,
                 };
-                call = if self.starts_command_arg() {
+                call = if self.starts_chain_arg() {
                     self.command_call(prop)?
                 } else if self.peek().is_punct("{") && !self.peek().nl_before {
                     // `a b c { }` passes the closure to c.
@@ -642,8 +661,8 @@ impl Parser {
         Ok(e)
     }
 
-    /// The next name in a command chain: a word, or a string, as in
-    /// `foo 'a' 'b'` (`foo('a').'b'`), on the same line.
+    /// The next name in a command chain: a word, a string, as in
+    /// `foo 'a' 'b'` (`foo('a').'b'`), or a number, on the same line.
     fn chain_name(&self) -> Option<String> {
         if !self.starts_command_arg() {
             return None;
@@ -651,6 +670,8 @@ impl Parser {
         match &self.peek().kind {
             TokKind::Ident(name) => Some(name.clone()),
             TokKind::Str { value, .. } => Some(value.clone()),
+            // `foo bar 1` is `foo(bar).1`.
+            TokKind::Num(text) => Some(text.clone()),
             _ => None,
         }
     }
@@ -681,6 +702,14 @@ impl Parser {
             TokKind::Punct(p) => matches!(*p, "!" | "~"),
             TokKind::Eof => false,
         }
+    }
+
+    /// The argument of a name in a command chain may also start with a
+    /// prefix operator: `foo a b -c` is `foo(a).b(-c)`, and Groovy reads
+    /// `dut run --log-level debug` as `dut(run--).log(-level).debug`.
+    fn starts_chain_arg(&self) -> bool {
+        let t = self.peek();
+        self.starts_command_arg() || !t.nl_before && matches!(t.kind, TokKind::Punct("-" | "+" | "--" | "++"))
     }
 
     fn named_key_ahead(&self) -> bool {
@@ -788,25 +817,19 @@ impl Parser {
                     "^" => 4,
                     "&" => 5,
                     "==" | "!=" | "<=>" | "===" | "!==" | "=~" | "==~" => 6,
-                    "<" | ">" | "<=" | ">=" => 7,
+                    "<" | ">" | "<=" | ">=" => RELATIONAL,
                     "<<" => 8,
                     ".." | "..<" | "<.." | "<..<" => 9,
                     "+" | "-" => 10,
                     "*" | "/" | "%" => 11,
                     "**" => 12,
-                    "!" => {
-                        // `!in` and `!instanceof`
-                        let n = self.peek_at(1);
-                        if n.is_ident("in") || n.is_ident("instanceof") {
-                            return Some((format!("!{}", if n.is_ident("in") { "in" } else { "instanceof" }), 7, 2));
-                        }
-                        return None;
-                    }
+                    // Groovy 2.4, which Jenkins runs, has no `!in` or
+                    // `!instanceof`: they came with Groovy 3.
                     _ => return None,
                 };
                 (p.to_string(), prec, 1)
             }
-            TokKind::Ident(n) if n == "in" || n == "instanceof" || n == "as" => (n.clone(), 7, 1),
+            TokKind::Ident(n) if n == "in" || n == "instanceof" || n == "as" => (n.clone(), RELATIONAL, 1),
             _ => return None,
         };
         // `>` `>` is a right shift.
@@ -821,15 +844,27 @@ impl Parser {
 
     fn binary(&mut self, min_prec: u8) -> PResult<Expr> {
         let mut lhs = self.unary()?;
+        let mut compared = false;
         while let Some((op, prec, len)) = self.binary_op() {
             if prec < min_prec {
                 break;
+            }
+            // Comparisons do not chain in Groovy 2.4: `a < b < c`, `a in b
+            // in c` and `a > b as Integer` do not compile.
+            if prec == RELATIONAL {
+                if compared {
+                    return Err(Diagnostic::error(
+                        self.peek().pos,
+                        format!("Unexpected '{op}': Groovy does not chain comparisons, `in`, `instanceof` or `as`; add parentheses"),
+                    ));
+                }
+                compared = true;
             }
             let pos = self.peek().pos;
             for _ in 0..len {
                 self.next();
             }
-            let rhs = if op == "as" || op == "instanceof" || op == "!instanceof" {
+            let rhs = if op == "as" || op == "instanceof" {
                 let tpos = self.peek().pos;
                 // The type's first name: `Integer` in `x as Integer`.
                 let name = match &self.peek().kind {
@@ -1013,9 +1048,24 @@ impl Parser {
             if !self.eat(",") {
                 break;
             }
+            self.skip_empty_items(")")?;
         }
         self.expect(")")?;
         Ok(args)
+    }
+
+    /// After the comma that ends an argument, list item or map entry:
+    /// Groovy also takes empty ones, `f(1, , 2)` and `[a: 1, , b: 2]`,
+    /// though not before the closing bracket, `f(1, , )`.
+    fn skip_empty_items(&mut self, close: &str) -> PResult<()> {
+        if !self.peek().is_punct(",") {
+            return Ok(());
+        }
+        while self.eat(",") {}
+        if self.peek().is_punct(close) {
+            return Err(self.unexpected("an expression"));
+        }
+        Ok(())
     }
 
     fn primary(&mut self) -> PResult<Expr> {
@@ -1026,6 +1076,10 @@ impl Parser {
                 if name == "new" {
                     self.next();
                     return self.new_expr(pos);
+                }
+                // Keywords, not values: `a !in b` does not compile.
+                if name == "in" || name == "instanceof" {
+                    return Err(self.unexpected("an expression"));
                 }
                 self.next();
                 Ok(Expr::Ident { name, pos })
@@ -1171,6 +1225,7 @@ impl Parser {
             if !self.eat(",") {
                 break;
             }
+            self.skip_empty_items("]")?;
         }
         self.expect("]")?;
         if is_map {

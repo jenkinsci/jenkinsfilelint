@@ -374,6 +374,15 @@ error: Expected a symbol
 [e99_step_on_dynamic_property]
 error: Method calls on objects not allowed outside "script" blocks.
 
+[e100_string_step_chain]
+error: Expected a step
+
+[e101_gstring_step_name]
+error: Expected a symbol
+
+[e102_environment_without_values]
+error: No variables specified for environment
+
 [p01_kubernetes_agent]
 # Differs: Depends on installed plugins or controller configuration, which the offline linter cannot see.
 # Jenkins: Invalid agent type "kubernetes" specified. Must be one of [any, docker, dockerfile, label, none]
@@ -580,6 +589,26 @@ error
 
 [s37_dynamic_member_unclosed]
 # Jenkins: expecting ')', found '}'
+error
+
+[s38_invalid_escape_in_string]
+# Jenkins: unexpected char: '\'
+error
+
+[s39_chained_comparison]
+# Jenkins: expecting ')', found 'as'
+error
+
+[s40_not_in_operator]
+# Jenkins: expecting ')', found '!'
+error
+
+[s41_empty_argument_before_bracket]
+# Jenkins: unexpected token: ,
+error
+
+[s42_quoted_variable_name]
+# Jenkins: unexpected token: name
 error
 
 [v01_minimal]
@@ -876,6 +905,15 @@ valid
 [v101_this_qualified_sections]
 valid
 
+[v102_string_step_names]
+valid
+
+[v103_groovy_in_script]
+valid
+
+[v104_declarations_in_environment]
+valid
+
 [x01_scripted_pipeline]
 # Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
 # Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
@@ -964,6 +1002,11 @@ valid
 valid
 
 [x19_dynamic_members_scripted]
+# Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
+# Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
+valid
+
+[x20_command_chains_scripted]
 # Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
 # Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
 valid
