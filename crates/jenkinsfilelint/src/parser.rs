@@ -599,12 +599,15 @@ impl Parser {
     /// An expression statement, including Groovy's command form
     /// `step arg1, key: value` and its command chains: `a b c d` is
     /// `a(b).c(d)`, and a name with no argument after it reads a property,
-    /// so `a b c` is `a(b).c`.
+    /// so `a b c` is `a(b).c`. A chain may also start with a call in
+    /// parentheses: `library('lib@main') _` is `library('lib@main')._`.
     fn expr_stmt(&mut self) -> PResult<Expr> {
         let e = self.expr()?;
         let commandable = matches!(e, Expr::Ident { .. } | Expr::Prop { .. });
-        if commandable && self.starts_command_arg() {
-            let mut call = self.command_call(e)?;
+        let chained_call =
+            matches!(e, Expr::Call { parens: true, .. }) && self.starts_command_arg() && matches!(self.peek().kind, TokKind::Ident(_));
+        if (commandable && self.starts_command_arg()) || chained_call {
+            let mut call = if chained_call { e } else { self.command_call(e)? };
             while let Some(TokKind::Ident(name)) = self.starts_command_arg().then(|| self.peek().kind.clone()) {
                 let pos = self.next().pos;
                 let prop = Expr::Prop {
@@ -1408,6 +1411,18 @@ mod tests {
             panic!("echo 'x' y");
         };
         assert_eq!(e.render(), "echo(...).y");
+        // A chain may start with a call in parentheses.
+        let Stmt::Expr(e) = &ok("library('lib@main') _")[0] else {
+            panic!("library");
+        };
+        assert_eq!(e.render(), "library(...)._");
+        let Stmt::Expr(Expr::Call { callee, .. }) = &ok("foo(1) bar baz")[0] else {
+            panic!("foo(1) bar baz");
+        };
+        assert_eq!(callee.render(), "foo(...).bar");
+        ok("foo(1) bar { echo 'x' }");
+        // Words that are operators still are.
+        ok("def x = foo(1) as String\nif (foo(1) in [1]) { }");
     }
 
     #[test]

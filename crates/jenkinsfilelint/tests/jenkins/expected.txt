@@ -349,6 +349,9 @@ error: Expected a step
 # Jenkins: Expected a symbol
 error
 
+[e92_call_then_word_in_steps]
+error: Expected a step
+
 [p01_kubernetes_agent]
 # Differs: Depends on installed plugins or controller configuration, which the offline linter cannot see.
 # Jenkins: Invalid agent type "kubernetes" specified. Must be one of [any, docker, dockerfile, label, none]
@@ -785,6 +788,12 @@ valid
 [v83_command_as_assigned_value]
 valid
 
+[v84_command_chain_after_call]
+valid
+
+[v85_library_step_underscore]
+valid
+
 [x01_scripted_pipeline]
 # Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
 # Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
@@ -848,6 +857,11 @@ valid
 valid
 
 [x14_pipeline_in_non_call_method]
+# Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
+# Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
+valid
+
+[x15_library_step_underscore_scripted]
 # Differs: Not a Declarative Pipeline: Jenkins's validator refuses it, the offline linter only checks its Groovy syntax.
 # Jenkins: Jenkinsfile content ... did not contain the 'pipeline' step
 valid
