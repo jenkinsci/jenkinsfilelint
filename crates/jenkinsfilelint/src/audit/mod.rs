@@ -12,6 +12,7 @@ pub mod sarif;
 mod script_injection;
 mod secret_interpolation;
 mod taint;
+mod unpinned_image;
 mod unpinned_library;
 
 use std::fmt;
@@ -88,6 +89,7 @@ pub static RULES: &[&Rule] = &[
     &secret_interpolation::RULE,
     &controller_execution::RULE,
     &unpinned_library::RULE,
+    &unpinned_image::RULE,
 ];
 
 #[derive(Debug, Clone)]
@@ -148,6 +150,7 @@ pub fn audit(stmts: &[Stmt], comments: &[Comment], annotations: &[Annotation], f
         .chain(secret_interpolation::check(&flows))
         .chain(controller_execution::check(stmts))
         .chain(unpinned_library::check(stmts, annotations))
+        .chain(unpinned_image::check(stmts))
         .filter(|f| filter.shows(f) && !ignored(f))
         .collect();
     findings.sort_by_key(|f| (f.span.start, f.rule));

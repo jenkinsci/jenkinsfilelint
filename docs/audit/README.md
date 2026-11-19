@@ -24,6 +24,7 @@ The plans and the rules to come are in
 | [secret-interpolation](secret-interpolation.md) | A secret interpolated by Groovy into a shell step |
 | [controller-execution](controller-execution.md) | Steps that run on the Jenkins controller: `agent { label 'built-in' }`, `node('master')` |
 | [unpinned-library](unpinned-library.md) | A shared library loaded from a branch: `@Library('lib@main') _` |
+| [unpinned-image](unpinned-image.md) | A container image without a tag, with `latest`, or without a digest |
 
 The first two follow a value through local variables, environment
 variables, `+` and string methods to the step that runs it, the way Groovy

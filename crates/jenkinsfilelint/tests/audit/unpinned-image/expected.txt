@@ -1,0 +1,34 @@
+# What the audit finds in each case, with --persona auditor: one line per
+# finding, as line:column severity confidence persona image, or none.
+# tp cases are true positives, tn cases true negatives.
+
+[tn01_digests]
+none
+
+[tn02_computed]
+none
+
+[tn03_other_uses]
+none
+
+[tn04_ignore_comment]
+none
+
+[tp01_docker_agent]
+4:19 medium high regular maven
+
+[tp02_latest]
+5:28 medium high regular node:latest
+11:36 medium high regular ghcr.io/example/linter:latest
+
+[tp03_docker_image]
+2:18 medium high regular python
+5:27 medium high regular localhost:5000/postgres
+
+[tp04_container_template]
+2:46 medium high regular golang
+3:46 medium high regular gcr.io/kaniko-project/executor:latest
+
+[tp05_tag_without_digest]
+3:28 low high pedantic maven:3.9.9-eclipse-temurin-21
+8:34 low high pedantic localhost:5000/tools:1.4
