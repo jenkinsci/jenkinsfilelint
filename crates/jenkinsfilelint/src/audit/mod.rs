@@ -14,6 +14,7 @@ mod secret_interpolation;
 mod taint;
 mod unpinned_image;
 mod unpinned_library;
+mod unrestricted_input;
 
 use std::fmt;
 
@@ -90,6 +91,7 @@ pub static RULES: &[&Rule] = &[
     &controller_execution::RULE,
     &unpinned_library::RULE,
     &unpinned_image::RULE,
+    &unrestricted_input::RULE,
 ];
 
 #[derive(Debug, Clone)]
@@ -151,6 +153,7 @@ pub fn audit(stmts: &[Stmt], comments: &[Comment], annotations: &[Annotation], f
         .chain(controller_execution::check(stmts))
         .chain(unpinned_library::check(stmts, annotations))
         .chain(unpinned_image::check(stmts))
+        .chain(unrestricted_input::check(stmts))
         .filter(|f| filter.shows(f) && !ignored(f))
         .collect();
     findings.sort_by_key(|f| (f.span.start, f.rule));
