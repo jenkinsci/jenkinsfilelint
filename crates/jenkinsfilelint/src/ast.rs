@@ -3,7 +3,7 @@
 //! It keeps what the declarative checks need (calls, closures, literals,
 //! assignments) and folds everything else into generic nodes.
 
-use crate::diag::Pos;
+use crate::diag::{Pos, Span};
 
 #[derive(Debug, Clone)]
 #[allow(dead_code)] // some fields are for the planned step-parameter checks
@@ -12,9 +12,13 @@ pub enum Expr {
         name: String,
         pos: Pos,
     },
+    /// A string literal. `parts` holds a GString's text and placeholders
+    /// in order, and is empty when it has no placeholder. Map keys and
+    /// named-argument keys keep only their text.
     Str {
         value: String,
         interp: bool,
+        parts: Vec<StrPart>,
         pos: Pos,
     },
     Num {
@@ -79,6 +83,28 @@ pub enum Expr {
         args: Vec<Arg>,
         pos: Pos,
     },
+}
+
+/// A piece of a GString: text, or a placeholder.
+#[derive(Debug, Clone)]
+#[allow(dead_code)] // read by the audits planned for 1.7.0
+pub enum StrPart {
+    Text(String),
+    Placeholder(Placeholder),
+}
+
+/// A `$name` or `${...}` placeholder of a GString.
+#[derive(Debug, Clone)]
+#[allow(dead_code)] // read by the audits planned for 1.7.0
+pub struct Placeholder {
+    /// What it evaluates. `$a.b` and `${a.b}` are the expression `a.b`, and
+    /// so is the lazy `${ -> a.b }`. A `${...}` that holds statements, such
+    /// as `${def v = 1; v}`, is a closure, as Groovy reads it. `${}` is None.
+    pub expr: Option<Expr>,
+    /// `${...}` rather than `$name`.
+    pub braced: bool,
+    /// From the `$` to just past the placeholder.
+    pub span: Span,
 }
 
 #[derive(Debug, Clone)]

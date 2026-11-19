@@ -6,9 +6,9 @@
 //! strict about the shapes Jenkins users write every day: command calls
 //! with named arguments, trailing closures, GStrings, maps and lists.
 
-use crate::ast::{Arg, Expr, Stmt};
+use crate::ast::{Arg, Expr, Placeholder, Stmt, StrPart};
 use crate::diag::{Diagnostic, Pos};
-use crate::lexer::{TokKind, Token};
+use crate::lexer::{self, RawPart, RawPlaceholder, TokKind, Token};
 
 pub fn parse(tokens: Vec<Token>) -> Result<Vec<Stmt>, Diagnostic> {
     let mut p = Parser {
@@ -597,22 +597,36 @@ impl Parser {
     }
 
     /// An expression statement, including Groovy's command form
-    /// `step arg1, key: value`.
+    /// `step arg1, key: value` and its command chains: `a b c d` is
+    /// `a(b).c(d)`, and a name with no argument after it reads a property,
+    /// so `a b c` is `a(b).c`.
     fn expr_stmt(&mut self) -> PResult<Expr> {
         let e = self.expr()?;
         let commandable = matches!(e, Expr::Ident { .. } | Expr::Prop { .. });
         if commandable && self.starts_command_arg() {
-            let pos = e.pos();
-            let mut args = self.command_args()?;
-            if self.peek().is_punct("{") && !self.peek().nl_before {
-                args.push(Arg::Pos(self.closure()?));
+            let mut call = self.command_call(e)?;
+            while let Some(TokKind::Ident(name)) = self.starts_command_arg().then(|| self.peek().kind.clone()) {
+                let pos = self.next().pos;
+                let prop = Expr::Prop {
+                    obj: Box::new(call),
+                    name,
+                    pos,
+                };
+                call = if self.starts_command_arg() {
+                    self.command_call(prop)?
+                } else if self.peek().is_punct("{") && !self.peek().nl_before {
+                    // `a b c { }` passes the closure to c.
+                    Expr::Call {
+                        callee: Box::new(prop),
+                        args: vec![Arg::Pos(self.closure()?)],
+                        parens: false,
+                        pos,
+                    }
+                } else {
+                    prop
+                };
             }
-            return Ok(Expr::Call {
-                callee: Box::new(e),
-                args,
-                parens: false,
-                pos,
-            });
+            return Ok(call);
         }
         // A brace on the next line still belongs to `name` / `name(...)`.
         if self.peek().is_punct("{") && self.peek().nl_before {
@@ -622,6 +636,21 @@ impl Parser {
             }
         }
         Ok(e)
+    }
+
+    /// The arguments of `callee` in command form, and a closure after them.
+    fn command_call(&mut self, callee: Expr) -> PResult<Expr> {
+        let pos = callee.pos();
+        let mut args = self.command_args()?;
+        if self.peek().is_punct("{") && !self.peek().nl_before {
+            args.push(Arg::Pos(self.closure()?));
+        }
+        Ok(Expr::Call {
+            callee: Box::new(callee),
+            args,
+            parens: false,
+            pos,
+        })
     }
 
     fn starts_command_arg(&self) -> bool {
@@ -940,9 +969,10 @@ impl Parser {
                 self.next();
                 Ok(Expr::Ident { name, pos })
             }
-            TokKind::Str { value, interp } => {
+            TokKind::Str { value, interp, parts } => {
                 self.next();
-                Ok(Expr::Str { value, interp, pos })
+                let parts = self.str_parts(parts)?;
+                Ok(Expr::Str { value, interp, parts, pos })
             }
             TokKind::Num(text) => {
                 self.next();
@@ -1054,11 +1084,13 @@ impl Parser {
                     TokKind::Str { interp, .. } => Expr::Str {
                         value: key,
                         interp,
+                        parts: Vec::new(),
                         pos: kpos,
                     },
                     _ => Expr::Str {
                         value: key,
                         interp: false,
+                        parts: Vec::new(),
                         pos: kpos,
                     },
                 };
@@ -1088,6 +1120,63 @@ impl Parser {
         } else {
             Ok(Expr::List { items, pos })
         }
+    }
+
+    /// Parse the placeholders of a GString. Groovy compiles what is in them,
+    /// so an error there is an error in the file.
+    fn str_parts(&mut self, raw: Vec<RawPart>) -> PResult<Vec<StrPart>> {
+        raw.into_iter()
+            .map(|part| match part {
+                RawPart::Text(t) => Ok(StrPart::Text(t)),
+                RawPart::Placeholder(p) => self.nested(|me| me.placeholder(p)).map(StrPart::Placeholder),
+            })
+            .collect()
+    }
+
+    /// Parse one placeholder with a parser of its own, at this nesting
+    /// depth: `$a.b` is an expression, and `${...}` a closure body, which
+    /// may hold statements and a `->`.
+    fn placeholder(&mut self, raw: RawPlaceholder) -> PResult<Placeholder> {
+        let mut toks = lexer::tokenize_at(&raw.src, raw.src_pos)?;
+        if raw.braced {
+            let eof = toks.pop().expect("tokens end with Eof");
+            let brace = |p: &'static str, line, col| Token {
+                kind: TokKind::Punct(p),
+                pos: Pos { line, col },
+                nl_before: false,
+            };
+            let (start, end) = (raw.span.start, raw.span.end);
+            toks.insert(0, brace("{", start.line, start.col + 1));
+            toks.push(brace("}", end.line, end.col - 1));
+            toks.push(eof);
+        }
+        let mut sub = Parser {
+            toks,
+            i: 0,
+            in_group: false,
+            depth: self.depth,
+        };
+        let expr = if raw.braced { sub.closure()? } else { sub.expr()? };
+        if !sub.at_eof() {
+            return Err(sub.unexpected("the end of the placeholder"));
+        }
+        let expr = match expr {
+            Expr::Closure { params, mut body, pos } if params.is_empty() && body.len() <= 1 => match body.pop() {
+                None => None,
+                Some(Stmt::Expr(e)) => Some(e),
+                Some(stmt) => Some(Expr::Closure {
+                    params,
+                    body: vec![stmt],
+                    pos,
+                }),
+            },
+            other => Some(other),
+        };
+        Ok(Placeholder {
+            expr,
+            braced: raw.braced,
+            span: raw.span,
+        })
     }
 
     fn closure(&mut self) -> PResult<Expr> {
@@ -1204,6 +1293,121 @@ mod tests {
             Err(e) => e,
             Ok(t) => parse(t).expect_err(src),
         }
+    }
+
+    /// The placeholders of the GString in `def s = <src>`.
+    fn placeholders(src: &str) -> Vec<Placeholder> {
+        match ok(&format!("def s = {src}")).remove(0) {
+            Stmt::Decl {
+                value: Some(Expr::Str { parts, .. }),
+                ..
+            } => parts
+                .into_iter()
+                .filter_map(|p| match p {
+                    StrPart::Placeholder(p) => Some(p),
+                    StrPart::Text(_) => None,
+                })
+                .collect(),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    fn rendered(src: &str) -> Vec<Option<String>> {
+        placeholders(src).iter().map(|p| p.expr.as_ref().map(Expr::render)).collect()
+    }
+
+    #[test]
+    fn gstring_placeholders() {
+        assert_eq!(
+            rendered(r#""${env.CHANGE_TITLE} $params.B ${ -> x } ${} ${def v = 1; v} ${a.b(c)}""#),
+            [
+                Some("env.CHANGE_TITLE".into()),
+                Some("params.B".into()),
+                Some("x".into()),
+                None,
+                Some("{ ... }".into()),
+                Some("a.b(...)".into()),
+            ]
+        );
+        assert_eq!(rendered("/a $b ${c} d/"), [Some("b".into()), Some("c".into())]);
+        assert_eq!(rendered("$/a $b.c ${d} $$e/$"), [Some("b.c".into()), Some("d".into())]);
+        // Groovy reads what is in `${...}` as a closure body.
+        for src in [
+            r#""${a b c}""#,
+            r#""${if (x) { 1 } else { 2 }}""#,
+            r#""${w -> w << x}""#,
+            "\"${ a /* } */ }\"",
+        ] {
+            assert_eq!(placeholders(src).len(), 1, "{src}");
+        }
+        assert!(placeholders(r#""plain $5""#.replace("$5", "\\$5").as_str()).is_empty());
+    }
+
+    #[test]
+    fn placeholder_positions_point_into_the_file() {
+        let p = &placeholders("\"x ${env.A} $b\"")[..];
+        assert_eq!(
+            (p[0].span.start, p[0].span.end),
+            (Pos { line: 1, col: 12 }, Pos { line: 1, col: 20 })
+        );
+        let Some(Expr::Prop { obj, .. }) = &p[0].expr else {
+            panic!("{:?}", p[0].expr);
+        };
+        assert_eq!(obj.pos(), Pos { line: 1, col: 14 });
+        assert!(!p[1].braced);
+        assert_eq!(p[1].expr.as_ref().unwrap().pos(), Pos { line: 1, col: 22 });
+        // A placeholder inside a placeholder.
+        let outer = &placeholders("\"${\"in ${b}\"}\"")[0];
+        let Some(Expr::Str { parts, .. }) = &outer.expr else {
+            panic!("{:?}", outer.expr);
+        };
+        let StrPart::Placeholder(inner) = &parts[1] else {
+            panic!("{parts:?}");
+        };
+        assert_eq!(inner.expr.as_ref().unwrap().pos(), Pos { line: 1, col: 18 });
+        // Across lines of a triple-quoted string.
+        let p = &placeholders("\"\"\"a\n  ${\n    b.c\n  }\"\"\"")[0];
+        assert_eq!((p.span.start, p.span.end), (Pos { line: 2, col: 3 }, Pos { line: 4, col: 4 }));
+        assert_eq!(p.expr.as_ref().unwrap().pos(), Pos { line: 3, col: 6 });
+    }
+
+    #[test]
+    fn errors_in_placeholders() {
+        // Jenkins rejects each of these; the error is where it is in the file.
+        for (src, line, col) in [
+            ("def s = \"${a +}\"", 1, 15),
+            ("def s = \"${foo(}\"", 1, 16),
+            ("def s = \"x ${a # b}\"", 1, 16),
+            ("def s = /a ${b +} c/", 1, 17),
+            ("def s = $/a ${b +} c/$", 1, 18),
+            ("def s = \"\"\"a\n  ${b +}\"\"\"", 2, 8),
+            ("def s = \"${a)}\"", 1, 13),
+        ] {
+            let e = fails(src);
+            assert_eq!((e.pos.line, e.pos.col), (line, col), "{src}: {}", e.message);
+        }
+    }
+
+    #[test]
+    fn command_chains() {
+        for src in [
+            "a b c",
+            "a b c d",
+            "take 2.pills of chloroquinine after 6.hours",
+            "a b c { echo 'x' }",
+            "def x = a b c",
+            "x = a b c",
+        ] {
+            ok(src);
+        }
+        let Stmt::Expr(Expr::Call { callee, .. }) = &ok("a b c d")[0] else {
+            panic!("a b c d");
+        };
+        assert_eq!(callee.render(), "a(...).c");
+        let Stmt::Expr(e) = &ok("echo 'x' y")[0] else {
+            panic!("echo 'x' y");
+        };
+        assert_eq!(e.render(), "echo(...).y");
     }
 
     #[test]
