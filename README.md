@@ -26,7 +26,7 @@ hook, but also works as a standalone CLI tool.
   - [Local mode (with Docker, no Jenkins server needed)](#local-mode-with-docker-no-jenkins-server-needed)
   - [What happens on commit](#what-happens-on-commit)
 - [CLI](#cli)
-- [Security audit (preview)](#security-audit-preview)
+- [Security audit](#security-audit)
 - [Filtering files](#filtering-files)
 - [Parallel validation](#parallel-validation)
 - [Configuration](#configuration)
@@ -221,7 +221,7 @@ configured starts by saying so:
 The exit code is `0` when every file is valid and `1` when any file has an
 error or could not be checked.
 
-## Security audit (preview)
+## Security audit
 
 `--audit` checks Jenkinsfiles and shared library files for security problems
 instead of validating them, offline:
@@ -261,9 +261,7 @@ without a `submitter`, which any user may approve, with `--persona pedantic`. `-
 `--min-severity` and `--min-confidence` choose what to see, a
 `// jenkinsfilelint: ignore[rule]` comment turns off one finding, and
 `--format sarif` writes a report for GitHub code scanning. See
-[docs/audit](docs/audit/README.md) for all of it, and
-[#65](https://github.com/jenkinsci/jenkinsfilelint/issues/65) for the rules
-to come.
+[docs/audit](docs/audit/README.md) for all of it.
 
 ## Filtering files
 
