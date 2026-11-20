@@ -68,6 +68,16 @@ fn request<'a>(section: &Section<'a>, how: &'static str, requests: &mut Vec<Requ
         Arg::Named { key, value, .. } if key == "identifier" => Some(value),
         Arg::Named { .. } => None,
     });
+    // `retriever: legacySCM(scm)` loads the library from the repository and
+    // branch of the Jenkinsfile itself, as a library's own tests do: the
+    // version names nothing else.
+    let own_scm = section.args.iter().any(|a| {
+        matches!(a, Arg::Named { key, value: Expr::Call { args, .. }, .. }
+            if key == "retriever" && args.iter().any(|a| matches!(a, Arg::Pos(Expr::Ident { name, .. }) if name == "scm")))
+    });
+    if own_scm {
+        return;
+    }
     if let Some(Expr::Str { value, interp, pos, .. }) = value {
         requests.push(Request {
             value,
@@ -109,6 +119,8 @@ fn finding(r: &Request) -> Option<Finding> {
             ),
         ),
         Some(v) if pinned(v) => return None,
+        // A placeholder that a template fills in, `lib@@REF@`, not a version.
+        Some(v) if v.contains('@') => return None,
         Some(v) => (
             Severity::Medium,
             Confidence::Medium,

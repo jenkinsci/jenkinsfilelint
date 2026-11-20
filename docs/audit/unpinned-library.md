@@ -95,6 +95,16 @@ the default version to a tag instead.
 @Library('pipeline-library@main') _
 ```
 
+## How precise it is
+
+On 17,367 public Jenkinsfiles and shared library steps from GitHub, it
+reports 598 findings in 501 files with the regular persona. In a random
+sample of 50, 46 loaded a library from a branch such as `master`, `main`,
+`develop`, `release/2.1.0` or a feature branch. The other 4 are no longer
+reported: three loaded the library with `retriever: legacySCM(scm)`, from the
+Jenkinsfile's own repository and branch, and one was a template placeholder,
+`lib@@ref@`.
+
 ## References
 
 - Jenkins: [Extending with Shared Libraries](https://www.jenkins.io/doc/book/pipeline/shared-libraries/),

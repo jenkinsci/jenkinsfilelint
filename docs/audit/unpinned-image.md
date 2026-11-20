@@ -76,6 +76,15 @@ that tests compatibility with it.
 agent { docker { image 'node:latest' } }
 ```
 
+## How precise it is
+
+On 17,367 public Jenkinsfiles and shared library steps from GitHub, it
+reports 1,177 findings in 625 files with the regular persona. In a random
+sample of 50, 49 used an image with no tag or with `latest`. The other one,
+`image '$BUILDER_IMAGE'`, a variable in single quotes, is no longer
+reported. A few of the 49 name images that the pipeline may build itself
+earlier, such as `ubuntu_ci:latest`, which Docker then does not pull.
+
 ## References
 
 - Docker: [Pull an image by digest](https://docs.docker.com/reference/cli/docker/image/pull/#pull-an-image-by-digest-immutable-identifier)

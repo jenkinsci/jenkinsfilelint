@@ -99,6 +99,15 @@ Then, in **Manage Jenkins > Nodes**, select **Built-In Node**, then
 agent { label 'built-in' }
 ```
 
+## How precise it is
+
+On 17,367 public Jenkinsfiles and shared library steps from GitHub, it
+reports 910 findings in 544 files with the regular persona. In a random
+sample of 40, each was an `agent` or `node` block whose label is `master` or
+`built-in`. Whether that node is the controller depends on the Jenkins: a
+controller that labels an agent `master` makes a finding wrong, and the file
+cannot show it.
+
 ## References
 
 - Jenkins: [Controller isolation](https://www.jenkins.io/doc/book/security/controller-isolation/)
