@@ -257,7 +257,7 @@ loaded from a branch instead of a tag or commit.
 [unpinned-image](docs/audit/unpinned-image.md) finds container images
 without a tag or with `latest`.
 [unrestricted-input](docs/audit/unrestricted-input.md) finds `input` steps
-without a `submitter`, which any user may approve. `--persona`,
+without a `submitter`, which any user may approve, with `--persona pedantic`. `--persona`,
 `--min-severity` and `--min-confidence` choose what to see, a
 `// jenkinsfilelint: ignore[rule]` comment turns off one finding, and
 `--format sarif` writes a report for GitHub code scanning. See

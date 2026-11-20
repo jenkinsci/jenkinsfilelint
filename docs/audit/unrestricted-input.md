@@ -5,7 +5,7 @@ reach the build can approve it.
 
 | Severity | Confidence | Persona |
 |---|---|---|
-| medium | high | regular |
+| medium | high | pedantic |
 
 ## What it finds
 
@@ -74,11 +74,13 @@ input 'Continue with the slow tests?'
 ## How precise it is
 
 On 17,367 public Jenkinsfiles and shared library steps from GitHub, it
-reports 1,123 findings in 840 files. In a random sample of 40, every one was
+reports 1,123 findings in 840 files with the pedantic persona. In a random sample of 40, every one was
 an `input` without a `submitter`, but only 24 guarded a deployment, a
 release, `terraform apply` or another step worth approving. The other 16
 asked for a value, such as a version or a region, or asked to continue after
-a failure. See [When to ignore it](#when-to-ignore-it).
+a failure. That is below the 95% that the regular persona asks of a rule, so
+the rule is shown from `--persona pedantic` up. See
+[When to ignore it](#when-to-ignore-it).
 
 ## References
 

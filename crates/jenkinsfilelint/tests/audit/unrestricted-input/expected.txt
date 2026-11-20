@@ -16,17 +16,17 @@ none
 none
 
 [tp01_step]
-6:17 medium high regular input
+6:17 medium high pedantic input
 
 [tp02_step_named]
-3:23 medium high regular input
+3:23 medium high pedantic input
 
 [tp03_directive]
-5:13 medium high regular input
+5:13 medium high pedantic input
 
 [tp04_empty_submitter]
-2:1 medium high regular input
-8:13 medium high regular input
+2:1 medium high pedantic input
+8:13 medium high pedantic input
 
 [tp05_shared_library]
-4:9 medium high regular input
+4:9 medium high pedantic input
