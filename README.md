@@ -259,7 +259,8 @@ without a tag or with `latest`.
 [unrestricted-input](docs/audit/unrestricted-input.md) finds `input` steps
 without a `submitter`, which any user may approve, with `--persona pedantic`. `--persona`,
 `--min-severity` and `--min-confidence` choose what to see, a
-`// jenkinsfilelint: ignore[rule]` comment turns off one finding, and
+`// jenkinsfilelint: ignore[rule]` comment turns off one finding,
+`--ignore RULE` turns off a rule everywhere, and
 `--format sarif` writes a report for GitHub code scanning. See
 [docs/audit](docs/audit/README.md) for all of it.
 

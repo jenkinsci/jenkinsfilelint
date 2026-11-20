@@ -59,6 +59,24 @@ sh "deploy --token ${TOKEN}"
 Several rules go in one comment, separated by commas:
 `ignore[secret-interpolation, script-injection]`. Text after the `]` is free.
 
+## Turning off a rule
+
+When a rule does not fit a repository at all, turn it off for every file with
+`--ignore`:
+
+```console
+$ jenkinsfilelint --audit --ignore unpinned-library Jenkinsfile
+```
+
+`--ignore` takes a comma-separated list, `--ignore unpinned-library,unpinned-image`,
+and can be given more than once. An unknown rule name is an error, so that a
+typo does not go unnoticed. With pre-commit:
+
+```yaml
+- id: jenkinsfilelint-audit
+  args: [--ignore, unpinned-library]
+```
+
 ## Output
 
 - `--format text` (default): one line per finding, and a link to the rule.
