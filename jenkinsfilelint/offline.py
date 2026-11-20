@@ -160,8 +160,13 @@ def _parse(engine: str, report: dict, read):
         ) from None
 
 
-def _audit_args(persona: str, min_severity: str, min_confidence: str) -> List[str]:
-    return [
+def _audit_args(
+    persona: str,
+    min_severity: str,
+    min_confidence: str,
+    ignore: Optional[List[str]] = None,
+) -> List[str]:
+    args = [
         "--audit",
         "--persona",
         persona,
@@ -170,6 +175,9 @@ def _audit_args(persona: str, min_severity: str, min_confidence: str) -> List[st
         "--min-confidence",
         min_confidence,
     ]
+    for rules in ignore or []:
+        args += ["--ignore", rules]
+    return args
 
 
 def audit_files(
@@ -178,6 +186,7 @@ def audit_files(
     persona: str = "regular",
     min_severity: str = "low",
     min_confidence: str = "low",
+    ignore: Optional[List[str]] = None,
 ) -> Dict[str, AuditResult]:
     """Run the security checks on files with one run of the engine.
 
@@ -185,7 +194,7 @@ def audit_files(
         OfflineEngineError: if the engine is missing or fails.
     """
     engine = engine or find_engine()
-    options = _audit_args(persona, min_severity, min_confidence)
+    options = _audit_args(persona, min_severity, min_confidence, ignore)
     reports = _reports(engine, [*options, "--format", "json", "--", *paths], len(paths))
     return {
         path: _parse(engine, report, lambda r, path=path: _audit_result(path, r))
@@ -200,6 +209,7 @@ def audit_report(
     persona: str = "regular",
     min_severity: str = "low",
     min_confidence: str = "low",
+    ignore: Optional[List[str]] = None,
 ) -> Tuple[str, str, int]:
     """Run the security checks and return the engine's report as is, in
     ``json`` or ``sarif``: its output, its error output and its exit code.
@@ -208,7 +218,7 @@ def audit_report(
         OfflineEngineError: if the engine is missing or fails.
     """
     engine = engine or find_engine()
-    options = _audit_args(persona, min_severity, min_confidence)
+    options = _audit_args(persona, min_severity, min_confidence, ignore)
     proc = _run(engine, [*options, "--format", fmt, "--", *paths])
     if proc.returncode not in (0, 1) or not proc.stdout.strip():
         detail = proc.stderr.strip() or f"exit code {proc.returncode}"

@@ -275,6 +275,7 @@ def _audit_options(args: argparse.Namespace) -> dict:
         "persona": args.persona or "regular",
         "min_severity": args.min_severity or "low",
         "min_confidence": args.min_confidence or "low",
+        "ignore": args.ignore,
     }
 
 
@@ -437,6 +438,14 @@ def main():
         help="Leave out findings below this confidence.",
     )
     audit.add_argument(
+        "--ignore",
+        action="append",
+        default=[],
+        metavar="RULE",
+        help="Turn off a rule in every file, such as unpinned-library. Takes a "
+        "comma-separated list and can be used multiple times.",
+    )
+    audit.add_argument(
         "--format",
         choices=("text", "json", "sarif"),
         default="text",
@@ -482,7 +491,7 @@ def main():
     args = parser.parse_args()
 
     if not args.audit:
-        for option in ("persona", "min_severity", "min_confidence"):
+        for option in ("persona", "min_severity", "min_confidence", "ignore"):
             if getattr(args, option):
                 flag = "--" + option.replace("_", "-")
                 parser.error(f"argument {flag}: requires --audit")

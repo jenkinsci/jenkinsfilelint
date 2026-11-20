@@ -225,25 +225,36 @@ mod tests {
             persona: Persona::Pedantic,
             ..Filter::default()
         };
-        assert_eq!(messages(&src, pedantic).len(), 3);
+        assert_eq!(messages(&src, pedantic.clone()).len(), 3);
         let high = Filter {
             min_severity: Severity::High,
-            ..pedantic
+            ..pedantic.clone()
         };
         assert_eq!(messages(&src, high).len(), 1);
         let certain = Filter {
             min_confidence: Confidence::High,
-            ..pedantic
+            ..pedantic.clone()
         };
         assert_eq!(messages(&src, certain).len(), 3);
         // A secret in a string passed to a call in a placeholder is that
         // call's finding, once; a `when` condition is not a step.
         let nested = format!("{CREDS}\n writeFile file: 'k', text: \"${{readFile file: \"$P\"}}\"\n}}");
-        assert_eq!(messages(&nested, pedantic).len(), 1);
+        assert_eq!(messages(&nested, pedantic.clone()).len(), 1);
         let when = format!("{CREDS}\n when {{ environment name: 'X', value: \"a $P\" }}\n}}");
         assert!(messages(&when, pedantic).is_empty());
         // An ignore comment for another rule does not hide this one.
         let other = format!("{CREDS}\n // jenkinsfilelint: ignore[script-injection]\n sh \"$P\"\n}}");
         assert_eq!(messages(&other, Filter::default()).len(), 1);
+        // --ignore turns the rule off everywhere; ignoring another rule does not.
+        let off = Filter {
+            ignore: vec!["secret-interpolation"],
+            ..Filter::default()
+        };
+        assert!(messages(&src, off).is_empty());
+        let other_rule = Filter {
+            ignore: vec!["script-injection"],
+            ..Filter::default()
+        };
+        assert_eq!(messages(&src, other_rule).len(), 1);
     }
 }

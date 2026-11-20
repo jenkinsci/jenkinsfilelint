@@ -83,6 +83,14 @@ class TestAuditFiles:
         assert [x.severity for x in high] == ["high"]
         assert audit_files([f], min_confidence="high")[f].findings == high
 
+    def test_ignore(self, tmp_path):
+        f = write(tmp_path, "Jenkinsfile", LEAKS)
+        assert audit_files([f], ignore=["secret-interpolation"])[f].findings == []
+        kept = audit_files([f], ignore=["script-injection,unpinned-image"])[f]
+        assert [x.rule for x in kept.findings] == ["secret-interpolation"]
+        with pytest.raises(OfflineEngineError, match="unknown rule"):
+            audit_files([f], ignore=["no-such-rule"])
+
     def test_safe_file(self, tmp_path):
         f = write(tmp_path, "Jenkinsfile", SAFE)
         assert audit_files([f])[f] == AuditResult([], [])
@@ -211,6 +219,11 @@ class TestAuditCLI:
         )
         assert out[-1] == "1 finding (1 high)"
 
+    def test_ignore(self, tmp_path, capsys):
+        f = write(tmp_path, "Jenkinsfile", LEAKS)
+        assert run_cli(["--audit", "--ignore", "secret-interpolation", f]) == 0
+        assert capsys.readouterr().out == ""
+
     def test_one_finding(self, tmp_path, capsys):
         f = write(tmp_path, "Jenkinsfile", LEAKS)
         assert run_cli(["--audit", f]) == 1
@@ -283,6 +296,7 @@ class TestAuditCLI:
                 "argument --min-confidence: requires --audit",
             ),
             (["--format", "sarif"], "argument --format: requires --audit"),
+            (["--ignore", "unpinned-image"], "argument --ignore: requires --audit"),
             (
                 ["--audit", "--jenkins-url", "http://j"],
                 "argument --audit: not allowed with argument --jenkins-url",

@@ -45,7 +45,8 @@ pub fn audit_source(src: &str, filter: &Filter) -> Result<Vec<Finding>, Diagnost
 
 const USAGE: &str = "Usage: jenkinsfilelint-engine [--format text|json] [--] <Jenkinsfile>...
        jenkinsfilelint-engine --audit [--format text|json|sarif] [--persona P]
-                              [--min-severity S] [--min-confidence C] [--] <file>...
+                              [--min-severity S] [--min-confidence C]
+                              [--ignore RULE[,RULE...]] [--] <file>...
 
 Checks Groovy syntax and Declarative Pipeline structure without a Jenkins
 controller. Exits with 1 when any file has an error.
@@ -57,7 +58,9 @@ Pipeline), and \"diagnostics\" with \"line\", \"column\", \"severity\" and
 
 --audit runs the security checks instead. --persona regular (the default),
 pedantic or auditor chooses how much to show; --min-severity and
---min-confidence (low, medium or high) leave out the rest. With no files, it
+--min-confidence (low, medium or high) leave out the rest. --ignore turns
+off rules in every file; it takes a comma-separated list and can be given
+more than once. With no files, it
 prints an empty report. It exits with 1
 when it shows a finding or a file does not parse, except with --format
 sarif, which exits with 0 so that the report can be uploaded. With --format
@@ -182,6 +185,20 @@ fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Options, ExitC
             "--min-confidence" => {
                 filter.min_confidence = value(&mut args, "--min-confidence", "low, medium or high", Confidence::parse)?;
                 audit_option = Some("--min-confidence");
+            }
+            "--ignore" => {
+                let rules = args.next().and_then(|v| v.into_string().ok()).unwrap_or_default();
+                for name in rules.split(',').map(str::trim) {
+                    let Some(id) = audit::rule_id(name) else {
+                        let ids: Vec<&str> = audit::RULES.iter().map(|r| r.id).collect();
+                        eprintln!("--ignore: unknown rule {name:?}; the rules are {}", ids.join(", "));
+                        return Err(ExitCode::from(2));
+                    };
+                    if !filter.ignore.contains(&id) {
+                        filter.ignore.push(id);
+                    }
+                }
+                audit_option = Some("--ignore");
             }
             _ => files.push(a),
         }
@@ -628,6 +645,10 @@ mod tests {
             &["--format", "sarif", "J"],
             &["--audit", "--persona", "everyone", "J"],
             &["--audit", "--min-severity"],
+            &["--ignore", "script-injection", "J"],
+            &["--audit", "--ignore", "script-injections", "J"],
+            &["--audit", "--ignore", "script-injection,", "J"],
+            &["--audit", "--ignore"],
             &["--format", "xml", "J"],
             &[],
         ] {
@@ -636,6 +657,19 @@ mod tests {
         assert_eq!(parse(&["--version"]).unwrap_err(), std::process::ExitCode::SUCCESS);
         assert_eq!(parse(&["--audit", "--", "--persona"]).unwrap().files, ["--persona"]);
         assert!(parse(&["--audit", "--format", "sarif"]).unwrap().files.is_empty());
+        let ignore = |args: &[&str]| parse(args).unwrap().audit.unwrap().ignore;
+        assert!(ignore(&["--audit", "J"]).is_empty());
+        assert_eq!(
+            ignore(&[
+                "--audit",
+                "--ignore",
+                "unpinned-library, unpinned-image",
+                "--ignore",
+                "unpinned-library",
+                "J"
+            ]),
+            ["unpinned-library", "unpinned-image"]
+        );
     }
 
     #[test]

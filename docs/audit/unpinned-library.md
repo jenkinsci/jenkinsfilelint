@@ -95,6 +95,11 @@ the default version to a tag instead.
 @Library('pipeline-library@main') _
 ```
 
+When every pipeline in a repository loads the library from a branch on
+purpose, such as the library's own repository, turn the rule off for all of
+them with `--ignore unpinned-library`. See
+[Turning off a rule](README.md#turning-off-a-rule).
+
 ## How precise it is
 
 On 17,367 public Jenkinsfiles and shared library steps from GitHub, it

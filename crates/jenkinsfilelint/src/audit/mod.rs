@@ -85,6 +85,11 @@ impl Rule {
     }
 }
 
+/// The id of a rule, as `--ignore` names it.
+pub fn rule_id(name: &str) -> Option<&'static str> {
+    RULES.iter().map(|r| r.id).find(|id| *id == name)
+}
+
 pub static RULES: &[&Rule] = &[
     &script_injection::RULE,
     &secret_interpolation::RULE,
@@ -110,11 +115,13 @@ pub struct Finding {
 }
 
 /// Which findings to show.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct Filter {
     pub persona: Persona,
     pub min_severity: Severity,
     pub min_confidence: Confidence,
+    /// Rules turned off for every file, by id.
+    pub ignore: Vec<&'static str>,
 }
 
 impl Default for Filter {
@@ -123,13 +130,17 @@ impl Default for Filter {
             persona: Persona::Regular,
             min_severity: Severity::Low,
             min_confidence: Confidence::Low,
+            ignore: Vec::new(),
         }
     }
 }
 
 impl Filter {
     fn shows(&self, f: &Finding) -> bool {
-        f.persona <= self.persona && f.severity >= self.min_severity && f.confidence >= self.min_confidence
+        f.persona <= self.persona
+            && f.severity >= self.min_severity
+            && f.confidence >= self.min_confidence
+            && !self.ignore.contains(&f.rule)
     }
 }
 
