@@ -47,7 +47,7 @@ pub fn check(stmts: &[Stmt]) -> Vec<Finding> {
             rule: RULE.id,
             severity: Severity::Medium,
             confidence: Confidence::High,
-            persona: Persona::Regular,
+            persona: Persona::Pedantic,
             message: format!(
                 "input has no submitter, so any user who can reach this build can approve it, and the steps \
                  it guards then run. Name the users or groups who may approve, as in {fix}."
