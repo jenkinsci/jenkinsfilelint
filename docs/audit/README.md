@@ -1,4 +1,4 @@
-# Security audit (preview)
+# Security audit
 
 `jenkinsfilelint --audit` finds ways a pipeline can be attacked or can leak
 secrets. It runs offline, without Jenkins, and reads Jenkinsfiles and
@@ -13,8 +13,9 @@ Jenkinsfile:12:41: high: secret-interpolation: PASS is a secret, and Groovy inte
 2 findings (2 high)
 ```
 
-The plans and the rules to come are in
-[#65](https://github.com/jenkinsci/jenkinsfilelint/issues/65).
+The rules were designed in
+[#65](https://github.com/jenkinsci/jenkinsfilelint/issues/65). To suggest a
+new rule, or to report a finding that is wrong, open an issue.
 
 ## Rules
 
