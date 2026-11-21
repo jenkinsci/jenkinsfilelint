@@ -15,6 +15,8 @@ hook, but also works as a standalone CLI tool.
 ```bash
 pip install jenkinsfilelint
 jenkinsfilelint Jenkinsfile
+jenkinsfilelint .          # every Jenkinsfile in this directory
+jenkinsfilelint --audit .  # and look for security problems
 ```
 
 That works as is: with no Jenkins server configured, files are checked

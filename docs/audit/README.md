@@ -13,6 +13,10 @@ Jenkinsfile:12:41: high: secret-interpolation: PASS is a secret, and Groovy inte
 2 findings (2 high)
 ```
 
+Give it a directory to check a whole repository, `jenkinsfilelint --audit .`.
+It picks `Jenkinsfile`, `Jenkinsfile.*` and `*.jenkinsfile`, and `*.groovy`
+under any `vars/` or `src/` directory.
+
 The rules were designed in
 [#65](https://github.com/jenkinsci/jenkinsfilelint/issues/65). To suggest a
 new rule, or to report a finding that is wrong, open an issue.
