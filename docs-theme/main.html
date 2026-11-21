@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block header %}
+{{ super() }}
+<nav class="jl-breadcrumbs" aria-label="Breadcrumb">
+  <ol>
+    {%- if page and page.is_homepage %}
+    <li><span aria-current="page">{{ config.site_name }}</span></li>
+    {%- else %}
+    <li><a href="{{ nav.homepage.url | url }}">{{ config.site_name }}</a></li>
+    {%- if page %}
+    {%- for section in page.ancestors | reverse %}
+    {%- if section.children[0].url != page.url %}
+    <li><a href="{{ section.children[0].url | url }}">{{ section.title }}</a></li>
+    {%- endif %}
+    {%- endfor %}
+    <li><span aria-current="page">{{ page.title }}</span></li>
+    {%- endif %}
+    {%- endif %}
+  </ol>
+</nav>
+{% endblock %}

@@ -5,13 +5,18 @@ repo_url: https://github.com/jenkinsci/jenkinsfilelint
 repo_name: jenkinsci/jenkinsfilelint
 edit_uri: edit/main/docs/
 docs_dir: docs
+copyright: >-
+  Jenkins logo from the <a href="https://www.jenkins.io/artwork/">Jenkins artwork</a>,
+  <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>.
 exclude_docs: requirements.txt
 
 theme:
   name: sumi
   custom_dir: docs-theme
-  logo: assets/logo.svg
-  favicon: assets/favicon.svg
+  logo: assets/jenkins.svg
+  favicon: assets/jenkins.svg
+  navigation_tabs: false
+  hide: [breadcrumbs, actions]
   credit: false
 
 extra_css:
@@ -26,14 +31,13 @@ plugins:
   - sumi
 
 nav:
-  - Guide:
-      - index.md
-      - Install: install.md
-      - Usage: usage.md
-      - Pre-commit hook: pre-commit.md
-      - Configuration: configuration.md
-      - Security: security.md
-      - How it works: how-it-works.md
+  - Dashboard: index.md
+  - Install: install.md
+  - Usage: usage.md
+  - Pre-commit hook: pre-commit.md
+  - Configuration: configuration.md
+  - Security: security.md
+  - How it works: how-it-works.md
   - Security audit:
       - audit/README.md
       - script-injection: audit/script-injection.md
