@@ -1,0 +1,34 @@
+site_name: Jenkinsfile Lint
+site_description: Catch Jenkinsfile syntax errors before they break your CI.
+site_url: https://jenkinsci.github.io/jenkinsfilelint/
+repo_url: https://github.com/jenkinsci/jenkinsfilelint
+repo_name: jenkinsci/jenkinsfilelint
+edit_uri: edit/main/docs/
+docs_dir: docs
+exclude_docs: requirements.txt
+
+theme:
+  name: sumi
+
+plugins:
+  - search
+  - llms_txt
+  - sumi
+
+nav:
+  - Guide:
+      - index.md
+      - Install: install.md
+      - Usage: usage.md
+      - Pre-commit hook: pre-commit.md
+      - Configuration: configuration.md
+      - Security: security.md
+      - How it works: how-it-works.md
+  - Security audit:
+      - audit/README.md
+      - script-injection: audit/script-injection.md
+      - secret-interpolation: audit/secret-interpolation.md
+      - controller-execution: audit/controller-execution.md
+      - unpinned-library: audit/unpinned-library.md
+      - unpinned-image: audit/unpinned-image.md
+      - unrestricted-input: audit/unrestricted-input.md

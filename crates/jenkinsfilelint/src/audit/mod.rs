@@ -81,7 +81,7 @@ pub struct Rule {
 
 impl Rule {
     pub fn help_url(&self) -> String {
-        format!("https://github.com/jenkinsci/jenkinsfilelint/blob/main/docs/audit/{}.md", self.id)
+        format!("https://jenkinsci.github.io/jenkinsfilelint/audit/{}/", self.id)
     }
 }
 

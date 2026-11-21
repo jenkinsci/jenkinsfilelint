@@ -7,9 +7,9 @@ shared library files with the same parser as the syntax check.
 ```console
 $ jenkinsfilelint --audit Jenkinsfile
 Jenkinsfile:8:36: high: script-injection: CHANGE_BRANCH is the name of the pull request's branch, and Groovy interpolates it into the sh script: ...
-  help: https://github.com/jenkinsci/jenkinsfilelint/blob/main/docs/audit/script-injection.md
+  help: https://jenkinsci.github.io/jenkinsfilelint/audit/script-injection/
 Jenkinsfile:12:41: high: secret-interpolation: PASS is a secret, and Groovy interpolates it into the sh script: ...
-  help: https://github.com/jenkinsci/jenkinsfilelint/blob/main/docs/audit/secret-interpolation.md
+  help: https://jenkinsci.github.io/jenkinsfilelint/audit/secret-interpolation/
 2 findings (2 high)
 ```
 
