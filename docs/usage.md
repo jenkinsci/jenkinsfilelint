@@ -51,15 +51,28 @@ jenkinsfilelint --audit .
 jenkinsfilelint pipelines/ Jenkinsfile
 ```
 
-| Mode | Files picked |
+| File | Picked |
 |---|---|
-| Syntax check | `Jenkinsfile`, `Jenkinsfile.*` and `*.jenkinsfile` |
-| `--audit` | The same, and `*.groovy` under any `vars/` or `src/` directory |
+| `Jenkinsfile` and `*.jenkinsfile`, in any case | Always |
+| Other `Jenkinsfile*`, like `Jenkinsfile-prod` | If it contains a pipeline |
+| `*.groovy` | If it contains a pipeline |
+| `*.groovy` under any `vars/` or `src/` directory | Always with `--audit` |
 
-Hidden directories, `node_modules`, `target`, `build`, `venv` and `site` are
-left out, and symlinks to directories are not followed. Files are checked in
-sorted order, and a file found twice is checked once.
-[`--include` and `--skip`](#filtering-files) apply to the files found.
+A file contains a pipeline when it has a `pipeline {`, `node {` or `node(` at
+its top level. Comments, strings and the bodies of methods do not count, so
+plain Groovy helpers are left out. So are notes and copies such as
+`Jenkinsfile.md` and `Jenkinsfile.bak`.
+
+A pipeline with any other name, like `ci/deploy.pipeline`, is not found. Pass
+its path as well: `jenkinsfilelint . ci/deploy.pipeline`.
+
+Directories of tools are left out: `.git`, `.venv`, `venv`, `.tox`,
+`node_modules`, `target`, `site`, `__pycache__` and the like, and `build` next
+to a build file such as `build.gradle` or `pyproject.toml`. Other hidden
+directories, like `.jenkins` and `.ci`, are searched. Symlinks to directories
+are not followed. Files are checked in sorted order, and a file found twice is
+checked once. [`--include` and `--skip`](#filtering-files) apply to the files
+found.
 
 A directory with no files to check is not an error. `--verbose` says so.
 

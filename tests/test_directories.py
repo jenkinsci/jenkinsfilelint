@@ -7,10 +7,12 @@ from unittest.mock import patch
 
 import pytest
 
-from jenkinsfilelint.cli import expand_paths, find_files, main
+from jenkinsfilelint.cli import expand_paths, find_files, looks_like_pipeline, main
 
 VALID = "pipeline {\n  agent any\n  stages { stage('a') { steps { echo 'a' } } }\n}\n"
 INVALID = "pipeline {\n  agent any\n}\n"
+SCRIPTED = "node {\n    sh 'make'\n}\n"
+HELPER = "def greet(name) {\n    echo name\n}\n"
 LEAK = (
     "withCredentials([string(credentialsId: 'c', variable: 'TOKEN')]) {\n"
     '    sh "deploy --token ${TOKEN}"\n'
@@ -44,33 +46,46 @@ def no_jenkins(monkeypatch):
 
 
 class TestFindFiles:
-    def test_names_matched(self, tmp_path):
-        write(
-            tmp_path,
-            "Jenkinsfile",
-            "Jenkinsfile.prod",
-            "ci/deploy.jenkinsfile",
-            "ci/nested/Jenkinsfile",
-            "README.md",
-            "Jenkinsfile2",
-            "jenkinsfile",
-            "script.groovy",
-        )
-        assert found(tmp_path) == [
-            "Jenkinsfile",
-            "Jenkinsfile.prod",
-            "ci/deploy.jenkinsfile",
-            "ci/nested/Jenkinsfile",
-        ]
+    @pytest.mark.parametrize(
+        "name, text, picked",
+        [
+            ("Jenkinsfile", INVALID, True),
+            ("Jenkinsfile.prod", VALID, True),
+            ("deploy.jenkinsfile", INVALID, True),
+            ("jenkinsfile", VALID, True),
+            ("JenkinsFile", VALID, True),
+            ("JENKINSFILE", VALID, True),
+            ("Jenkinsfile-prod", VALID, True),
+            ("Jenkinsfile_prod", VALID, True),
+            ("ci/deploy.groovy", VALID, True),
+            ("pipelines/release.groovy", SCRIPTED, True),
+            (".jenkins/Jenkinsfile", VALID, True),
+            (".ci/Jenkinsfile", VALID, True),
+            ("build/Jenkinsfile", VALID, True),
+            ("jenkins/build.pipeline", VALID, False),
+            ("ci/deploy.jenkins", VALID, False),
+            ("Jenkinsfile.md", VALID, False),
+            ("Jenkinsfile.bak", VALID, False),
+            ("Jenkinsfile.dockerfile", "FROM alpine\n", False),
+        ],
+    )
+    def test_names(self, tmp_path, name, text, picked):
+        write(tmp_path, name, text=text)
+        assert found(tmp_path) == ([name] if picked else [])
+
+    def test_a_plain_helper_is_not_picked(self, tmp_path):
+        write(tmp_path, "scripts/helper.groovy", "Jenkinsfile-notes", text=HELPER)
+        assert found(tmp_path) == []
 
     def test_library_files_only_with_audit(self, tmp_path):
+        write(tmp_path, "Jenkinsfile")
         write(
             tmp_path,
-            "Jenkinsfile",
             "vars/deploy.groovy",
             "src/com/acme/Util.groovy",
             "scripts/other.groovy",
             "vars/notes.txt",
+            text=HELPER,
         )
         assert found(tmp_path) == ["Jenkinsfile"]
         assert found(tmp_path, audit=True) == [
@@ -86,12 +101,12 @@ class TestFindFiles:
         assert find_files(".", audit=True) == ["deploy.groovy"]
 
     def test_parent_of_the_search_does_not_count(self, tmp_path):
-        write(tmp_path, "src/project/tools/helper.groovy")
+        write(tmp_path, "src/project/tools/helper.groovy", text=HELPER)
         assert found(tmp_path / "src" / "project", audit=True) == []
 
     @pytest.mark.parametrize(
         "directory",
-        [".git", ".venv", "venv", "node_modules", "target", "build", "site"],
+        [".git", ".venv", ".tox", "venv", "node_modules", "target", "site"],
     )
     def test_skipped_directories(self, tmp_path, directory):
         write(tmp_path, "Jenkinsfile", f"{directory}/Jenkinsfile")
@@ -99,8 +114,14 @@ class TestFindFiles:
         assert found(tmp_path) == ["Jenkinsfile"]
 
     def test_a_skipped_name_can_be_searched_by_asking(self, tmp_path):
-        write(tmp_path, "build/Jenkinsfile")
-        assert found(tmp_path / "build") == ["Jenkinsfile"]
+        write(tmp_path, "target/Jenkinsfile")
+        assert found(tmp_path / "target") == ["Jenkinsfile"]
+
+    @pytest.mark.parametrize("build_file", ["build.gradle", "pyproject.toml"])
+    def test_build_output_is_left_out(self, tmp_path, build_file):
+        write(tmp_path, "Jenkinsfile", "build/Jenkinsfile")
+        write(tmp_path, build_file, text="")
+        assert found(tmp_path) == ["Jenkinsfile"]
 
     @pytest.mark.skipif(os.name == "nt", reason="symlinks need privileges on Windows")
     def test_symlinks(self, tmp_path):
@@ -108,6 +129,64 @@ class TestFindFiles:
         (tmp_path / "link").symlink_to(tmp_path / "real", target_is_directory=True)
         (tmp_path / "Jenkinsfile.broken").symlink_to(tmp_path / "missing")
         assert found(tmp_path) == ["real/Jenkinsfile"]
+
+
+class TestLooksLikePipeline:
+    @pytest.mark.parametrize(
+        "text",
+        [
+            VALID,
+            SCRIPTED,
+            "node('linux') {\n    sh 'make'\n}\n",
+            "node ('linux') {\n}\n",
+            "@Library('lib@v1') _\n\npipeline {\n}\n",
+            "#!/usr/bin/env groovy\n// a comment\nnode {\n}\n",
+            "/* a comment */ pipeline {\n}\n",
+            "/* a\n comment */\npipeline {\n}\n",
+            "\ufeffpipeline {\n}\n",
+            "import groovy.json.JsonSlurper\ndef v = 'a'\nnode {\n}\n",
+            "def v = 1; node {\n}\n",
+            "def helper() {\n    echo 'a'\n}\nnode {\n}\n",
+            "def p = ~/a{2}/\nnode {\n}\n",
+            "}\nnode {\n}\n",
+        ],
+    )
+    def test_pipelines(self, tmp_path, text):
+        path = tmp_path / "a.groovy"
+        path.write_text(text, encoding="utf-8")
+        assert looks_like_pipeline(str(path))
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            HELPER,
+            "",
+            "// pipeline {\n",
+            "/*\npipeline {\n}\n*/\n",
+            "def a = 'pipeline {'\n",
+            'def a = "node {"\n',
+            "def a = '''\npipeline {\n}\n'''\n",
+            'def a = """\nnode {\n}\n"""\n',
+            "def a = $/\nnode {\n}\n/$\n",
+            "def a = /pipeline {/\n",
+            "def call() {\n    pipeline {\n    }\n}\n",
+            "def call() {\n    node {\n    }\n}\n",
+            "def node(String label) {\n    echo label\n}\n",
+            "String node = 'a'\n",
+            "helper.node {\n}\n",
+            "pipelines {\n}\n",
+        ],
+    )
+    def test_not_pipelines(self, tmp_path, text):
+        path = tmp_path / "a.groovy"
+        path.write_text(text, encoding="utf-8")
+        assert not looks_like_pipeline(str(path))
+
+    def test_unreadable_file(self, tmp_path):
+        path = tmp_path / "a.groovy"
+        path.write_text(VALID)
+        with patch("builtins.open", side_effect=OSError):
+            assert not looks_like_pipeline(str(path))
 
 
 class TestExpandPaths:

@@ -2,11 +2,11 @@
 """Command-line interface for jenkinsfilelint."""
 
 import os
+import re
 import sys
 import argparse
 import io
 from concurrent.futures import Future, ThreadPoolExecutor
-from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import List, Optional, Set, Tuple
 from .linter import JenkinsfileLinter, NOT_DECLARATIVE_MESSAGE
@@ -64,12 +64,111 @@ def should_include_file(filepath: str, include_patterns: Optional[List[str]]) ->
     return False
 
 
-# What a directory search picks. Shared library files are not pipelines, so
-# only --audit reads them.
-JENKINSFILE_PATTERNS = ("Jenkinsfile", "Jenkinsfile.*", "*.jenkinsfile")
+# Copies and notes named after a Jenkinsfile. They can hold a whole pipeline,
+# so the content check would pick them.
+NOT_PIPELINE_SUFFIXES = (
+    ".adoc",
+    ".bak",
+    ".md",
+    ".old",
+    ".orig",
+    ".rej",
+    ".rst",
+    ".swp",
+    ".tmp",
+    ".txt",
+)
+# Shared library files are not pipelines, so only --audit reads all of them.
 LIBRARY_DIRS = {"src", "vars"}
-# Directories of tools and build output. Hidden directories are left out too.
-SKIPPED_DIRS = {"build", "node_modules", "site", "target", "venv"}
+# Directories of tools. Other hidden directories, like .jenkins, are searched.
+TOOL_DIRS = {
+    ".cache",
+    ".git",
+    ".gradle",
+    ".hg",
+    ".idea",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".svn",
+    ".terraform",
+    ".tox",
+    ".venv",
+    ".vscode",
+    "__pycache__",
+    "node_modules",
+    "site",
+    "target",
+    "venv",
+}
+# A build/ directory next to one of these is build output.
+BUILD_FILES = {
+    "CMakeLists.txt",
+    "build.gradle",
+    "build.gradle.kts",
+    "package.json",
+    "pyproject.toml",
+    "setup.py",
+}
+# Comments and strings, which can hold text that looks like a pipeline.
+GROOVY_NON_CODE = re.compile(
+    r"""
+    //[^\n]*
+    | /\*.*?(?:\*/|\Z)
+    | \'\'\'(?:\\.|[^\\])*?(?:\'\'\'|\Z)
+    | \"\"\"(?:\\.|[^\\])*?(?:\"\"\"|\Z)
+    | '(?:\\.|[^'\\\n])*'?
+    | "(?:\\.|[^"\\\n])*"?
+    | \$/.*?(?:/\$|\Z)
+    | (?<=[=(,~:\[!&|?{};\s])/(?![/*\s])(?:\\.|[^/\\\n])*/
+    """,
+    re.DOTALL | re.VERBOSE,
+)
+PIPELINE_START = re.compile(r"(?:^|;)\s*(?:pipeline\s*\{|node\s*[({])", re.MULTILINE)
+
+
+def looks_like_pipeline(path: str) -> bool:
+    """Whether a file has a top-level ``pipeline {``, ``node {`` or ``node(``.
+
+    Comments and strings are ignored, and so is anything inside a block, such
+    as a helper method that runs a ``node``.
+    """
+    try:
+        with open(path, encoding="utf-8-sig", errors="replace") as source:
+            text = source.read()
+    except OSError:
+        return False
+
+    code = GROOVY_NON_CODE.sub(lambda m: " " + "\n" * m.group().count("\n"), text)
+    top_level = []
+    depth = 0
+    for char in code:
+        if char in "({[":
+            if depth == 0:
+                top_level.append(char)
+            depth += 1
+        elif char in ")}]":
+            depth = max(depth - 1, 0)
+            if depth == 0:
+                top_level.append(char)
+        elif depth == 0:
+            top_level.append(char)
+    return PIPELINE_START.search("".join(top_level)) is not None
+
+
+def _is_pipeline_file(path: str, in_library: bool) -> bool:
+    """Whether a directory search picks this file: the name finds candidates,
+    and the content confirms those that could be something else."""
+    name = os.path.basename(path).lower()
+    if name.endswith(NOT_PIPELINE_SUFFIXES) or not os.path.isfile(path):
+        return False
+    if name == "jenkinsfile" or name.endswith(".jenkinsfile"):
+        return True
+    if in_library and name.endswith(".groovy"):
+        return True
+    if name.startswith("jenkinsfile") or name.endswith(".groovy"):
+        return looks_like_pipeline(path)
+    return False
 
 
 def find_files(directory: str, audit: bool = False) -> List[str]:
@@ -79,7 +178,7 @@ def find_files(directory: str, audit: bool = False) -> List[str]:
 
     Args:
         directory: Directory to search
-        audit: Also pick ``*.groovy`` files under a ``vars`` or ``src`` directory
+        audit: Also pick every ``*.groovy`` under a ``vars`` or ``src`` directory
 
     Returns:
         Paths of the files found
@@ -87,17 +186,17 @@ def find_files(directory: str, audit: bool = False) -> List[str]:
     root_name = os.path.basename(os.path.abspath(directory))
     found = []
     for dirpath, dirnames, filenames in os.walk(directory):
+        is_output = not BUILD_FILES.isdisjoint(filenames)
         dirnames[:] = [
-            d for d in dirnames if not d.startswith(".") and d not in SKIPPED_DIRS
+            d
+            for d in dirnames
+            if d not in TOOL_DIRS and not (d == "build" and is_output)
         ]
         parents = {root_name, *Path(os.path.relpath(dirpath, directory)).parts}
         in_library = audit and not LIBRARY_DIRS.isdisjoint(parents)
         for name in filenames:
             path = os.path.normpath(os.path.join(dirpath, name))
-            if (
-                any(fnmatchcase(name, p) for p in JENKINSFILE_PATTERNS)
-                or (in_library and name.endswith(".groovy"))
-            ) and os.path.isfile(path):
+            if _is_pipeline_file(path, in_library):
                 found.append(path)
     return sorted(found)
 
@@ -447,8 +546,9 @@ def main():
         "jenkinsfile",
         nargs="+",
         help="Jenkinsfile(s) to validate, or directories to search for them. "
-        "In a directory, picks Jenkinsfile, Jenkinsfile.* and *.jenkinsfile; "
-        "--audit also picks *.groovy under vars/ and src/.",
+        "In a directory, picks Jenkinsfile and *.jenkinsfile, and Jenkinsfile* "
+        "and *.groovy files that contain a pipeline; --audit also picks all "
+        "*.groovy under vars/ and src/.",
     )
     parser.add_argument(
         "--jenkins-url",
