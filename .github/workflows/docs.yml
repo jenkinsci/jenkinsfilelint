@@ -5,12 +5,14 @@ on:
     branches: [ main ]
     paths:
       - docs/**
+      - docs-theme/**
       - mkdocs.yml
       - .github/workflows/docs.yml
   pull_request:
     branches: [ main ]
     paths:
       - docs/**
+      - docs-theme/**
       - mkdocs.yml
       - .github/workflows/docs.yml
   workflow_dispatch:

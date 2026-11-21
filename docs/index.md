@@ -1,6 +1,8 @@
-# Jenkinsfile Lint
-
-Catch Jenkinsfile syntax errors before they break your CI.
+---
+title: Jenkinsfile Lint
+layout: landing
+template: home.html
+---
 
 `jenkinsfilelint` checks your Declarative Pipeline syntax offline, with no
 Jenkins at all, or with your Jenkins's own validator

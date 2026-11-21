@@ -9,6 +9,16 @@ exclude_docs: requirements.txt
 
 theme:
   name: sumi
+  custom_dir: docs-theme
+  logo: assets/logo.svg
+  favicon: assets/favicon.svg
+  credit: false
+
+extra_css:
+  - assets/site.css
+
+hooks:
+  - docs-theme/hooks.py
 
 plugins:
   - search
