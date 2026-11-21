@@ -1,0 +1,2 @@
+mkdocs-ng==1.11.2
+mkdocs-sumi==0.4.3

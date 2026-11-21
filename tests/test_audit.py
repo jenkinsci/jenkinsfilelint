@@ -22,7 +22,7 @@ from jenkinsfilelint.offline import (
 
 ROOT = Path(__file__).resolve().parent.parent
 CASES = ROOT / "crates" / "jenkinsfilelint" / "tests" / "audit"
-HELP = "https://github.com/jenkinsci/jenkinsfilelint/blob/main/docs/audit/secret-interpolation.md"
+HELP = "https://jenkinsci.github.io/jenkinsfilelint/audit/secret-interpolation/"
 LEAKS = (
     "withCredentials([usernamePassword(credentialsId: 'c', usernameVariable: 'USER', "
     "passwordVariable: 'PASS')]) {\n"

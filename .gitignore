@@ -37,3 +37,6 @@ crates/*/target/
 # writes, which is to be published with the documentation site
 corpus/.cache/
 corpus/manifest.tsv
+
+# Documentation site
+site/

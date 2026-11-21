@@ -1,0 +1,173 @@
+/* The look of a Jenkins controller. The tokens come from Jenkins core
+   (src/main/scss/abstracts/_theme.scss) and the dark theme plugin. */
+
+:root {
+  --blue: oklch(55% 0.2308 256.91);
+  --green: oklch(70% 0.2155 150);
+  --orange: oklch(70% 0.2001 50.74);
+  --red: oklch(60% 0.2671 30);
+  --white: #fff;
+  --accent-color: var(--blue);
+  --black: oklch(from var(--accent-color) 5% 0.075 h);
+  --text-color: var(--black);
+  --secondary: oklch(from var(--black) 52% c h); /* 60% in Jenkins, darker for AA */
+  --text-color-secondary: var(--secondary);
+  --error-color: var(--red);
+  --warning-color: var(--orange);
+  --success-color: var(--green);
+  --skipped-color: var(--text-color-secondary);
+  --status-background-opacity: 0.125;
+  --status-border-opacity: 0.25;
+  --standard-transition: 0.25s ease;
+  --background: rgb(254 254 254);
+  --card-background: var(--white);
+  --header-background: color-mix(in sRGB, var(--background), var(--text-color-secondary) 2.5%);
+  --jenkins-border-color: color-mix(in sRGB, var(--text-color-secondary) 17.5%, transparent);
+  --jenkins-border: 1px solid var(--jenkins-border-color);
+  --form-input-border-radius: 0.6875rem;
+  --table-background: color-mix(in oklch, var(--text-color-secondary) 7.5%, var(--white));
+  --table-body-background: var(--background);
+  --table-row-border-radius: 0.3125rem;
+  --button-background: oklch(from var(--text-color-secondary) l c h / 0.075);
+  --item-background--hover: oklch(from var(--text-color-secondary) l c h / 0.1);
+  --item-background--active: oklch(from var(--text-color-secondary) l c h / 0.15);
+  --elevation-1-box-shadow: 0 2px 2px color-mix(in sRGB, var(--black) 3.5%, transparent);
+  --pre-background: var(--button-background);
+  --alert-warning-text: color-mix(in sRGB, var(--warning-color) 68%, var(--text-color));
+  --alert-danger-text: color-mix(in sRGB, var(--error-color) 86%, var(--text-color));
+
+  --sumi-font: system-ui, "Segoe UI", roboto, "Noto Sans", oxygen, ubuntu, cantarell, "Fira Sans", "Droid Sans", "Helvetica Neue", arial, "PingFang SC", "Microsoft YaHei", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+  --sumi-font-mono: ui-monospace, sfmono-regular, "SF Mono", jetbrainsmono, consolas, monospace;
+  --sumi-radius: var(--form-input-border-radius);
+  --sumi-radius-sm: var(--table-row-border-radius);
+  --sumi-header-h: 3.5rem;
+  --sumi-side-w: 280px;
+  --sumi-accent: var(--accent-color);
+  --sumi-accent-ink: var(--accent-color);
+  --sumi-bg: var(--background);
+  --sumi-bg-elev: var(--card-background);
+  --sumi-bg-soft: var(--item-background--hover);
+  --sumi-bg-sunken: var(--button-background);
+  --sumi-fg: var(--text-color);
+  --sumi-fg-2: var(--text-color);
+  --sumi-fg-3: var(--text-color-secondary);
+  --sumi-line: var(--jenkins-border-color);
+  --sumi-line-2: var(--jenkins-border-color);
+  --sumi-link: var(--accent-color);
+  --sumi-link-hover: var(--accent-color);
+  --sumi-header-bg: var(--header-background);
+  --sumi-code-bg: transparent;
+  --sumi-code-head: transparent;
+  --sumi-code-inline: var(--button-background);
+  --sumi-shadow-sm: var(--elevation-1-box-shadow);
+  --c-note: var(--accent-color);
+  --c-tip: var(--success-color);
+  --c-important: var(--accent-color);
+  --c-warning: var(--alert-warning-text);
+  --c-caution: var(--alert-danger-text);
+}
+
+[data-theme="dark"] {
+  --background: oklch(from var(--white) 0.175 0.013 h);
+  --accent-color: oklch(65.13% 0.1987 265);
+  --blue: oklch(64.23% 0.3 252.93);
+  --green: oklch(80.25% 0.2197 147.09);
+  --orange: oklch(79.58% 0.1862 62.09);
+  --red: oklch(66.82% 0.2393 29.84);
+  --white: oklch(from var(--accent-color) 98% 0.015 h);
+  --text-color: var(--white);
+  --text-color-secondary: oklch(from var(--white) 0.7 0.038 h);
+  --card-background: color-mix(in oklch, var(--text-color-secondary) 7.5%, var(--background));
+  --table-background: var(--card-background);
+  --button-background: oklch(from var(--text-color-secondary) l c h / 0.075);
+  --item-background--hover: oklch(from var(--text-color-secondary) l c h / 0.1);
+  --item-background--active: oklch(from var(--text-color-secondary) l c h / 0.15);
+  --elevation-1-box-shadow: none;
+  --sumi-header-bg: var(--header-background);
+}
+
+body { font-feature-settings: normal; font-size: 16px; line-height: 1.5; }
+.jl-symbol { display: inline-flex; flex: none; width: 1.125rem; height: 1.125rem; }
+.jl-symbol svg { display: block; width: 100%; height: 100%; }
+
+/* Header and breadcrumbs */
+.sumi-header { background: var(--header-background); border-bottom: var(--jenkins-border); backdrop-filter: none; -webkit-backdrop-filter: none; }
+.sumi-header-inner { max-width: none; padding-inline: 1rem; }
+.sumi-brand { gap: 0.625rem; color: var(--text-color); }
+.sumi-brand-name { font-size: 1.125rem; font-weight: 600; letter-spacing: 0; }
+.sumi-header .sumi-logo { width: auto; height: 2rem; border-radius: 0; }
+.sumi-search-btn { border-radius: var(--form-input-border-radius); background: var(--button-background); border-color: transparent; color: var(--text-color-secondary); }
+.sumi-search-btn:hover { background: var(--item-background--hover); border-color: transparent; box-shadow: none; }
+.sumi-icon-btn { border-radius: var(--form-input-border-radius); }
+.jl-breadcrumbs { padding: 0.375rem 1rem; border-bottom: var(--jenkins-border); background: var(--background); font-size: 0.875rem; font-weight: 450; }
+.jl-breadcrumbs ol { display: flex; flex-wrap: nowrap; align-items: center; margin: 0; padding: 0; overflow: hidden; list-style: none; white-space: nowrap; }
+.jl-breadcrumbs li { display: flex; align-items: center; min-width: 0; }
+.jl-breadcrumbs li + li::before { content: ""; flex: none; width: 0.4rem; height: 0.4rem; margin-inline: 0.25rem 0.375rem; border-top: 1.5px solid var(--text-color-secondary); border-right: 1.5px solid var(--text-color-secondary); transform: rotate(45deg); }
+.jl-breadcrumbs :is(a, span) { padding: 0.25rem 0.5rem; border-radius: var(--form-input-border-radius); color: var(--text-color); text-decoration: none; overflow: hidden; text-overflow: ellipsis; }
+.jl-breadcrumbs a:hover { background: var(--item-background--hover); }
+
+/* Side panel: Jenkins tasks */
+.sumi-sidebar-inner { padding: 1rem 0.75rem; }
+.sumi-nav-list { display: flex; flex-direction: column; gap: 0.125rem; }
+.sumi-sidebar a { display: flex; align-items: center; gap: 0.625rem; min-height: 2.375rem; padding: 0.5rem 0.6875rem; border: 0; border-radius: var(--form-input-border-radius); color: var(--text-color); font-size: 0.875rem; font-weight: 400; text-decoration: none; }
+.sumi-sidebar a:hover { background: var(--item-background--hover); color: var(--text-color); }
+.sumi-sidebar a:active { background: var(--item-background--active); }
+.sumi-sidebar a.is-current { background: var(--button-background); color: var(--text-color); font-weight: 450; box-shadow: var(--elevation-1-box-shadow), inset 0 0 0 1px var(--jenkins-border-color); }
+
+.sumi-nav-list .sumi-nav-list .sumi-nav-page a.is-current { border-radius: var(--form-input-border-radius); box-shadow: var(--elevation-1-box-shadow), inset 0 0 0 1px var(--jenkins-border-color); }
+
+/* Article */
+.sumi-article-top { display: none; }
+.sumi-content.sumi-prose { font-size: 1rem; line-height: 1.6; }
+.sumi-prose :is(h1, h2, h3, h4) { color: var(--text-color); font-weight: 600; letter-spacing: 0; line-height: 1.2; }
+.sumi-prose h1 { display: flex; align-items: center; gap: 0.625rem; margin-bottom: 1.25rem; font-size: 1.5rem; }
+.sumi-prose h1 .jl-symbol { width: 1.5rem; height: 1.5rem; }
+.sumi-prose h2 { margin-top: 2.25rem; font-size: 1.25rem; }
+.sumi-prose h3 { font-size: 1.05rem; }
+.sumi-prose a { color: var(--accent-color); font-weight: 450; text-decoration: none; }
+.sumi-prose a:hover { text-decoration: underline; }
+.sumi-prose :not(pre) > code { border: 0; border-radius: 0.3125rem; background: var(--button-background); font-size: 0.875em; }
+.sumi-prose blockquote { padding: 1rem; border: 1px solid var(--jenkins-border-color); border-radius: var(--form-input-border-radius); color: var(--text-color); font-size: 0.875rem; }
+.sumi-prose blockquote p:last-child { margin-bottom: 0; }
+
+/* Code, like console output */
+.sumi-prose div.highlight { border: 0; border-radius: var(--form-input-border-radius); background: var(--pre-background); box-shadow: none; }
+.sumi-prose div.highlight pre { border: 0; border-radius: inherit; background: transparent; box-shadow: none; font-size: 0.8125rem; line-height: 1.55; }
+
+/* Tables: jenkins-table */
+.sumi-prose div.sumi-table { padding: 2px 2px 1px; border: var(--jenkins-border); border-radius: calc(var(--form-input-border-radius) + 2px); background: var(--table-background); box-shadow: none; }
+.sumi-prose div.sumi-table table { width: 100%; margin: 0; border: 0; border-collapse: separate; border-spacing: 0 1px; background: transparent; font-size: 0.875rem; }
+.sumi-prose div.sumi-table thead th { padding: 0.5rem 0.55rem 0.6rem 1.1rem; border: 0; background: transparent; color: var(--text-color); font-size: 0.875rem; font-weight: 450; text-align: left; }
+.sumi-prose div.sumi-table tbody :is(td, th) { padding: 0.55rem 0.55rem 0.55rem 1.1rem; border: 0; background: var(--table-body-background); vertical-align: middle; text-align: left; }
+.sumi-prose div.sumi-table tbody tr > :first-child { border-radius: var(--table-row-border-radius) 0 0 var(--table-row-border-radius); }
+.sumi-prose div.sumi-table tbody tr > :last-child { border-radius: 0 var(--table-row-border-radius) var(--table-row-border-radius) 0; }
+.sumi-prose div.sumi-table tbody tr:first-child > :first-child { border-top-left-radius: var(--form-input-border-radius); }
+.sumi-prose div.sumi-table tbody tr:first-child > :last-child { border-top-right-radius: var(--form-input-border-radius); }
+.sumi-prose div.sumi-table tbody tr:last-child > :first-child { border-bottom-left-radius: var(--form-input-border-radius); }
+.sumi-prose div.sumi-table tbody tr:last-child > :last-child { border-bottom-right-radius: var(--form-input-border-radius); }
+
+/* The job list and a rule's properties */
+.sumi-prose .jl-jobs td.jl-status { width: 1.5rem; padding-right: 0; }
+.jl-jobs .jl-symbol { width: 1.375rem; height: 1.375rem; }
+.sumi-prose a.jl-job { display: block; color: var(--text-color); font-weight: 450; }
+.jl-job-note { color: var(--text-color-secondary); font-size: 0.8125rem; }
+.jl-jobs .jl-job-note { display: block; margin-top: 0.125rem; }
+.sumi-prose .jl-properties tbody th { width: 8rem; color: var(--text-color-secondary); font-weight: 400; }
+.sumi-prose .jl-jobs td:not(:nth-child(2)) { white-space: nowrap; }
+.jl-level { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem; }
+.jl-level + .jl-level { margin-top: 0.25rem; }
+
+/* Alerts: jenkins-alert */
+.sumi-callout { --jl-alert: var(--accent-color); margin-block: 1.25rem; padding: 1rem; border: 1px solid rgb(from currentColor r g b / 0.1); border-radius: var(--form-input-border-radius); background: color-mix(in sRGB, var(--jl-alert) 4%, transparent); color: var(--jl-alert); font-size: 0.875rem; box-shadow: none; }
+.sumi-callout--tip { --jl-alert: var(--success-color); }
+.sumi-callout--warning { --jl-alert: var(--alert-warning-text); }
+.sumi-callout--caution { --jl-alert: var(--alert-danger-text); }
+.sumi-prose .sumi-callout-title { color: inherit; font-size: 0.875rem; font-weight: 600; letter-spacing: 0; text-transform: none; }
+.sumi-prose .sumi-callout-body, .sumi-prose .sumi-callout-body p { color: inherit; }
+.sumi-prose .sumi-callout a { color: inherit; text-decoration: underline; }
+.sumi-prose .sumi-callout code { color: inherit; }
+
+@media (max-width: 640px) {
+  .jl-optional { display: none; }
+  .sumi-prose div.sumi-table tbody :is(td, th), .sumi-prose div.sumi-table thead th { padding-left: 0.75rem; }
+}
