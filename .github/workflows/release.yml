@@ -54,7 +54,9 @@ jobs:
       matrix:
         include:
           - {runner: ubuntu-latest, target: x86_64-unknown-linux-gnu, manylinux: auto}
-          - {runner: ubuntu-latest, target: aarch64-unknown-linux-gnu, manylinux: auto}
+          # The gcc of the manylinux2014 cross image does not define
+          # __ARM_ARCH, which the assembly of ring (TLS for --remote) needs.
+          - {runner: ubuntu-latest, target: aarch64-unknown-linux-gnu, manylinux: auto, docker-options: '-e CFLAGS_aarch64_unknown_linux_gnu=-D__ARM_ARCH=8'}
           - {runner: ubuntu-latest, target: x86_64-unknown-linux-musl, manylinux: musllinux_1_2}
           - {runner: ubuntu-latest, target: aarch64-unknown-linux-musl, manylinux: musllinux_1_2}
           # 32-bit builds, for 32-bit Pythons, also on 64-bit machines.
@@ -82,6 +84,7 @@ jobs:
         target: ${{ matrix.target }}
         manylinux: ${{ matrix.manylinux || 'auto' }}
         container: ${{ matrix.container }}
+        docker-options: ${{ matrix.docker-options }}
         args: --release --out dist
     - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
       with:
