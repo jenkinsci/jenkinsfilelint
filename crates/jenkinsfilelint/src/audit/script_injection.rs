@@ -9,7 +9,7 @@
 
 use std::collections::HashMap;
 
-use super::fix::Fix;
+use super::fix::{Disposition, Fix};
 use super::taint::{self, Flow, How, Label, Sink, Use};
 use super::{Confidence, Finding, Persona, Rule, Severity};
 use crate::ast::{visit, Arg, Expr, Node, Stmt};
@@ -314,6 +314,11 @@ fn items(e: &Expr) -> Vec<&Expr> {
     }
 }
 
+/// What `--fix` makes of a script that a value is interpolated into. Unsafe:
+/// the shell no longer splits the quoted value into words, so a value meant
+/// to hold several arguments becomes one.
+const FIX: Disposition = Disposition::Unsafe;
+
 /// `--fix` rewrites the script a value is interpolated into, so that the
 /// shell reads it from the environment. A value joined with `+`, or a whole
 /// argument, is left to the user: the script is not one literal.
@@ -321,7 +326,8 @@ fn fix(f: &Flow, fixes: &[Option<Fix>]) -> Option<Fix> {
     if f.value.how != How::Interpolated {
         return None;
     }
-    f.script.and_then(|i| fixes[i].clone())
+    let fix = f.script.and_then(|i| fixes[i].clone())?;
+    Some(Fix { disposition: FIX, ..fix })
 }
 
 /// A parameter declaration: `string(name: 'X', ...)`, `choice(...)` or

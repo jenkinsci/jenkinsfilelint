@@ -11,6 +11,7 @@ from pathlib import Path
 
 SYMBOLS = Path(__file__).parent / "symbols"
 STATUS = {"high": "status-red", "medium": "status-yellow", "low": "status-nobuilt"}
+FIXES = {"✅": "a safe fix", "⚠": "an unsafe fix", "❌": "no fix"}
 TASKS = {
     "Dashboard": "list",
     "Install": "download",
@@ -25,7 +26,9 @@ TASKS = {
 TABLE = re.compile(
     r'(?:<div class="sumi-table[^"]*">\s*)?<table>.*?</table>(?:\s*</div>)?', re.DOTALL
 )
-INDEX_ROW = re.compile(r"^\| \[([a-z-]+)\]\([a-z-]+\.md\) \| (.+) \|$", re.MULTILINE)
+INDEX_ROW = re.compile(
+    r"^\| \[([a-z-]+)\]\([a-z-]+\.md\) \| (.+) \| (\S+) \|$", re.MULTILINE
+)
 META_ROW = re.compile(
     r"^\| Severity \| Confidence \| Persona \|\n\|[-|]+\n\| (.+) \| (.+) \| (.+) \|$",
     re.MULTILINE,
@@ -73,7 +76,7 @@ def meta(docs_dir: str, rule: str) -> tuple:
 def rule_table(docs_dir: str, prefix: str) -> str:
     index = (Path(docs_dir) / "audit" / "README.md").read_text(encoding="utf-8")
     rows = []
-    for rule, finds in INDEX_ROW.findall(index):
+    for rule, finds, fix in INDEX_ROW.findall(index):
         severity, confidence, persona = meta(docs_dir, rule)
         worst = levels(severity)[0][0]
         rows.append(
@@ -82,12 +85,14 @@ def rule_table(docs_dir: str, prefix: str) -> str:
             f'<span class="jl-job-note">{inline(finds)}</span></td>'
             f"<td>{words(severity)}</td>"
             f'<td class="jl-optional">{words(confidence)}</td>'
-            f'<td class="jl-optional">{words(persona)}</td></tr>'
+            f'<td class="jl-optional">{words(persona)}</td>'
+            f'<td title="{FIXES[fix]}">{fix}</td></tr>'
         )
     return (
         '<div class="sumi-table"><table class="jl-jobs"><thead><tr>'
         '<th aria-label="Status"></th><th>Rule</th><th>Severity</th>'
         '<th class="jl-optional">Confidence</th><th class="jl-optional">Persona</th>'
+        "<th>Fix</th>"
         f"</tr></thead><tbody>{''.join(rows)}</tbody></table></div>"
     )
 

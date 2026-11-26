@@ -21,6 +21,50 @@ pub struct Script {
     pub placeholders: Vec<(Span, Option<String>)>,
 }
 
+/// Whether a fix keeps what the file does. A safe fix does; an unsafe one
+/// may change it, and must be reviewed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Disposition {
+    Safe,
+    Unsafe,
+}
+
+impl Disposition {
+    pub fn name(self) -> &'static str {
+        match self {
+            Disposition::Safe => "safe",
+            Disposition::Unsafe => "unsafe",
+        }
+    }
+}
+
+/// Which fixes `--fix=MODE` makes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    Safe,
+    UnsafeOnly,
+    All,
+}
+
+impl Mode {
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "safe" => Some(Mode::Safe),
+            "unsafe-only" => Some(Mode::UnsafeOnly),
+            "all" => Some(Mode::All),
+            _ => None,
+        }
+    }
+
+    pub fn applies(self, d: Disposition) -> bool {
+        match self {
+            Mode::Safe => d == Disposition::Safe,
+            Mode::UnsafeOnly => d == Disposition::Unsafe,
+            Mode::All => true,
+        }
+    }
+}
+
 /// A rewritten script literal.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Fix {
@@ -28,6 +72,8 @@ pub struct Fix {
     pub span: Span,
     /// What replaces it.
     pub text: String,
+    /// Set by the rule whose finding it fixes.
+    pub disposition: Disposition,
 }
 
 /// How a step's shell reads an environment variable, for the steps that
@@ -138,7 +184,59 @@ pub fn plan(src: &Source, script: &Script) -> Option<Fix> {
             end: src.pos(close + quote.len()),
         },
         text,
+        disposition: Disposition::Unsafe,
     })
+}
+
+/// A unified diff from `old` to `new`, which have the same lines: a fix
+/// never adds or removes one.
+pub fn diff(path: &str, old: &str, new: &str) -> String {
+    let (old, new): (Vec<&str>, Vec<&str>) = (old.split_inclusive('\n').collect(), new.split_inclusive('\n').collect());
+    let changed: Vec<usize> = (0..old.len()).filter(|&i| old[i] != new[i]).collect();
+    if changed.is_empty() || old.len() != new.len() {
+        return String::new();
+    }
+    let line = |s: &str| {
+        if s.ends_with('\n') {
+            s.to_string()
+        } else {
+            format!("{s}\n\\ No newline at end of file\n")
+        }
+    };
+    let mut out = format!("--- {path}\n+++ {path}\n");
+    let context = 3;
+    let mut k = 0;
+    while k < changed.len() {
+        // A hunk: changes no more than two contexts apart, and their context.
+        let mut last = k;
+        while last + 1 < changed.len() && changed[last + 1] - changed[last] <= 2 * context {
+            last += 1;
+        }
+        let from = changed[k].saturating_sub(context);
+        let to = (changed[last] + context + 1).min(old.len());
+        out.push_str(&format!("@@ -{},{} +{},{} @@\n", from + 1, to - from, from + 1, to - from));
+        let mut i = from;
+        while i < to {
+            if old[i] == new[i] {
+                out.push(' ');
+                out.push_str(&line(old[i]));
+                i += 1;
+                continue;
+            }
+            let run = (i..to).take_while(|&j| old[j] != new[j]).count();
+            for l in &old[i..i + run] {
+                out.push('-');
+                out.push_str(&line(l));
+            }
+            for l in &new[i..i + run] {
+                out.push('+');
+                out.push_str(&line(l));
+            }
+            i += run;
+        }
+        k = last + 1;
+    }
+    out
 }
 
 /// The text of a file with these fixes made.
@@ -242,6 +340,20 @@ mod tests {
             assert_eq!(script(step, src, &[Some("T")]), None, "{src}");
         }
         assert_eq!(script("sh", r#"sh "a ${T} ${u}""#, &[Some("T"), None]), None);
+    }
+
+    #[test]
+    fn diffs() {
+        let old = "a\nb\nc\nd\ne\nf\ng\nh\ni\nj\nk\nl";
+        let new = "a\nB\nc\nd\ne\nf\ng\nh\ni\nj\nk\nL";
+        assert_eq!(
+            diff("J", old, new),
+            "--- J\n+++ J\n@@ -1,5 +1,5 @@\n a\n-b\n+B\n c\n d\n e\n@@ -9,4 +9,4 @@\n i\n j\n k\n-l\n\\ No newline at end of file\n+L\n\\ No newline at end of file\n"
+        );
+        assert_eq!(diff("J", old, old), "");
+        assert_eq!(Mode::parse("all").map(|m| m.applies(Disposition::Safe)), Some(true));
+        assert!(!Mode::UnsafeOnly.applies(Disposition::Safe) && Mode::Safe.applies(Disposition::Safe));
+        assert_eq!((Mode::parse("some"), Disposition::Unsafe.name()), (None, "unsafe"));
     }
 
     #[test]

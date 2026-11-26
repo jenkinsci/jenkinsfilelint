@@ -9,7 +9,7 @@
 
 use std::collections::HashMap;
 
-use super::fix::Fix;
+use super::fix::{Disposition, Fix};
 use super::taint::{self, Flow, How, Label, Sink, Use};
 use super::{Confidence, Finding, Persona, Rule, Severity};
 use crate::ast::{Arg, Expr};
@@ -75,6 +75,10 @@ pub fn check(flows: &[Flow], fixes: &[Option<Fix>]) -> Vec<Finding> {
     findings
 }
 
+/// What `--fix` makes of a script that a secret is interpolated into.
+/// Unsafe, as for script-injection: the quoted value is no longer split.
+const FIX: Disposition = Disposition::Unsafe;
+
 /// `--fix` rewrites a script that a secret is interpolated into, so that
 /// the shell reads the secret from the environment, where
 /// `withCredentials` puts it.
@@ -82,7 +86,8 @@ fn fix(f: &Flow, fixes: &[Option<Fix>]) -> Option<Fix> {
     if f.sink != Sink::Script || f.value.how != How::Interpolated {
         return None;
     }
-    f.script.and_then(|i| fixes[i].clone())
+    let fix = f.script.and_then(|i| fixes[i].clone())?;
+    Some(Fix { disposition: FIX, ..fix })
 }
 
 /// `X = credentials('id')` in an `environment` block sets X, and X_USR and

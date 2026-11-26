@@ -94,7 +94,8 @@ sh "curl -u \"\$USER:\$PASS\" ${env.NEXUS_URL}"
 
 ## How `--fix` fixes it
 
-`jenkinsfilelint --audit --fix` makes this change for you where it is safe:
+`jenkinsfilelint --audit --fix=all` makes this change for you. Like the
+fix for script-injection, it is unsafe, so review it, with `--diff` first:
 
 ```groovy
 sh "curl -u ${USER}:${PASS} https://nexus.example.com"     // before

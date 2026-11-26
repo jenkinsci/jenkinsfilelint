@@ -123,7 +123,7 @@ without a `submitter`, which any user may approve, with `--persona pedantic`. `-
 `--min-severity` and `--min-confidence` choose what to see, a
 `// jenkinsfilelint: ignore[rule]` comment turns off one finding,
 `--ignore RULE` turns off a rule everywhere,
-`--fix` rewrites the scripts it can fix safely, and
+`--fix=all` rewrites the scripts it can fix, for you to review, and
 `--format sarif` writes a report for GitHub code scanning. See
 [Security audit](audit/README.md) for all of it.
 

@@ -95,9 +95,9 @@ line, so `&` or `|` in the value still runs.
 
 ## How `--fix` fixes it
 
-`jenkinsfilelint --audit --fix` makes this change for you where it is safe.
-It puts the script in single quotes and has the shell read each value from
-the environment, in double quotes:
+`jenkinsfilelint --audit --fix=all` makes this change for you. It puts the
+script in single quotes and has the shell read each value from the
+environment, in double quotes:
 
 ```groovy
 sh "git checkout ${env.CHANGE_BRANCH}"   // before
@@ -127,10 +127,12 @@ script and its finding as they are:
 `bat` steps, Docker Pipeline command lines and values joined with `+` are
 left to you.
 
-Each value is quoted now, so the shell no longer splits it into words: check
-a value that holds several arguments on purpose. Before it writes a file,
-`--fix` audits the fixed text again, and keeps a fix only if the file still
-parses and no new finding appears.
+The fix is **unsafe**: each value is quoted now, so the shell no longer
+splits it into words, and a value that holds several arguments on purpose
+becomes one. So `--fix` alone does not make it: use `--fix=all`, and look at
+the change first with `--diff`. Before it writes a file, it audits the fixed
+text again, and keeps a fix only if the file still parses and no new
+finding appears.
 
 ## What it does not report
 

@@ -434,6 +434,9 @@ def _run_offline_validation(args: argparse.Namespace, automatic: bool = False) -
 
 SEVERITIES = ("high", "medium", "low")
 
+# The dispositions of the fixes that each --fix mode makes.
+FIX_MODES = {"safe": ("safe",), "unsafe-only": ("unsafe",), "all": ("safe", "unsafe")}
+
 
 def _audit_options(args: argparse.Namespace) -> dict:
     return {
@@ -456,9 +459,9 @@ def _run_audit(args: argparse.Namespace) -> None:
             print(
                 f"✓ Offline engine: {engine}", file=sys.stdout if text else sys.stderr
             )
-        if not text:
+        if not text or args.diff:
             output, errors, code = audit_report(
-                selected, args.format, engine, **_audit_options(args)
+                selected, args.format, engine, diff=args.diff, **_audit_options(args)
             )
             sys.stderr.write(errors)
             print(output, end="")
@@ -472,6 +475,10 @@ def _run_audit(args: argparse.Namespace) -> None:
 
     counts = {severity: 0 for severity in SEVERITIES}
     fixed = 0
+    fixable = {"safe": 0, "unsafe": 0}
+    # What --fix made, and what a finding's [*] says it would make.
+    applied = FIX_MODES[args.fix] if args.fix else ()
+    marked = FIX_MODES[args.fix or "safe"]
     failed = False
     for jenkinsfile in args.jenkinsfile:
         reason = _skip_reason(jenkinsfile, args)
@@ -488,17 +495,31 @@ def _run_audit(args: argparse.Namespace) -> None:
             print(line, file=sys.stderr)
             failed = True
         for finding in result.findings:
-            print(finding.render(jenkinsfile))
+            print(finding.render(jenkinsfile, finding.fix in marked))
             counts[finding.severity] = counts.get(finding.severity, 0) + 1
+            if finding.fix:
+                fixable[finding.fix] += 1
         if args.verbose and not result.findings and not result.errors:
             print(f"✓ {jenkinsfile}: No findings")
 
     total = sum(counts.values())
-    if total:
+    if args.fix:
+        found = fixed + total
+        print(
+            f"Found {found} finding{'' if found == 1 else 's'} "
+            f"({fixed} fixed, {total} remaining)."
+        )
+    elif total:
         parts = ", ".join(f"{counts[s]} {s}" for s in SEVERITIES if counts.get(s))
         print(f"{total} finding{'' if total == 1 else 's'} ({parts})")
-    if args.fix:
-        print(f"{fixed} fixed, {total} remaining")
+    # Like ruff: say what the fixes not made would fix.
+    safe = fixable["safe"] if "safe" not in applied else 0
+    unsafe = fixable["unsafe"] if "unsafe" not in applied else 0
+    if safe:
+        print(f"[*] {safe} fixable with --fix.")
+    if unsafe:
+        more = " more" if safe else ""
+        print(f"{unsafe}{more} fixable with --fix=all (unsafe, review the changes).")
     sys.exit(1 if total or failed else 0)
 
 
@@ -622,11 +643,19 @@ def main():
     )
     audit.add_argument(
         "--fix",
+        action="store_const",
+        const="safe",
+        metavar="MODE",
+        help="Rewrite the files with the fixes that --fix=MODE allows, then report "
+        "the findings that remain: safe (the default), unsafe-only or all. An "
+        "unsafe fix can change what a pipeline does, so review it. Today's fixes, "
+        "for script-injection and secret-interpolation, are unsafe.",
+    )
+    audit.add_argument(
+        "--diff",
         action="store_true",
-        help="Rewrite the files to fix what is safe to fix, then report the "
-        "findings that remain: script-injection and secret-interpolation in sh, "
-        "powershell and pwsh scripts whose every value the shell can read from "
-        "its environment.",
+        help="Print what --fix would change as a diff, and change nothing. Exits "
+        "with 1 when there is a change.",
     )
     audit.add_argument(
         "--format",
@@ -671,15 +700,42 @@ def main():
         "which checks all files in one run of the engine.",
     )
 
-    args = parser.parse_args()
+    # --fix takes its mode only as --fix=MODE, like zizmor's, so that
+    # `--fix Jenkinsfile` does not read the file name as a mode.
+    argv, modes = [], []
+    for i, arg in enumerate(sys.argv[1:], 1):
+        if arg == "--":
+            argv += sys.argv[i:]
+            break
+        if arg.startswith("--fix="):
+            modes.append(arg[len("--fix=") :])
+            arg = "--fix"
+        argv.append(arg)
+    args = parser.parse_args(argv)
+    if modes:
+        if modes[-1] not in FIX_MODES:
+            choices = ", ".join(FIX_MODES)
+            parser.error(
+                f"argument --fix: invalid choice: '{modes[-1]}' (choose from {choices})"
+            )
+        args.fix = modes[-1]
 
     if not args.audit:
-        for option in ("persona", "min_severity", "min_confidence", "ignore", "fix"):
+        for option in (
+            "persona",
+            "min_severity",
+            "min_confidence",
+            "ignore",
+            "fix",
+            "diff",
+        ):
             if getattr(args, option):
                 flag = "--" + option.replace("_", "-")
                 parser.error(f"argument {flag}: requires --audit")
         if args.format != "text":
             parser.error("argument --format: requires --audit")
+    if args.diff and args.format != "text":
+        parser.error("argument --diff: not allowed with argument --format")
     if args.offline or args.audit:
         offline_flag = "--audit" if args.audit else "--offline"
         for option in ("jenkins_url", "username", "token"):

@@ -101,10 +101,12 @@ pub fn sarif(files: &[(String, Result<Vec<Finding>, Diagnostic>)]) -> String {
                         extra.push_str(&format!(
                             ",\"fixes\":[{{\"description\":{{\"text\":\"Let the shell read the value from the environment\"}},\
                              \"artifactChanges\":[{{\"artifactLocation\":{{\"uri\":\"{}\"}},\"replacements\":[{{\
-                             \"deletedRegion\":{},\"insertedContent\":{{\"text\":\"{}\"}}}}]}}]}}]",
+                             \"deletedRegion\":{},\"insertedContent\":{{\"text\":\"{}\"}}}}]}}],\
+                             \"properties\":{{\"disposition\":\"{}\"}}}}]",
                             json_escape(&uri(path)),
                             region(fix.span.start, fix.span.end),
-                            json_escape(&fix.text)
+                            json_escape(&fix.text),
+                            fix.disposition.name()
                         ));
                     }
                     results.push(result(

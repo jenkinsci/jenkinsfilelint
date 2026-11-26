@@ -11,7 +11,7 @@ mod validate;
 use std::ffi::OsString;
 use std::process::ExitCode;
 
-use audit::fix::Fix;
+use audit::fix::{Fix, Mode};
 use audit::{Confidence, Filter, Finding, Persona};
 use diag::{Diagnostic, Report, Severity};
 
@@ -44,34 +44,73 @@ pub fn audit_source(src: &str, filter: &Filter) -> Result<Vec<Finding>, Diagnost
     Ok(audit::audit(src, &stmts, &comments, &annotations, filter))
 }
 
-/// A file's findings and the fixes for them. Each finding keeps the fix that
-/// `--fix` makes for it, if any.
+/// A file's findings and its fixes.
 #[derive(Debug)]
 pub struct Fixed {
+    /// The findings, each with its fix if it has one that works.
     pub findings: Vec<Finding>,
-    /// The file's text with every fix made.
+    /// The file's text with the fixes of the mode made.
     pub src: String,
-    /// The findings left in that text.
+    /// The findings those fixes fix, where they were.
+    pub fixed: Vec<Finding>,
+    /// The findings left in the fixed text, with their fixes.
     pub remaining: Vec<Finding>,
 }
 
-/// Audit one file and work out its fixes. A fix is kept only if the fixed
-/// file still parses and has the same findings as before, less those in
-/// the scripts it rewrites; otherwise it is dropped and its findings stay.
-pub fn fix_source(src: &str, filter: &Filter) -> Result<Fixed, Diagnostic> {
+/// Audit one file and make the fixes that `mode` allows, in memory.
+pub fn fix_source(src: &str, filter: &Filter, mode: audit::fix::Mode) -> Result<Fixed, Diagnostic> {
     let mut findings = audit_source(src, filter)?;
-    let mut fixes: Vec<Fix> = Vec::new();
-    for fix in findings.iter().filter_map(|f| f.fix.clone()) {
-        if !fixes.contains(&fix) {
-            fixes.push(fix);
-        }
+    let working = working_fixes(src, &findings)?;
+    keep_fixes(&mut findings, &working);
+    let mut chosen: Vec<Fix> = working.iter().filter(|f| mode.applies(f.disposition)).cloned().collect();
+    if chosen.len() < working.len() {
+        chosen = working_fixes_of(src, chosen)?;
     }
-    if fixes.is_empty() {
+    if chosen.is_empty() {
         return Ok(Fixed {
             remaining: findings.clone(),
             findings,
             src: src.to_string(),
+            fixed: Vec::new(),
         });
+    }
+    let refs: Vec<&Fix> = chosen.iter().collect();
+    let fixed_src = audit::fix::apply(src, &refs);
+    let mut remaining = audit_source(&fixed_src, filter)?;
+    let left = working_fixes(&fixed_src, &remaining)?;
+    keep_fixes(&mut remaining, &left);
+    let fixed = findings
+        .iter()
+        .filter(|f| f.fix.as_ref().is_some_and(|x| chosen.iter().any(|c| c.span == x.span)))
+        .cloned()
+        .collect();
+    Ok(Fixed {
+        findings,
+        src: fixed_src,
+        fixed,
+        remaining,
+    })
+}
+
+/// The fixes of these findings that work, one per script. A script that
+/// two findings share gets the more cautious of their dispositions.
+fn working_fixes(src: &str, findings: &[Finding]) -> Result<Vec<Fix>, Diagnostic> {
+    let mut fixes: Vec<Fix> = Vec::new();
+    for fix in findings.iter().filter_map(|f| f.fix.as_ref()) {
+        match fixes.iter_mut().find(|f| f.span == fix.span) {
+            Some(f) => f.disposition = f.disposition.max(fix.disposition),
+            None => fixes.push(fix.clone()),
+        }
+    }
+    working_fixes_of(src, fixes)
+}
+
+/// The fixes that work: the fixed file still parses and has the same
+/// findings as before, less those in the scripts they rewrite. When they do
+/// not all work together, those that work alone, or none.
+fn working_fixes_of(src: &str, fixes: Vec<Fix>) -> Result<Vec<Fix>, Diagnostic> {
+    if fixes.is_empty() {
+        return Ok(fixes);
     }
     // Every finding, hidden or not, so that a fix cannot make a new one.
     let everything = Filter {
@@ -92,33 +131,30 @@ pub fn fix_source(src: &str, filter: &Filter) -> Result<Fixed, Diagnostic> {
         got.sort();
         expected == got
     };
-    let mut chosen: Vec<&Fix> = fixes.iter().collect();
-    if !works(&chosen) {
-        chosen.retain(|f| works(&[*f]));
-        if !works(&chosen) {
-            chosen.clear();
-        }
+    let all: Vec<&Fix> = fixes.iter().collect();
+    if works(&all) {
+        return Ok(fixes);
     }
-    for f in &mut findings {
-        if f.fix.as_ref().is_some_and(|fix| !chosen.contains(&fix)) {
-            f.fix = None;
-        }
-    }
-    let fixed = audit::fix::apply(src, &chosen);
-    let mut remaining = audit_source(&fixed, filter)?;
-    // What is left after --fix cannot be fixed by running it again.
-    remaining.iter_mut().for_each(|f| f.fix = None);
-    Ok(Fixed {
-        findings,
-        src: fixed,
-        remaining,
+    let alone: Vec<&Fix> = all.into_iter().filter(|f| works(&[*f])).collect();
+    Ok(if works(&alone) {
+        alone.into_iter().cloned().collect()
+    } else {
+        Vec::new()
     })
+}
+
+/// Keep on each finding only the fix that works, as `working` has it.
+fn keep_fixes(findings: &mut [Finding], working: &[Fix]) {
+    for f in findings {
+        f.fix = f.fix.as_ref().and_then(|x| working.iter().find(|w| w.span == x.span).cloned());
+    }
 }
 
 const USAGE: &str = "Usage: jenkinsfilelint-engine [--format text|json] [--] <Jenkinsfile>...
        jenkinsfilelint-engine --audit [--format text|json|sarif] [--persona P]
                               [--min-severity S] [--min-confidence C]
-                              [--ignore RULE[,RULE...]] [--fix] [--] <file>...
+                              [--ignore RULE[,RULE...]] [--fix[=MODE]] [--diff]
+                              [--] <file>...
 
 Checks Groovy syntax and Declarative Pipeline structure without a Jenkins
 controller. Exits with 1 when any file has an error.
@@ -132,15 +168,18 @@ Pipeline), and \"diagnostics\" with \"line\", \"column\", \"severity\" and
 pedantic or auditor chooses how much to show; --min-severity and
 --min-confidence (low, medium or high) leave out the rest. --ignore turns
 off rules in every file; it takes a comma-separated list and can be given
-more than once. --fix rewrites the files to make the safe fixes, then
-reports what is left; each fixed finding is printed as \"fixed\" in text
-and listed in \"fixed\" in JSON. With no files, it
+more than once. --fix[=MODE] rewrites the files with the fixes
+that MODE allows, safe (the default), unsafe-only or all, then reports what
+is left; each fixed finding is printed as \"fixed\" in text and listed in
+\"fixed\" in JSON. A finding that the mode fixes starts with [*]. --diff
+prints what the fixes would change and writes nothing; it exits with 1 when
+there is a change. With no files, it
 prints an empty report. It exits with 1
 when it shows a finding or a file does not parse, except with --format
 sarif, which exits with 0 so that the report can be uploaded. With --format
 json, each file has \"findings\" with \"rule\", \"severity\", \"confidence\",
 \"persona\", \"message\", \"line\", \"column\", \"end_line\", \"end_column\",
-\"help\" and \"fixable\", and \"diagnostics\" with the syntax error, if any.";
+\"help\" and \"fix\", null or \"disposition\" (safe or unsafe) and \"edits\", and \"diagnostics\" with the syntax error, if any.";
 
 pub(crate) fn json_escape(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
@@ -206,8 +245,10 @@ struct Options {
     format: Format,
     /// The filter for --audit, or None to check syntax and structure.
     audit: Option<Filter>,
-    /// --fix: rewrite the files.
-    fix: bool,
+    /// --fix[=MODE]: rewrite the files with these fixes.
+    fix: Option<Mode>,
+    /// --diff: print what the fixes would change instead.
+    diff: bool,
 }
 
 /// What the command line asks for: a run, or an exit after --help,
@@ -226,7 +267,8 @@ fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Options, ExitC
     let mut files = Vec::new();
     let mut format = Format::Text;
     let mut audit = false;
-    let mut fix = false;
+    let mut fix = None;
+    let mut diff = false;
     let mut filter = Filter::default();
     let mut audit_option = None;
     // args_os: a file name that is not UTF-8 must not panic.
@@ -252,8 +294,20 @@ fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Options, ExitC
             }
             "--audit" => audit = true,
             "--fix" => {
-                fix = true;
+                fix = Some(Mode::Safe);
                 audit_option = Some("--fix");
+            }
+            s if s.starts_with("--fix=") => {
+                let Some(mode) = Mode::parse(&s["--fix=".len()..]) else {
+                    eprintln!("--fix must be safe, unsafe-only or all");
+                    return Err(ExitCode::from(2));
+                };
+                fix = Some(mode);
+                audit_option = Some("--fix");
+            }
+            "--diff" => {
+                diff = true;
+                audit_option = Some("--diff");
             }
             "--persona" => {
                 filter.persona = value(&mut args, "--persona", "regular, pedantic or auditor", Persona::parse)?;
@@ -295,6 +349,10 @@ fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Options, ExitC
             return Err(ExitCode::from(2));
         }
     }
+    if diff && format != Format::Text {
+        eprintln!("--diff prints a diff, not --format json or sarif");
+        return Err(ExitCode::from(2));
+    }
     // An audit of no files is an empty report, which SARIF output needs.
     if files.is_empty() && !audit {
         eprintln!("{USAGE}");
@@ -305,6 +363,7 @@ fn parse_args(args: impl IntoIterator<Item = OsString>) -> Result<Options, ExitC
         format,
         audit: audit.then_some(filter),
         fix,
+        diff,
     })
 }
 
@@ -314,7 +373,7 @@ fn run() -> ExitCode {
         Err(code) => return code,
     };
     if let Some(filter) = &options.audit {
-        return run_audit(&options.files, options.format, filter, options.fix);
+        return run_audit(&options, filter);
     }
     let json = options.format == Format::Json;
     let mut failed = false;
@@ -361,14 +420,18 @@ fn json_read_error(path: &str, e: &std::io::Error) -> String {
     )
 }
 
-/// --audit: findings in every file, as text, JSON or SARIF. With `fix`,
-/// the files are rewritten and the findings left are reported.
-fn run_audit(files: &[OsString], format: Format, filter: &Filter, fix: bool) -> ExitCode {
+/// --audit: findings in every file, as text, JSON or SARIF. With --fix,
+/// the files are rewritten and the findings left are reported; with
+/// --diff, the changes are printed instead.
+fn run_audit(options: &Options, filter: &Filter) -> ExitCode {
+    let format = options.format;
+    let mode = options.fix.unwrap_or(Mode::Safe);
     let mut unreadable = false;
     let mut flagged = false;
+    let mut changed = false;
     let mut items = Vec::new();
     let mut audited = Vec::new();
-    for os_path in files {
+    for os_path in &options.files {
         let path = os_path.to_string_lossy().into_owned();
         let src = match std::fs::read_to_string(os_path) {
             Ok(s) => s,
@@ -382,9 +445,24 @@ fn run_audit(files: &[OsString], format: Format, filter: &Filter, fix: bool) -> 
                 continue;
             }
         };
-        let (fixed, outcome) = match fix_source(&src, filter) {
-            Ok(f) if fix && f.src != src => match std::fs::write(os_path, &f.src) {
-                Ok(()) => (f.findings.into_iter().filter(|f| f.fix.is_some()).collect(), Ok(f.remaining)),
+        let result = fix_source(&src, filter, mode);
+        if options.diff {
+            match &result {
+                Ok(f) => {
+                    let diff = audit::fix::diff(&path, &src, &f.src);
+                    changed |= !diff.is_empty();
+                    print!("{diff}");
+                }
+                Err(d) => {
+                    eprintln!("{path}:{}:{}: error: {}", d.pos.line, d.pos.col, d.message);
+                    unreadable = true;
+                }
+            }
+            continue;
+        }
+        let (fixed, outcome) = match result {
+            Ok(f) if options.fix.is_some() && f.src != src => match std::fs::write(os_path, &f.src) {
+                Ok(()) => (f.fixed, Ok(f.remaining)),
                 Err(e) => {
                     eprintln!("{path}: {e}");
                     unreadable = true;
@@ -396,7 +474,7 @@ fn run_audit(files: &[OsString], format: Format, filter: &Filter, fix: bool) -> 
         };
         flagged |= !matches!(&outcome, Ok(f) if f.is_empty());
         match format {
-            Format::Text => print!("{}{}", fixed_text(&path, &fixed), audit_text(&path, &outcome)),
+            Format::Text => print!("{}{}", fixed_text(&path, &fixed), audit_text(&path, &outcome, mode)),
             Format::Json => items.push(audit_json(&path, &outcome, &fixed)),
             Format::Sarif => audited.push((path, outcome)),
         }
@@ -406,7 +484,12 @@ fn run_audit(files: &[OsString], format: Format, filter: &Filter, fix: bool) -> 
         Format::Json => println!("[{}]", items.join(",")),
         Format::Sarif => println!("{}", audit::sarif::sarif(&audited)),
     }
-    if unreadable || (flagged && format != Format::Sarif) {
+    let failed = if options.diff {
+        changed
+    } else {
+        flagged && format != Format::Sarif
+    };
+    if unreadable || failed {
         ExitCode::FAILURE
     } else {
         ExitCode::SUCCESS
@@ -426,7 +509,8 @@ fn fixed_text(path: &str, fixed: &[Finding]) -> String {
         .collect()
 }
 
-fn audit_text(path: &str, outcome: &Result<Vec<Finding>, Diagnostic>) -> String {
+/// The findings, one line each. Those that `mode` fixes start with `[*]`.
+fn audit_text(path: &str, outcome: &Result<Vec<Finding>, Diagnostic>, mode: Mode) -> String {
     match outcome {
         Ok(findings) => findings
             .iter()
@@ -436,9 +520,13 @@ fn audit_text(path: &str, outcome: &Result<Vec<Finding>, Diagnostic>) -> String 
                     .find(|r| r.id == f.rule)
                     .map(|r| r.help_url())
                     .unwrap_or_default();
-                let fixable = if f.fix.is_some() { " (fixable with --fix)" } else { "" };
+                let fixable = if f.fix.as_ref().is_some_and(|x| mode.applies(x.disposition)) {
+                    "[*] "
+                } else {
+                    ""
+                };
                 format!(
-                    "{path}:{}:{}: {}: {}: {}{fixable}\n  help: {rule}\n",
+                    "{path}:{}:{}: {}: {}: {fixable}{}\n  help: {rule}\n",
                     f.span.start.line, f.span.start.col, f.severity, f.rule, f.message
                 )
             })
@@ -476,7 +564,7 @@ fn finding_json(f: &Finding) -> String {
         .unwrap_or_default();
     format!(
         "{{\"rule\":\"{}\",\"severity\":\"{}\",\"confidence\":\"{}\",\"persona\":\"{}\",\"message\":\"{}\",\
-         \"line\":{},\"column\":{},\"end_line\":{},\"end_column\":{},\"help\":\"{}\",\"fixable\":{}}}",
+         \"line\":{},\"column\":{},\"end_line\":{},\"end_column\":{},\"help\":\"{}\",\"fix\":{}}}",
         f.rule,
         f.severity,
         f.confidence,
@@ -487,7 +575,20 @@ fn finding_json(f: &Finding) -> String {
         f.span.end.line,
         f.span.end.col,
         help,
-        f.fix.is_some()
+        f.fix.as_ref().map_or("null".to_string(), fix_json)
+    )
+}
+
+/// A fix as JSON: how safe it is, and the text that replaces each range.
+fn fix_json(fix: &Fix) -> String {
+    format!(
+        "{{\"disposition\":\"{}\",\"edits\":[{{\"line\":{},\"column\":{},\"end_line\":{},\"end_column\":{},\"text\":\"{}\"}}]}}",
+        fix.disposition.name(),
+        fix.span.start.line,
+        fix.span.start.col,
+        fix.span.end.line,
+        fix.span.end.col,
+        json_escape(&fix.text)
     )
 }
 
@@ -742,7 +843,7 @@ mod tests {
                 cases += 1;
                 let src = std::fs::read_to_string(&path).unwrap();
                 let expected = std::fs::read_to_string(dir.join(format!("{stem}.fixed.groovy"))).unwrap_or_else(|_| src.clone());
-                let fixed = super::fix_source(&src, &filter).unwrap();
+                let fixed = super::fix_source(&src, &filter, super::Mode::All).unwrap();
                 let shown = fixed.findings.iter().any(|f| f.rule == rule);
                 if !shown && !stem.starts_with("s15") {
                     failures.push(format!("{rule}/{stem}: no {rule} finding to fix"));
@@ -754,7 +855,7 @@ mod tests {
                 if fixed.src != src && fixed.remaining.iter().any(|f| f.rule == rule) {
                     failures.push(format!("{rule}/{stem}: a {rule} finding is left"));
                 }
-                let again = super::fix_source(&fixed.src, &filter).unwrap();
+                let again = super::fix_source(&fixed.src, &filter, super::Mode::All).unwrap();
                 if again.src != fixed.src || again.findings.iter().any(|f| f.fix.is_some()) {
                     failures.push(format!("{rule}/{stem}: fixing it again changes it"));
                 }
@@ -769,28 +870,42 @@ mod tests {
 
     #[test]
     fn fixes_are_checked_before_they_are_kept() {
-        // A fix is reported only when the fixed file audits the same, less
-        // what it fixes; the text output says which findings it fixes.
+        use super::Mode;
+        // The second script cannot be fixed: `.trim()` is not an
+        // environment variable.
         let src =
             "withCredentials([string(credentialsId: 'c', variable: 'T')]) {\n    sh \"deploy ${T}\"\n    sh \"echo ${T.trim()}\"\n}\n";
-        let fixed = super::fix_source(src, &super::Filter::default()).unwrap();
-        assert_eq!(fixed.findings.iter().filter(|f| f.fix.is_some()).count(), 1);
-        assert!(fixed.src.contains("sh 'deploy \"$T\"'"), "{}", fixed.src);
-        assert_eq!(fixed.remaining.len(), 1);
-        let outcome = Ok(fixed.findings.clone());
-        let text = super::audit_text("J", &outcome);
-        assert!(text.contains("(fixable with --fix)\n"), "{text}");
-        let json = super::audit_json("J", &Ok(fixed.remaining), &fixed.findings[..1]);
-        assert!(json.contains("\"fixable\":false"), "{json}");
-        assert!(json.contains("\"fixed\":[{\"rule\":\"secret-interpolation\""), "{json}");
-        assert!(super::fixed_text("J", &fixed.findings[..1]).starts_with("J:2:16: fixed: secret-interpolation: T is a secret"));
+        let filter = super::Filter::default();
+        let all = super::fix_source(src, &filter, Mode::All).unwrap();
+        assert_eq!(all.findings.iter().filter(|f| f.fix.is_some()).count(), 1);
+        assert!(all.src.contains("sh 'deploy \"$T\"'"), "{}", all.src);
+        assert_eq!((all.fixed.len(), all.remaining.len()), (1, 1));
+        assert!(all.remaining[0].fix.is_none());
+        // Its fix is unsafe, so --fix alone makes none.
+        let safe = super::fix_source(src, &filter, Mode::Safe).unwrap();
+        assert_eq!((safe.src.as_str(), safe.fixed.len()), (src, 0));
+        assert!(safe.remaining[0].fix.is_some());
+        let outcome = Ok(all.findings.clone());
+        let marked = super::audit_text("J", &outcome, Mode::All);
+        assert!(
+            marked.starts_with("J:2:16: high: secret-interpolation: [*] T is a secret"),
+            "{marked}"
+        );
+        assert!(!super::audit_text("J", &outcome, Mode::Safe).contains("[*]"));
+        let json = super::audit_json("J", &Ok(all.remaining), &all.fixed);
+        assert!(json.contains("\"fix\":null"), "{json}");
+        assert!(
+            json.contains("\"fixed\":[{\"rule\":\"secret-interpolation\"") && json.contains("\"fix\":{\"disposition\":\"unsafe\",\"edits\":[{\"line\":2,\"column\":8,\"end_line\":2,\"end_column\":21,\"text\":\"'deploy \\\"$T\\\"'\"}]}"),
+            "{json}"
+        );
+        assert!(super::fixed_text("J", &all.fixed).starts_with("J:2:16: fixed: secret-interpolation: T is a secret"));
         let sarif = crate::audit::sarif::sarif(&[("J".to_string(), outcome)]);
         assert!(
-            sarif.contains("\"deletedRegion\":{\"startLine\":2,\"startColumn\":8,\"endLine\":2,\"endColumn\":21},\"insertedContent\":{\"text\":\"'deploy \\\"$T\\\"'\"}"),
+            sarif.contains("\"deletedRegion\":{\"startLine\":2,\"startColumn\":8,\"endLine\":2,\"endColumn\":21},\"insertedContent\":{\"text\":\"'deploy \\\"$T\\\"'\"}}]}],\"properties\":{\"disposition\":\"unsafe\"}}]"),
             "{sarif}"
         );
         // Nothing to fix: the file and its findings as they are.
-        let none = super::fix_source("sh 'make'\n", &super::Filter::default()).unwrap();
+        let none = super::fix_source("sh 'make'\n", &filter, Mode::All).unwrap();
         assert_eq!((none.src.as_str(), none.findings.len()), ("sh 'make'\n", 0));
     }
 
@@ -824,7 +939,12 @@ mod tests {
             )
         );
         assert!(parse(&["J"]).unwrap().audit.is_none());
-        assert!(parse(&["--audit", "--fix", "J"]).unwrap().fix);
+        let fix = |args: &[&str]| parse(args).unwrap().fix;
+        assert_eq!(fix(&["--audit", "J"]), None);
+        assert_eq!(fix(&["--audit", "--fix", "J"]), Some(super::Mode::Safe));
+        assert_eq!(fix(&["--audit", "--fix=unsafe-only", "J"]), Some(super::Mode::UnsafeOnly));
+        assert_eq!(fix(&["--audit", "--fix=all", "J"]), Some(super::Mode::All));
+        assert!(parse(&["--audit", "--fix=all", "--diff", "J"]).unwrap().diff);
         for bad in [
             &["--persona", "auditor", "J"][..],
             &["--min-severity", "high", "J"],
@@ -837,6 +957,9 @@ mod tests {
             &["--audit", "--ignore", "script-injection,", "J"],
             &["--audit", "--ignore"],
             &["--fix", "J"],
+            &["--diff", "J"],
+            &["--audit", "--fix=some", "J"],
+            &["--audit", "--diff", "--format", "json", "J"],
             &["--format", "xml", "J"],
             &[],
         ] {
@@ -864,7 +987,7 @@ mod tests {
     fn audit_output() {
         let src = "withCredentials([string(credentialsId: 'c', variable: 'TOKEN')]) {\n    sh \"deploy ${TOKEN}\"\n}\n";
         let outcome = super::audit_source(src, &super::Filter::default());
-        let text = super::audit_text("J", &outcome);
+        let text = super::audit_text("J", &outcome, super::Mode::Safe);
         assert!(text.starts_with("J:2:16: high: secret-interpolation: TOKEN is a secret"), "{text}");
         assert!(text.ends_with("\n  help: https://jenkinsci.github.io/jenkinsfilelint/audit/secret-interpolation/\n"));
         let json = super::audit_json("J", &outcome, &[]);
@@ -873,7 +996,7 @@ mod tests {
         assert!(sarif.contains("\"uri\":\"dir/J\""), "{sarif}");
         assert!(sarif.contains("\"region\":{\"startLine\":2,\"startColumn\":16,\"endLine\":2,\"endColumn\":24}"));
         let broken = super::audit_source("sh \"${a +}\"", &super::Filter::default());
-        assert!(super::audit_text("J", &broken).starts_with("J:1:10: error: "));
+        assert!(super::audit_text("J", &broken, super::Mode::Safe).starts_with("J:1:10: error: "));
         assert!(super::audit_json("J", &broken, &[]).contains("\"findings\":[],\"diagnostics\":[{\"line\":1"));
         let sarif = crate::audit::sarif::sarif(&[("J".to_string(), broken)]);
         assert!(sarif.contains("\"ruleId\":\"syntax-error\""), "{sarif}");

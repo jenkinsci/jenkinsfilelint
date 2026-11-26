@@ -49,15 +49,16 @@ class Finding:
     line: int
     column: int
     help: str
-    # ``--fix`` would rewrite the script it is in.
-    fixable: bool = False
+    # The disposition of its fix, ``safe`` or ``unsafe``, or None.
+    fix: Optional[str] = None
 
-    def render(self, path: str) -> str:
-        """``file:line:col: severity: rule: message``, and where to read more."""
-        fixable = " (fixable with --fix)" if self.fixable else ""
+    def render(self, path: str, marked: bool = False) -> str:
+        """``file:line:col: severity: rule: message``, and where to read more.
+        A *marked* finding, which the fix mode fixes, starts with ``[*]``."""
+        mark = "[*] " if marked else ""
         return (
             f"{path}:{self.line}:{self.column}: {self.severity}: {self.rule}: "
-            f"{self.message}{fixable}\n  help: {self.help}"
+            f"{mark}{self.message}\n  help: {self.help}"
         )
 
     def render_fixed(self, path: str) -> str:
@@ -174,7 +175,7 @@ def _audit_args(
     min_severity: str,
     min_confidence: str,
     ignore: Optional[List[str]] = None,
-    fix: bool = False,
+    fix: Optional[str] = None,
 ) -> List[str]:
     args = [
         "--audit",
@@ -188,7 +189,7 @@ def _audit_args(
     for rules in ignore or []:
         args += ["--ignore", rules]
     if fix:
-        args.append("--fix")
+        args.append(f"--fix={fix}")
     return args
 
 
@@ -199,10 +200,11 @@ def audit_files(
     min_severity: str = "low",
     min_confidence: str = "low",
     ignore: Optional[List[str]] = None,
-    fix: bool = False,
+    fix: Optional[str] = None,
 ) -> Dict[str, AuditResult]:
     """Run the security checks on files with one run of the engine. With
-    *fix*, the engine rewrites the files to fix what it safely can first.
+    *fix*, ``safe``, ``unsafe-only`` or ``all``, the engine first rewrites
+    the files with the fixes of that disposition.
 
     Raises:
         OfflineEngineError: if the engine is missing or fails.
@@ -224,18 +226,22 @@ def audit_report(
     min_severity: str = "low",
     min_confidence: str = "low",
     ignore: Optional[List[str]] = None,
-    fix: bool = False,
+    fix: Optional[str] = None,
+    diff: bool = False,
 ) -> Tuple[str, str, int]:
     """Run the security checks and return the engine's report as is, in
     ``json`` or ``sarif``: its output, its error output and its exit code.
+    With *diff*, the report is the diff of what the fixes would change,
+    which is empty when there is none.
 
     Raises:
         OfflineEngineError: if the engine is missing or fails.
     """
     engine = engine or find_engine()
     options = _audit_args(persona, min_severity, min_confidence, ignore, fix)
-    proc = _run(engine, [*options, "--format", fmt, "--", *paths])
-    if proc.returncode not in (0, 1) or not proc.stdout.strip():
+    extra = ["--diff"] if diff else ["--format", fmt]
+    proc = _run(engine, [*options, *extra, "--", *paths])
+    if proc.returncode not in (0, 1) or not (diff or proc.stdout.strip()):
         detail = proc.stderr.strip() or f"exit code {proc.returncode}"
         raise OfflineEngineError(f"Unexpected output from {engine}: {detail}")
     return proc.stdout, proc.stderr, proc.returncode
@@ -285,7 +291,7 @@ def _audit_result(path: str, report: dict) -> AuditResult:
             line=f["line"],
             column=f["column"],
             help=f["help"],
-            fixable=f.get("fixable", False),
+            fix=(f.get("fix") or {}).get("disposition"),
         )
 
     errors = [
