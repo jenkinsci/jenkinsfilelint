@@ -242,10 +242,7 @@ const DIRECTIVES: [&str; 2] = ["jenkins-lint:", "jenkinsfilelint:"];
 /// The rules that `jenkins-lint: ignore[a, b] why` turns off. The
 /// directive may follow other text in the comment.
 fn ignored_rules(comment: &str) -> Option<Vec<&str>> {
-    let (at, prefix) = DIRECTIVES
-        .iter()
-        .filter_map(|p| comment.find(p).map(|at| (at, p)))
-        .min()?;
+    let (at, prefix) = DIRECTIVES.iter().filter_map(|p| comment.find(p).map(|at| (at, p))).min()?;
     let rest = &comment[at + prefix.len()..];
     let list = rest.trim_start().strip_prefix("ignore[")?;
     let list = &list[..list.find(']')?];
