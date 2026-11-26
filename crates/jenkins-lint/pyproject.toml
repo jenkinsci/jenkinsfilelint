@@ -1,0 +1,33 @@
+# The jenkins-lint package on PyPI: the jenkins-lint binary, built from
+# this crate as one wheel per platform with maturin, like ruff. Its users
+# never need a Rust toolchain. The pyproject.toml at the root of the
+# repository is only for pre-commit, which installs from source.
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "jenkins-lint"
+# Taken from Cargo.toml. The root pyproject.toml pins this version exactly.
+dynamic = ["version"]
+authors = [
+    {name = "Xianpeng Shen", email = "xianpeng.shen@gmail.com"},
+]
+description = "Check Jenkinsfiles offline: Groovy syntax, Declarative Pipeline structure and security, without a Jenkins controller"
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.8"
+keywords = ["jenkins", "jenkinsfile", "lint", "pipeline", "groovy", "pre-commit"]
+classifiers = [
+    "Programming Language :: Rust",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Software Development :: Quality Assurance",
+]
+
+[project.urls]
+Homepage = "https://github.com/jenkinsci/jenkins-lint"
+Documentation = "https://jenkinsci.github.io/jenkins-lint/"
+
+[tool.maturin]
+bindings = "bin"

@@ -7,10 +7,10 @@ ValidatorTest.java. This script runs the offline linter over all of them
 and reports how often it agrees with the official validator.
 
 Usage:
-    python3 crates/jenkinsfilelint/scripts/corpus_check.py [--plugin-dir DIR] [--binary PATH] [-v]
+    python3 crates/jenkins-lint/scripts/corpus_check.py [--plugin-dir DIR] [--binary PATH] [-v]
 
 Without --plugin-dir the plugin is cloned (sparse, pinned commit) into
-crates/jenkinsfilelint/target/corpus.
+crates/jenkins-lint/target/corpus.
 """
 
 import argparse
@@ -122,9 +122,7 @@ def main() -> int:
     here = Path(__file__).resolve().parent.parent
     ap = argparse.ArgumentParser()
     ap.add_argument("--plugin-dir", type=Path)
-    ap.add_argument(
-        "--binary", default=str(here / "target/release/jenkinsfilelint-engine")
-    )
+    ap.add_argument("--binary", default=str(here / "target/release/jenkins-lint"))
     ap.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args()
 

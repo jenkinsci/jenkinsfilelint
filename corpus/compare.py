@@ -38,15 +38,15 @@ import shutil
 import subprocess
 import sys
 import threading
+import urllib.error
+import urllib.parse
+import urllib.request
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
-sys.path.insert(0, str(REPO))
-
-from jenkins_lint.linter import JenkinsfileLinter  # noqa: E402
 
 from fetch import read_manifest  # noqa: E402
 
@@ -97,8 +97,8 @@ def default_engine():
     )
     if env:
         return env
-    built = REPO / "crates/jenkinsfilelint/target/release/jenkinsfilelint-engine"
-    return str(built) if built.exists() else "jenkinsfilelint-engine"
+    built = REPO / "crates/jenkins-lint/target/release/jenkins-lint"
+    return str(built) if built.exists() else "jenkins-lint"
 
 
 def normalize(message):
@@ -147,6 +147,40 @@ def offline(engine, paths):
     return out
 
 
+def validate(url, path):
+    """Jenkins's verdict on one file: (ok, message), as jenkins-lint --remote
+    reads the validate endpoint. A file without a pipeline block is ok."""
+    try:
+        source = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as e:
+        return False, f"Error reading file: {e}"
+    data = urllib.parse.urlencode({"jenkinsfile": source}).encode()
+    request = urllib.request.Request(
+        f"{url.rstrip('/')}/pipeline-model-converter/validate", data=data
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            text = response.read().decode("utf-8", errors="replace").strip()
+    except (OSError, urllib.error.URLError) as e:
+        return False, f"Error connecting to Jenkins: {e}"
+    if text.startswith("Jenkinsfile content '") and text.endswith(
+        "' did not contain the 'pipeline' step"
+    ):
+        return True, "not a Declarative Pipeline"
+    if text.startswith("Jenkinsfile successfully validated"):
+        return True, text
+    if text.startswith(
+        (
+            "Errors encountered validating Jenkinsfile:",
+            "No Jenkinsfile specified",
+            "WorkflowScript:",
+        )
+    ):
+        return False, text
+    first = text.splitlines()[0][:200] if text else "<empty response>"
+    return False, f"Unexpected response from Jenkins validate endpoint: {first}"
+
+
 def ask_jenkins(url, paths, cache, jobs):
     """blob -> (ok, messages, first line), from the cache or from Jenkins."""
     answers = {}
@@ -155,13 +189,10 @@ def ask_jenkins(url, paths, cache, jobs):
             a = json.loads(line)
             answers[a["blob"]] = (a["ok"], a["messages"], a["first"])
     todo = [p for p in paths if p.name not in answers]
-    local = threading.local()
     lock = threading.Lock()
 
     def one(path):
-        if not hasattr(local, "linter"):
-            local.linter = JenkinsfileLinter(url)
-        ok, message = local.linter.validate(str(path))
+        ok, message = validate(url, path)
         first = message.strip().splitlines()[0][:200] if message.strip() else ""
         return path.name, ok, jenkins_messages(message), first
 

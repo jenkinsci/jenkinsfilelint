@@ -30,7 +30,7 @@ python3 tests/jenkins_server.py start
 python3 corpus/compare.py --copy /tmp/look
 ```
 
-`compare.py` uses the engine built in `crates/jenkinsfilelint/target/release`
+`compare.py` uses the jenkins-lint built in `crates/jenkins-lint/target/release`
 (or `JENKINS_LINT_ENGINE`), keeps Jenkins's answers in
 `corpus/.cache/jenkins.jsonl` so that later runs only ask about new files,
 and writes every file's verdicts to `corpus/.cache/report.tsv`.
@@ -45,7 +45,7 @@ and writes every file's verdicts to `corpus/.cache/report.tsv`.
 | `other-message` | Both report errors, but different ones |
 
 Each `false-error`, `missed` or `other-message` file becomes a small test
-case in `crates/jenkinsfilelint/tests/jenkins/`, checked with Jenkins, before
+case in `crates/jenkins-lint/tests/jenkins/`, checked with Jenkins, before
 the engine changes.
 
 ## Checking a change

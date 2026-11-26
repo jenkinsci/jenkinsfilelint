@@ -1,12 +1,12 @@
 name: Release Package
 
-# Publishes two packages to PyPI when a GitHub release is published:
-#   jenkinsfilelint-engine  prebuilt wheels of the offline engine (Rust)
-#   jenkins-lint            the pure-Python package, which pins the engine
-# The engine goes first, so jenkins-lint never points at an engine version
-# that is not on PyPI yet. Pull requests and manual runs build and test both
-# without publishing. A manual run with "publish: testpypi" goes through the
-# same jobs against TestPyPI, as a dry run of a release.
+# Publishes jenkins-lint to PyPI when a GitHub release is published: one
+# wheel per platform with the jenkins-lint binary, built from
+# crates/jenkins-lint with maturin, and an sdist. The root pyproject.toml,
+# which pre-commit installs, pins that version. Pull requests and manual
+# runs build and test without publishing. A manual run with
+# "publish: testpypi" goes through the same jobs against TestPyPI, as a dry
+# run of a release.
 
 on:
   release:
@@ -32,8 +32,22 @@ env:
   MATURIN_VERSION: v1.15.0
 
 jobs:
-  engine-wheels:
-    name: Engine wheel (${{ matrix.target }})
+  version:
+    name: Check the version
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        persist-credentials: false
+    - name: Check the version
+      # Cargo.toml, the root pyproject.toml and its pin agree, and a release
+      # is tagged with that version.
+      env:
+        TAG: ${{ github.event.release.tag_name }}
+      run: python3 crates/jenkins-lint/scripts/check_version.py ${TAG:+--tag "$TAG"}
+
+  wheels:
+    name: Wheel (${{ matrix.target }})
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -43,9 +57,7 @@ jobs:
           - {runner: ubuntu-latest, target: aarch64-unknown-linux-gnu, manylinux: auto}
           - {runner: ubuntu-latest, target: x86_64-unknown-linux-musl, manylinux: musllinux_1_2}
           - {runner: ubuntu-latest, target: aarch64-unknown-linux-musl, manylinux: musllinux_1_2}
-          # 32-bit builds. A 32-bit Python on a 64-bit OS reports the 64-bit
-          # machine, so pyproject.toml requires the engine there and pip
-          # needs one of these wheels.
+          # 32-bit builds, for 32-bit Pythons, also on 64-bit machines.
           # The default image for i686 on x86_64, quay.io/pypa/manylinux2014_i686,
           # makes maturin-action install libatomic with yum from the CentOS 7
           # vault, which is not reliably reachable. The cross image that
@@ -66,19 +78,19 @@ jobs:
       uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b  # v1.51.0
       with:
         maturin-version: ${{ env.MATURIN_VERSION }}
-        working-directory: crates/jenkinsfilelint
+        working-directory: crates/jenkins-lint
         target: ${{ matrix.target }}
         manylinux: ${{ matrix.manylinux || 'auto' }}
         container: ${{ matrix.container }}
         args: --release --out dist
     - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
       with:
-        name: engine-wheel-${{ matrix.target }}
-        path: crates/jenkinsfilelint/dist/*.whl
+        name: wheel-${{ matrix.target }}
+        path: crates/jenkins-lint/dist/*.whl
         if-no-files-found: error
 
-  engine-sdist:
-    name: Engine sdist
+  sdist:
+    name: sdist
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -88,56 +100,26 @@ jobs:
       uses: PyO3/maturin-action@e83996d129638aa358a18fbd1dfb82f0b0fb5d3b  # v1.51.0
       with:
         maturin-version: ${{ env.MATURIN_VERSION }}
-        working-directory: crates/jenkinsfilelint
+        working-directory: crates/jenkins-lint
         command: sdist
         args: --out dist
     - name: Install from sdist (builds with Rust)
       run: |
         python3 -m venv /tmp/venv
-        /tmp/venv/bin/pip install crates/jenkinsfilelint/dist/*.tar.gz
-        /tmp/venv/bin/jenkinsfilelint-engine --version
+        /tmp/venv/bin/pip install crates/jenkins-lint/dist/*.tar.gz
+        /tmp/venv/bin/jenkins-lint --version
     - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
       with:
-        name: engine-sdist
-        path: crates/jenkinsfilelint/dist/*.tar.gz
-        if-no-files-found: error
-
-  python-dist:
-    name: jenkins-lint sdist and wheel
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      with:
-        fetch-depth: 0  # needed for setuptools_scm to derive version from git tags
-        persist-credentials: false
-    - name: Set up Python
-      uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
-      with:
-        python-version: '3.x'
-    - name: Check the engine version
-      # pyproject.toml must pin the version in Cargo.toml, and the version
-      # must change when the engine does: the engine upload skips a version
-      # that is already on PyPI, so a changed engine with an unchanged
-      # version would never reach users, and the release would still be green.
-      run: python crates/jenkinsfilelint/scripts/check_engine_version.py
-    - name: Install build tools
-      run: python -m pip install --upgrade pip build twine
-    - name: Build distribution
-      run: python -m build
-    - name: Check distribution
-      run: twine check dist/*
-    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
-      with:
-        name: python-dist
-        path: dist/
+        name: sdist
+        path: crates/jenkins-lint/dist/*.tar.gz
         if-no-files-found: error
 
   test:
     # Install the exact files that will be published, on the platform each
-    # wheel is for, and run jenkins-lint --offline. No Rust is involved:
-    # --only-binary refuses to build the engine from source.
+    # wheel is for, and run jenkins-lint. No Rust is involved: --only-binary
+    # refuses to build it from source.
     name: Test ${{ matrix.target }}
-    needs: [engine-wheels, python-dist]
+    needs: [wheels]
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -168,21 +150,16 @@ jobs:
         sparse-checkout: tests
     - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
       with:
-        name: engine-wheel-${{ matrix.target }}
-        path: wheels/engine
-    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
-      with:
-        name: python-dist
-        path: wheels/python
+        name: wheel-${{ matrix.target }}
+        path: wheels
     - name: Write the test script
       run: |
         cat > smoke-test.sh <<'EOF'
         set -eux
-        python -m pip install --only-binary jenkinsfilelint-engine wheels/engine/*.whl
-        python -m pip install --only-binary jenkinsfilelint-engine wheels/python/*.whl
-        jenkinsfilelint-engine --version
-        jenkins-lint --offline --verbose tests/Jenkinsfile
-        if jenkins-lint --offline tests/Jenkinsfile.fail; then
+        python -m pip install --only-binary jenkins-lint wheels/*.whl
+        jenkins-lint --version
+        jenkins-lint --verbose tests/Jenkinsfile
+        if jenkins-lint tests/Jenkinsfile.fail; then
           echo "tests/Jenkinsfile.fail should fail"
           exit 1
         fi
@@ -203,12 +180,6 @@ jobs:
         docker run --privileged --rm
         tonistiigi/binfmt@sha256:1b804311fe87047a4c96d38b4b3ef6f62fca8cd125265917a9e3dc3c996c39e6
         --install ${{ matrix.qemu }}
-    - name: Download the dependencies for the container
-      # The container then needs no network: name resolution inside these
-      # containers has failed in CI, once for pypi.org.
-      if: ${{ matrix.image }}
-      run: |
-        python3 -m pip download --only-binary=:all: --platform any --dest wheels/deps requests
     - name: Test in a container
       if: ${{ matrix.image }}
       env:
@@ -217,37 +188,13 @@ jobs:
       run: >
         docker run --rm ${PLATFORM:+--platform "$PLATFORM"}
         -v "$PWD:/work" -w /work -e PIP_ROOT_USER_ACTION=ignore
-        -e PIP_NO_INDEX=1 -e PIP_FIND_LINKS=wheels/deps "$IMAGE"
+        -e PIP_NO_INDEX=1 "$IMAGE"
         sh smoke-test.sh
 
-  # The publish jobs serve both a release (PyPI) and a dry run (TestPyPI).
-  publish-engine:
-    name: Publish jenkinsfilelint-engine
-    needs: [test, engine-sdist]
-    if: github.event_name == 'release' || inputs.publish == 'testpypi'
-    runs-on: ubuntu-latest
-    environment:
-      name: ${{ github.event_name == 'release' && 'pypi' || 'testpypi' }}
-      url: ${{ github.event_name == 'release' && 'https://pypi.org' || 'https://test.pypi.org' }}/p/jenkinsfilelint-engine
-    permissions:
-      id-token: write  # required for PyPI Trusted Publishing (OIDC)
-    steps:
-    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
-      with:
-        pattern: engine-*
-        path: dist
-        merge-multiple: true
-    - name: Publish to ${{ github.event_name == 'release' && 'PyPI' || 'TestPyPI' }}
-      uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086  # v1.14.3
-      with:
-        repository-url: ${{ github.event_name == 'release' && 'https://upload.pypi.org/legacy/' || 'https://test.pypi.org/legacy/' }}
-        # The engine has its own version, so most releases re-upload files
-        # that are already on PyPI. Bump it in Cargo.toml when it changes.
-        skip-existing: true
-
+  # The publish job serves both a release (PyPI) and a dry run (TestPyPI).
   publish:
     name: Publish jenkins-lint
-    needs: [publish-engine]
+    needs: [version, test, sdist]
     if: github.event_name == 'release' || inputs.publish == 'testpypi'
     runs-on: ubuntu-latest
     environment:
@@ -258,8 +205,9 @@ jobs:
     steps:
     - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
       with:
-        name: python-dist
+        pattern: '{wheel-*,sdist}'
         path: dist
+        merge-multiple: true
     - name: Publish to ${{ github.event_name == 'release' && 'PyPI' || 'TestPyPI' }}
       uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086  # v1.14.3
       with:
@@ -284,11 +232,10 @@ jobs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       with:
         persist-credentials: false
-        sparse-checkout: tests
-    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
-      with:
-        name: python-dist
-        path: wheels/python
+        sparse-checkout: |
+          tests/
+          crates/jenkins-lint/Cargo.toml
+        sparse-checkout-cone-mode: false
     - name: Set up Python
       uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
       with:
@@ -297,14 +244,10 @@ jobs:
       env:
         INDEX: ${{ github.event_name == 'release' && 'https://pypi.org/simple/' || 'https://test.pypi.org/simple/' }}
       run: |
-        wheel=$(ls wheels/python/*.whl)
-        version=${wheel##*/jenkins_lint-}
-        version=${version%%-*}
-        # Dependencies other than the engine come from PyPI, never TestPyPI.
-        python -m pip install requests
+        version=$(sed -n 's/^version = "\(.*\)"/\1/p' crates/jenkins-lint/Cargo.toml | head -1)
         # A new upload can take a minute to show up in the index.
         for attempt in 1 2 3 4 5 6 7 8 9 10; do
-          if python -m pip install --no-cache-dir --only-binary jenkinsfilelint-engine \
+          if python -m pip install --no-cache-dir --only-binary jenkins-lint \
               --index-url "$INDEX" "jenkins-lint==$version"; then
             break
           fi
@@ -313,12 +256,12 @@ jobs:
           fi
           sleep 30
         done
-        python -m pip list | grep -E "jenkins-lint|jenkinsfilelint-engine"
-    - name: Check offline mode
+        python -m pip list | grep jenkins-lint
+    - name: Check
       run: |
-        jenkinsfilelint-engine --version
-        jenkins-lint --offline --verbose tests/Jenkinsfile
-        if jenkins-lint --offline tests/Jenkinsfile.fail; then
+        jenkins-lint --version
+        jenkins-lint --verbose tests/Jenkinsfile
+        if jenkins-lint tests/Jenkinsfile.fail; then
           echo "tests/Jenkinsfile.fail should fail"
           exit 1
         fi

@@ -3,7 +3,7 @@ ci:
 
 # Test Jenkinsfiles of the offline linter: kept byte for byte, and many are
 # invalid on purpose.
-exclude: ^crates/jenkinsfilelint/tests/
+exclude: ^crates/jenkins-lint/tests/
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
@@ -24,16 +24,14 @@ repos:
     hooks:
       - id: hadolint
   - repo: local
-    # This is a "local" hook to run jenkins-lint
+    # jenkins-lint of this checkout, on the repository's own Jenkinsfiles.
     hooks:
       - id: jenkins-lint
         name: jenkins-lint
         description: Lint Jenkinsfiles and Groovy files.
-        entry: jenkins-lint
-        language: python
-        additional_dependencies: ['requests']
+        entry: cargo run --quiet --manifest-path crates/jenkins-lint/Cargo.toml --
+        language: system
         files: (?i)^(.*/)?(Jenkinsfile[^/]*|.*\.groovy)$
-        exclude: ^jenkins_lint/
         pass_filenames: true
         verbose: true
         stages: [manual]  # pre-commit run jenkins-lint --all-files --hook-stage manual

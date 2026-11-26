@@ -1,61 +1,24 @@
+# Only for pre-commit, which installs a hook's repository from source: this
+# package has no code of its own and is not published. It depends on the
+# jenkins-lint wheel on PyPI, built from crates/jenkins-lint, so that
+# pre-commit users never need a Rust toolchain (ruff does the same with its
+# ruff-pre-commit repository).
 [build-system]
-requires = ["setuptools>=61.0", "setuptools-scm>=8.0"]
+requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "jenkins-lint"
-dynamic = ["version"]
-authors = [
-    {name = "Xianpeng Shen", email = "xianpeng.shen@gmail.com"},
-]
-description = "A Jenkinsfile linter that validates Jenkinsfiles using Jenkins API, or offline without a Jenkins server"
+name = "jenkins-lint-pre-commit"
+# The version of crates/jenkins-lint/Cargo.toml, and the pin below with it.
+# crates/jenkins-lint/scripts/check_version.py checks that they agree.
+version = "2.0.0"
+description = "pre-commit hooks of jenkins-lint"
 license = {text = "MIT"}
-readme = "README.md"
-requires-python = ">=3.10"
-classifiers = [
-    "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent",
-]
-dependencies = [
-    "requests",
-    # The offline engine (--offline), pinned to the version in
-    # crates/jenkinsfilelint/Cargo.toml. Limited to the platforms that get a
-    # prebuilt wheel, so that installing never needs a Rust toolchain.
-    # platform_machine names the machine, not the Python build: 32-bit Python
-    # on 64-bit Windows says AMD64, and a 32-bit Linux userland on a 64-bit
-    # kernel says x86_64 or aarch64. That is why there are 32-bit wheels
-    # (i686, armv7l, win32) for every 64-bit machine listed here.
-    """jenkinsfilelint-engine==0.4.0; \
-    (sys_platform == 'linux' and (platform_machine == 'x86_64' or platform_machine == 'aarch64' \
-        or platform_machine == 'i686' or platform_machine == 'armv7l')) \
-    or (sys_platform == 'darwin' and (platform_machine == 'x86_64' or platform_machine == 'arm64')) \
-    or (sys_platform == 'win32' and (platform_machine == 'AMD64' or platform_machine == 'x86'))""",
-]
-
-[project.optional-dependencies]
-dev = [
-    "pre-commit",
-    "pytest>=7.0.0",
-    "pytest-cov>=4.0.0",
-]
-
-[project.urls]
-Homepage = "https://github.com/jenkinsci/jenkins-lint"
-
-[project.scripts]
-jenkins-lint = "jenkins_lint.cli:main"
+requires-python = ">=3.8"
+dependencies = ["jenkins-lint==2.0.0"]
 
 [tool.setuptools]
-packages = ["jenkins_lint"]
-
-[tool.setuptools_scm]
-# It would be nice to include the commit hash in the version, but that
-# can't be done in a PEP 440-compatible way.
-version_scheme = "no-guess-dev"
-# Test PyPI does not support local versions.
-local_scheme = "no-local-version"
-fallback_version = "0.0.0"
+packages = []
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -69,19 +32,4 @@ addopts = [
 ]
 markers = [
     "docker: integration tests against a real Jenkins container (requires Docker)",
-]
-
-[tool.coverage.run]
-source = ["jenkins_lint"]
-branch = true
-omit = ["*/tests/*", "*/__pycache__/*"]
-
-[tool.coverage.report]
-exclude_lines = [
-    "pragma: no cover",
-    "def __repr__",
-    "raise AssertionError",
-    "raise NotImplementedError",
-    "if __name__ == .__main__.:",
-    "if TYPE_CHECKING:",
 ]

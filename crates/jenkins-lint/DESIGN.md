@@ -46,10 +46,12 @@ Both Go and Rust produce small static binaries. Rust won on three points:
 src/lexer.rs     tokens; all Groovy string forms; newline tracking
 src/parser.rs    recursive-descent parser -> small AST (ast.rs)
 src/validate.rs  declarative structure checks, official message wording
-src/audit/       --audit: security rules, findings, ignore comments, SARIF;
+src/audit/       security rules, findings, ignore comments, fixes, SARIF;
                  taint.rs follows values from sources to the steps that run them
-src/main.rs      CLI: text, JSON or SARIF output, exit codes
-python/          jenkinsfilelint_engine: finds the binary installed by the wheel
+src/cli.rs       the command: options, output, exit codes
+src/discover.rs  the files found in a directory, --include and --skip
+src/remote.rs    --remote: Jenkins's validate endpoint
+src/main.rs      checking one file: lint, audit, fixes; JSON helpers
 scripts/corpus_check.py  agreement test against the plugin's own samples
 ```
 
@@ -87,15 +89,13 @@ mistakes in them are all caught.
    parameters from the public Pipeline Steps Reference, ship it inside the
    binary, and warn on unknown steps or parameters. Let users declare
    shared-library steps in a config file.
-2. **Distribution.** Done: this crate is published to PyPI as
-   `jenkinsfilelint-engine`, maturin binary wheels (`bindings = "bin"`,
-   like ruff) for Linux, macOS and Windows plus an sdist. `jenkins-lint`
-   stays pure Python, depends on the engine pinned to the exact version, and
-   runs it for every check. Keeping the root package pure Python matters because pre-commit
-   installs hooks from source: a maturin-built root package would make every
-   pre-commit user compile Rust. The dependency is limited to platforms with
-   a wheel, so other platforms can still use `--remote`. GitHub
-   Releases and Homebrew later.
+2. **Distribution.** Done in 2.0: this crate is the `jenkins-lint`
+   package on PyPI, maturin binary wheels (`bindings = "bin"`, like ruff)
+   for Linux, macOS and Windows plus an sdist. The whole command is Rust,
+   `--remote` included (ureq with rustls). The root `pyproject.toml` is
+   only for pre-commit, which installs hooks from source: it has no code
+   and depends on the exact `jenkins-lint` version, so pre-commit users get
+   the wheel instead of compiling Rust. GitHub Releases and Homebrew later.
 3. **Editor and web.** JSON output already exists for editors; add a
    WebAssembly build for a web playground.
 4. **Groovy coverage.** Keep adding real-world Jenkinsfiles to the test set

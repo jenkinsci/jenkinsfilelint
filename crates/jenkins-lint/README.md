@@ -1,53 +1,63 @@
-# jenkinsfilelint-engine
+# jenkins-lint
 
-Check a Jenkinsfile without a Jenkins controller: no server, no Docker, no
-JVM. One ~500 KB binary that checks Groovy syntax and Declarative Pipeline
-structure, and reports errors with the same wording as Jenkins's own
-validator.
-
-This is the offline engine of `jenkins-lint`: it runs for every check. Most people want
-[jenkins-lint](https://github.com/jenkinsci/jenkins-lint) itself, which
-installs this package. `jenkins-lint --remote` stays
-the exact check; this one is the fast one. See [DESIGN.md](https://github.com/jenkinsci/jenkins-lint/blob/main/crates/jenkinsfilelint/DESIGN.md).
+Catch Jenkinsfile mistakes before they break your CI, without a Jenkins
+controller: no server, no Docker, no JVM. One small binary checks Groovy
+syntax, Declarative Pipeline structure and security, and reports errors with
+the same wording as Jenkins's own validator. `--remote` also validates the
+files with your Jenkins, which knows its plugins.
 
 ```console
-$ jenkinsfilelint-engine Jenkinsfile
+$ jenkins-lint Jenkinsfile
 Jenkinsfile:2:5: error: Not a valid section definition: "agent". Some extra configuration is required.
 Jenkinsfile:9:9: error: Expected one of "steps", "stages", or "parallel" for stage "Test"
-Jenkinsfile:10:13: error: Unknown stage section "step". Starting with version 0.5, steps in a stage must be in a ‘steps’ block.
+Jenkinsfile:14:36: high: script-injection: CHANGE_BRANCH is the name of the pull request's branch, and Groovy interpolates it into the sh script: ...
+  help: https://jenkinsci.github.io/jenkins-lint/audit/script-injection/
+1 finding (1 high)
 ```
 
 ## Install
 
 ```bash
-pip install jenkinsfilelint-engine
+pip install jenkins-lint      # or: pipx install jenkins-lint, uv tool install jenkins-lint
 ```
 
 PyPI has prebuilt wheels for Linux (x86_64, aarch64, i686, armv7; glibc and
-musl), macOS (x86_64, arm64) and Windows (x86_64, x86), for any Python 3.10+. The wheel puts the
-`jenkinsfilelint-engine` binary in the environment's scripts directory;
-`python -m jenkinsfilelint_engine` runs it too, and
-`jenkinsfilelint_engine.find_bin()` returns its path. On other platforms pip
+musl), macOS (x86_64, arm64) and Windows (x86_64, x86). They hold only the
+`jenkins-lint` binary, which needs no Python to run. On other platforms pip
 builds it from the sdist, which needs a [Rust toolchain](https://rustup.rs).
+
+As a [pre-commit](https://pre-commit.com/) hook:
+
+```yaml
+repos:
+  - repo: https://github.com/jenkinsci/jenkins-lint
+    rev: # the latest version
+    hooks:
+      - id: jenkins-lint
+```
+
+Documentation: https://jenkinsci.github.io/jenkins-lint/. Source and
+design notes: https://github.com/jenkinsci/jenkins-lint.
 
 ## Build and run
 
 ```bash
-cd crates/jenkinsfilelint
+cd crates/jenkins-lint
 cargo build --release
-./target/release/jenkinsfilelint-engine path/to/Jenkinsfile [more files...]
-./target/release/jenkinsfilelint-engine --format json Jenkinsfile
+./target/release/jenkins-lint path/to/Jenkinsfile [more files or directories...]
+./target/release/jenkins-lint --format json Jenkinsfile
 ```
 
-Exit code is `0` when no file has an error, `1` when any does, and `2` for
-usage errors. Warnings do not fail the run.
+Exit code is `0` when no file has an error or a finding, `1` when any does,
+and `2` for usage errors. Warnings do not fail the run.
 
 `--format json` prints one object per file:
 
 ```json
 [{"file": "Jenkinsfile", "declarative": true, "diagnostics": [
-  {"line": 2, "column": 5, "severity": "error", "message": "Not a valid section definition: ..."}]},
- {"file": "vars/notify.groovy", "declarative": false, "diagnostics": []},
+  {"line": 2, "column": 5, "severity": "error", "message": "Not a valid section definition: ..."}],
+  "findings": [], "fixed": []},
+ {"file": "vars/notify.groovy", "declarative": false, "diagnostics": [], "findings": [], "fixed": []},
  {"file": "missing", "error": "No such file or directory (os error 2)"}]
 ```
 
@@ -84,8 +94,8 @@ Use `jenkins-lint --remote` with your Jenkins for those.
 ## How close is it to the official validator?
 
 The [pipeline-model-definition plugin](https://github.com/jenkinsci/pipeline-model-definition-plugin)
-ships the test Jenkinsfiles for Jenkins's own validator. Running the offline
-linter over them:
+ships the test Jenkinsfiles for Jenkins's own validator. Running jenkins-lint
+over them:
 
 | | Result |
 |---|---|
@@ -111,8 +121,9 @@ python3 scripts/corpus_check.py
 pip install .   # builds the wheel with maturin and installs it
 ```
 
-When the engine changes, bump `version` in `Cargo.toml` and the
-`jenkinsfilelint-engine==` pin in the root `pyproject.toml` together.
+A release bumps `version` in `Cargo.toml`, and the version and the
+`jenkins-lint==` pin in the root `pyproject.toml` with it:
+`scripts/check_version.py` checks that they agree.
 
 `cargo test` also lints every case in `tests/jenkins/` and compares the
 result with `tests/jenkins/expected.txt`, which records what Jenkins's own

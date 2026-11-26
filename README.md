@@ -1,7 +1,6 @@
 # Jenkinsfile Lint
 
 [![CI](https://github.com/jenkinsci/jenkins-lint/actions/workflows/main.yml/badge.svg)](https://github.com/jenkinsci/jenkins-lint/actions/workflows/main.yml)
-[![codecov](https://codecov.io/gh/jenkinsci/jenkins-lint/graph/badge.svg?token=nGrwXORFtI)](https://codecov.io/gh/jenkinsci/jenkins-lint)
 [![PyPI version](https://img.shields.io/pypi/v/jenkins-lint)](https://pypi.org/project/jenkins-lint)
 
 Catch Jenkinsfile syntax errors before they break your CI.
