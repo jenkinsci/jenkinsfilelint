@@ -14,9 +14,10 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from jenkinsfilelint.cli import NO_JENKINS_NO_ENGINE, NO_JENKINS_NOTE, main
-from jenkinsfilelint.offline import (
+from jenkins_lint.cli import NO_JENKINS_NO_ENGINE, NO_JENKINS_NOTE, main
+from jenkins_lint.offline import (
     ENGINE_ENV,
+    OLD_ENGINE_ENV,
     ENGINE_MISSING_MESSAGE,
     OfflineEngineError,
     find_engine,
@@ -35,7 +36,7 @@ VALID_PIPELINE = (
 
 def run_cli(argv):
     """Run the CLI in-process and return its exit code."""
-    with patch("sys.argv", ["jenkinsfilelint", *argv]):
+    with patch("sys.argv", ["jenkins-lint", *argv]):
         with pytest.raises(SystemExit) as exc_info:
             main()
     return exc_info.value.code
@@ -65,6 +66,7 @@ def cargo_version():
 @pytest.fixture
 def no_engine_override(monkeypatch):
     monkeypatch.delenv(ENGINE_ENV, raising=False)
+    monkeypatch.delenv(OLD_ENGINE_ENV, raising=False)
 
 
 @pytest.fixture(scope="session")
@@ -79,7 +81,7 @@ def engine():
 
 
 class TestEnginePin:
-    """jenkinsfilelint requires exactly the engine version in Cargo.toml."""
+    """jenkins-lint requires exactly the engine version in Cargo.toml."""
 
     def test_pin_matches_cargo_version(self):
         lines = check_engine_version.check_pin(ROOT)
@@ -97,6 +99,10 @@ class TestFindEngine:
     def test_env_variable_overrides(self, monkeypatch):
         monkeypatch.setenv(ENGINE_ENV, "/opt/engine")
         assert find_engine() == "/opt/engine"
+
+    def test_old_env_variable_still_works(self, no_engine_override, monkeypatch):
+        monkeypatch.setenv(OLD_ENGINE_ENV, "/opt/old-engine")
+        assert find_engine() == "/opt/old-engine"
 
     def test_package_not_installed(self, no_engine_override):
         with patch.dict(sys.modules, {"jenkinsfilelint_engine": None}):
@@ -139,7 +145,7 @@ class TestLintFiles:
             {"file": str(scripted), "declarative": False, "diagnostics": []},
         ]
         with patch(
-            "jenkinsfilelint.offline.subprocess.run",
+            "jenkins_lint.offline.subprocess.run",
             return_value=engine_output(reports),
         ) as run:
             results = lint_files([str(good), str(bad), str(scripted)], "engine")
@@ -173,14 +179,14 @@ class TestLintFiles:
             ],
         }
         with patch(
-            "jenkinsfilelint.offline.subprocess.run",
+            "jenkins_lint.offline.subprocess.run",
             return_value=engine_output([report], returncode=0),
         ):
             assert lint_files([str(f)], "engine")[str(f)].is_valid
 
     def test_missing_file_is_not_sent_to_engine(self, tmp_path):
         missing = str(tmp_path / "nope")
-        with patch("jenkinsfilelint.offline.subprocess.run") as run:
+        with patch("jenkins_lint.offline.subprocess.run") as run:
             results = lint_files([missing], "engine")
         run.assert_not_called()
         assert not results[missing].is_valid
@@ -190,7 +196,7 @@ class TestLintFiles:
         f = tmp_path / "Jenkinsfile"
         f.write_text("")
         with patch(
-            "jenkinsfilelint.offline.subprocess.run",
+            "jenkins_lint.offline.subprocess.run",
             return_value=engine_output([{"file": str(f), "error": "denied"}]),
         ):
             result = lint_files([str(f)], "engine")[str(f)]
@@ -201,7 +207,7 @@ class TestLintFiles:
         f = tmp_path / "Jenkinsfile"
         f.write_text("")
         with patch(
-            "jenkinsfilelint.offline.subprocess.run", side_effect=OSError("exec format")
+            "jenkins_lint.offline.subprocess.run", side_effect=OSError("exec format")
         ):
             with pytest.raises(OfflineEngineError, match="Could not run engine"):
                 lint_files([str(f)], "engine")
@@ -212,7 +218,7 @@ class TestLintFiles:
         crashed = subprocess.CompletedProcess(
             args=[], returncode=101, stdout="", stderr="thread 'main' panicked"
         )
-        with patch("jenkinsfilelint.offline.subprocess.run", return_value=crashed):
+        with patch("jenkins_lint.offline.subprocess.run", return_value=crashed):
             with pytest.raises(OfflineEngineError, match="panicked"):
                 lint_files([str(f)], "engine")
 
@@ -240,7 +246,7 @@ class TestLintFiles:
         f = tmp_path / "Jenkinsfile"
         f.write_text("")
         with patch(
-            "jenkinsfilelint.offline.subprocess.run",
+            "jenkins_lint.offline.subprocess.run",
             return_value=engine_output([report]),
         ):
             with pytest.raises(
@@ -252,7 +258,7 @@ class TestLintFiles:
         f = tmp_path / "Jenkinsfile"
         f.write_text("")
         with patch(
-            "jenkinsfilelint.offline.subprocess.run", return_value=engine_output([])
+            "jenkins_lint.offline.subprocess.run", return_value=engine_output([])
         ):
             with pytest.raises(
                 OfflineEngineError, match=r"returned 0 result\(s\) for 1 file"
@@ -282,12 +288,12 @@ class TestOfflineCLI:
         f.write_text("")
         report = {"file": str(f), "declarative": True, "diagnostics": []}
         with (
-            patch("jenkinsfilelint.cli.find_engine", return_value="engine"),
+            patch("jenkins_lint.cli.find_engine", return_value="engine"),
             patch(
-                "jenkinsfilelint.offline.subprocess.run",
+                "jenkins_lint.offline.subprocess.run",
                 return_value=engine_output([report], returncode=0),
             ),
-            patch("jenkinsfilelint.linter.requests.Session.post") as post,
+            patch("jenkins_lint.linter.requests.Session.post") as post,
         ):
             assert run_cli(["--offline", str(f)]) == 0
         post.assert_not_called()
@@ -298,9 +304,9 @@ class TestOfflineCLI:
         f.write_text("")
         report = {"file": str(f), "declarative": declarative, "diagnostics": []}
         with (
-            patch("jenkinsfilelint.cli.find_engine", return_value="engine"),
+            patch("jenkins_lint.cli.find_engine", return_value="engine"),
             patch(
-                "jenkinsfilelint.offline.subprocess.run",
+                "jenkins_lint.offline.subprocess.run",
                 return_value=engine_output([report], returncode=0),
             ),
         ):
@@ -311,7 +317,7 @@ class TestOfflineCLI:
         f = tmp_path / "Jenkinsfile"
         f.write_text("")
         with patch(
-            "jenkinsfilelint.cli.find_engine",
+            "jenkins_lint.cli.find_engine",
             side_effect=OfflineEngineError(ENGINE_MISSING_MESSAGE),
         ):
             assert run_cli(["--offline", str(f)]) == 1
@@ -327,9 +333,9 @@ class TestOfflineCLI:
         skipped.write_text("")
         report = {"file": str(keep), "declarative": True, "diagnostics": []}
         with (
-            patch("jenkinsfilelint.cli.find_engine", return_value="engine"),
+            patch("jenkins_lint.cli.find_engine", return_value="engine"),
             patch(
-                "jenkinsfilelint.offline.subprocess.run",
+                "jenkins_lint.offline.subprocess.run",
                 return_value=engine_output([report], returncode=0),
             ) as run,
         ):
@@ -357,9 +363,7 @@ class TestOfflineCLI:
 
     def test_everything_skipped_needs_no_engine(self, tmp_path):
         f = tmp_path / "Jenkinsfile"
-        with patch(
-            "jenkinsfilelint.cli.find_engine", side_effect=OfflineEngineError("x")
-        ):
+        with patch("jenkins_lint.cli.find_engine", side_effect=OfflineEngineError("x")):
             assert run_cli(["--offline", "--skip", "Jenkinsfile", str(f)]) == 0
 
 
@@ -376,12 +380,12 @@ class TestDefaultMode:
         if reports is None:
             reports = [{"file": str(f), "declarative": True, "diagnostics": []}]
         with (
-            patch("jenkinsfilelint.cli.find_engine", return_value="engine"),
+            patch("jenkins_lint.cli.find_engine", return_value="engine"),
             patch(
-                "jenkinsfilelint.offline.subprocess.run",
+                "jenkins_lint.offline.subprocess.run",
                 return_value=engine_output(reports, returncode=returncode),
             ) as run,
-            patch("jenkinsfilelint.linter.requests.Session.post") as post,
+            patch("jenkins_lint.linter.requests.Session.post") as post,
         ):
             code = run_cli([*argv, str(f)])
         post.assert_not_called()
@@ -425,9 +429,7 @@ class TestDefaultMode:
 
     def test_no_note_when_every_file_is_skipped(self, tmp_path, capsys):
         f = tmp_path / "Jenkinsfile"
-        with patch(
-            "jenkinsfilelint.cli.find_engine", side_effect=OfflineEngineError("x")
-        ):
+        with patch("jenkins_lint.cli.find_engine", side_effect=OfflineEngineError("x")):
             assert run_cli(["--verbose", "--skip", "Jenkinsfile", str(f)]) == 0
         captured = capsys.readouterr()
         assert NO_JENKINS_NOTE not in captured.out + captured.err
@@ -436,7 +438,7 @@ class TestDefaultMode:
         f = tmp_path / "Jenkinsfile"
         f.write_text("")
         with patch(
-            "jenkinsfilelint.cli.find_engine",
+            "jenkins_lint.cli.find_engine",
             side_effect=OfflineEngineError(ENGINE_MISSING_MESSAGE),
         ):
             assert run_cli([str(f)]) == 1
@@ -470,11 +472,11 @@ class TestDefaultMode:
         f = tmp_path / "Jenkinsfile"
         f.write_text("")
         with (
-            patch("jenkinsfilelint.cli._run_remote_validation") as remote,
-            patch("jenkinsfilelint.cli.find_engine") as find,
+            patch("jenkins_lint.cli._run_remote_validation") as remote,
+            patch("jenkins_lint.cli.find_engine") as find,
         ):
             main_argv = [*setting.get("argv", []), str(f)]
-            with patch("sys.argv", ["jenkinsfilelint", *main_argv]):
+            with patch("sys.argv", ["jenkins-lint", *main_argv]):
                 main()
         remote.assert_called_once()
         find.assert_not_called()
@@ -493,9 +495,9 @@ class TestDefaultMode:
         response = Mock(status_code=200, text="Jenkinsfile successfully validated.")
         with (
             patch(
-                "jenkinsfilelint.linter.requests.Session.post", return_value=response
+                "jenkins_lint.linter.requests.Session.post", return_value=response
             ) as post,
-            patch("jenkinsfilelint.cli.find_engine") as find,
+            patch("jenkins_lint.cli.find_engine") as find,
         ):
             assert run_cli([str(f)]) == 0
         post.assert_called_once()
@@ -600,7 +602,7 @@ class TestAgainstJenkinsVerdicts:
             [
                 sys.executable,
                 "-m",
-                "jenkinsfilelint.cli",
+                "jenkins_lint.cli",
                 "--offline",
                 str(ROOT / "tests" / "Jenkinsfile"),
                 str(ROOT / "tests" / "Jenkinsfile.fail"),
@@ -624,7 +626,7 @@ class TestAgainstJenkinsVerdicts:
             [
                 sys.executable,
                 "-m",
-                "jenkinsfilelint.cli",
+                "jenkins_lint.cli",
                 str(ROOT / "tests" / "Jenkinsfile"),
                 str(ROOT / "tests" / "Jenkinsfile.fail"),
             ],

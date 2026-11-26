@@ -1,12 +1,17 @@
 # Jenkinsfile Lint
 
-[![CI](https://github.com/jenkinsci/jenkinsfilelint/actions/workflows/main.yml/badge.svg)](https://github.com/jenkinsci/jenkinsfilelint/actions/workflows/main.yml)
-[![codecov](https://codecov.io/gh/jenkinsci/jenkinsfilelint/graph/badge.svg?token=nGrwXORFtI)](https://codecov.io/gh/jenkinsci/jenkinsfilelint)
-[![PyPI version](https://img.shields.io/pypi/v/jenkinsfilelint)](https://pypi.org/project/jenkinsfilelint)
+[![CI](https://github.com/jenkinsci/jenkins-lint/actions/workflows/main.yml/badge.svg)](https://github.com/jenkinsci/jenkins-lint/actions/workflows/main.yml)
+[![codecov](https://codecov.io/gh/jenkinsci/jenkins-lint/graph/badge.svg?token=nGrwXORFtI)](https://codecov.io/gh/jenkinsci/jenkins-lint)
+[![PyPI version](https://img.shields.io/pypi/v/jenkins-lint)](https://pypi.org/project/jenkins-lint)
 
 Catch Jenkinsfile syntax errors before they break your CI.
 
-`jenkinsfilelint` checks your Declarative Pipeline syntax offline, with no
+> [!NOTE]
+> This project was called `jenkinsfilelint` until version 1.7. The PyPI package,
+> the command and the pre-commit hooks are now named `jenkins-lint`. The old
+> hook ids and environment variable names still work.
+
+`jenkins-lint` checks your Declarative Pipeline syntax offline, with no
 Jenkins at all, or with your Jenkins's own validator
 ([`/pipeline-model-converter/validate`](https://www.jenkins.io/doc/book/pipeline/development/#linter))
 when you configure one. It's primarily a [pre-commit](https://pre-commit.com/)
@@ -14,20 +19,20 @@ hook, but also works as a standalone CLI tool.
 
 > 📖 Read the [official blog post](https://www.jenkins.io/blog/2026/06/08/jenkinsfilelint-pre-commit/) for the story behind this tool.
 
-![demo](https://raw.githubusercontent.com/jenkinsci/jenkinsfilelint/main/demo.gif)
+![demo](https://raw.githubusercontent.com/jenkinsci/jenkins-lint/main/demo.gif)
 
 ## Quick Start
 
 ```bash
-pip install jenkinsfilelint
-jenkinsfilelint Jenkinsfile
-jenkinsfilelint .          # every Jenkinsfile in this directory
-jenkinsfilelint --audit .  # and look for security problems
+pip install jenkins-lint
+jenkins-lint Jenkinsfile
+jenkins-lint .          # every Jenkinsfile in this directory
+jenkins-lint --audit .  # and look for security problems
 ```
 
 That works as is: with no Jenkins server configured, files are checked
 offline. Then add the pre-commit hook (see [below](#pre-commit-hook)) or keep
-using the [CLI](https://jenkinsci.github.io/jenkinsfilelint/usage/#cli).
+using the [CLI](https://jenkinsci.github.io/jenkins-lint/usage/#cli).
 
 ## Pre-commit Hook
 
@@ -37,10 +42,10 @@ every commit that touches a Jenkinsfile is automatically validated.
 ```yaml
 # .pre-commit-config.yaml
 repos:
-  - repo: https://github.com/jenkinsci/jenkinsfilelint
+  - repo: https://github.com/jenkinsci/jenkins-lint
     rev: # use the latest version
     hooks:
-      - id: jenkinsfilelint-offline
+      - id: jenkins-lint-offline
 ```
 
 ```bash
@@ -50,7 +55,7 @@ pre-commit install
 
 ## Documentation
 
-Everything else is on the [documentation site](https://jenkinsci.github.io/jenkinsfilelint/): [install](https://jenkinsci.github.io/jenkinsfilelint/install/), [usage](https://jenkinsci.github.io/jenkinsfilelint/usage/), [pre-commit](https://jenkinsci.github.io/jenkinsfilelint/pre-commit/), [configuration](https://jenkinsci.github.io/jenkinsfilelint/configuration/), [security](https://jenkinsci.github.io/jenkinsfilelint/security/), [how it works](https://jenkinsci.github.io/jenkinsfilelint/how-it-works/) and the [security audit](https://jenkinsci.github.io/jenkinsfilelint/audit/).
+Everything else is on the [documentation site](https://jenkinsci.github.io/jenkins-lint/): [install](https://jenkinsci.github.io/jenkins-lint/install/), [usage](https://jenkinsci.github.io/jenkins-lint/usage/), [pre-commit](https://jenkinsci.github.io/jenkins-lint/pre-commit/), [configuration](https://jenkinsci.github.io/jenkins-lint/configuration/), [security](https://jenkinsci.github.io/jenkins-lint/security/), [how it works](https://jenkinsci.github.io/jenkins-lint/how-it-works/) and the [security audit](https://jenkinsci.github.io/jenkins-lint/audit/).
 
 ## Contributing
 

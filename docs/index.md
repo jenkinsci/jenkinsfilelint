@@ -2,7 +2,12 @@
 
 Catch Jenkinsfile syntax errors before they break your CI.
 
-`jenkinsfilelint` checks your Declarative Pipeline syntax offline, with no
+> [!NOTE]
+> This project was called `jenkinsfilelint` until version 1.7. The PyPI package,
+> the command and the pre-commit hooks are now named `jenkins-lint`. The old
+> hook ids and environment variable names still work.
+
+`jenkins-lint` checks your Declarative Pipeline syntax offline, with no
 Jenkins at all, or with your Jenkins's own validator
 ([`/pipeline-model-converter/validate`](https://www.jenkins.io/doc/book/pipeline/development/#linter))
 when you configure one. It's primarily a [pre-commit](https://pre-commit.com/)
@@ -13,10 +18,10 @@ hook, but also works as a standalone CLI tool.
 ## Quick Start
 
 ```bash
-pip install jenkinsfilelint
-jenkinsfilelint Jenkinsfile
-jenkinsfilelint .          # every Jenkinsfile in this directory
-jenkinsfilelint --audit .  # and look for security problems
+pip install jenkins-lint
+jenkins-lint Jenkinsfile
+jenkins-lint .          # every Jenkinsfile in this directory
+jenkins-lint --audit .  # and look for security problems
 ```
 
 That works as is: with no Jenkins server configured, files are checked
@@ -29,4 +34,4 @@ using the [CLI](usage.md#cli).
 
 ## Demo
 
-![demo](https://raw.githubusercontent.com/jenkinsci/jenkinsfilelint/main/demo.gif)
+![demo](https://raw.githubusercontent.com/jenkinsci/jenkins-lint/main/demo.gif)

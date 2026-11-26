@@ -72,7 +72,7 @@ When the job is meant to follow the newest image, such as a nightly build
 that tests compatibility with it.
 
 ```groovy
-// jenkinsfilelint: ignore[unpinned-image] a nightly job that tests the newest image
+// jenkins-lint: ignore[unpinned-image] a nightly job that tests the newest image
 agent { docker { image 'node:latest' } }
 ```
 

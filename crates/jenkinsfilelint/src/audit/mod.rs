@@ -4,8 +4,9 @@
 //! confidence (how likely it is real) and the persona that sees it:
 //! `regular` shows what is worth fixing, `pedantic` adds lower-confidence
 //! findings and hardening advice, `auditor` shows everything. A finding is
-//! turned off with `// jenkinsfilelint: ignore[rule-id]` on its line or on
-//! the line above the statement it is in.
+//! turned off with `// jenkins-lint: ignore[rule-id]` on its line or on
+//! the line above the statement it is in. `jenkinsfilelint:`, the name from
+//! before the project was renamed, works too.
 
 mod controller_execution;
 pub mod fix;
@@ -82,7 +83,7 @@ pub struct Rule {
 
 impl Rule {
     pub fn help_url(&self) -> String {
-        format!("https://jenkinsci.github.io/jenkinsfilelint/audit/{}/", self.id)
+        format!("https://jenkinsci.github.io/jenkins-lint/audit/{}/", self.id)
     }
 }
 
@@ -234,10 +235,18 @@ pub fn annotations(tokens: &[Token]) -> Vec<Annotation> {
     out
 }
 
-/// The rules that `jenkinsfilelint: ignore[a, b] why` turns off. The
+/// The prefixes of an ignore directive: the tool's name, and its name from
+/// before the project was renamed.
+const DIRECTIVES: [&str; 2] = ["jenkins-lint:", "jenkinsfilelint:"];
+
+/// The rules that `jenkins-lint: ignore[a, b] why` turns off. The
 /// directive may follow other text in the comment.
 fn ignored_rules(comment: &str) -> Option<Vec<&str>> {
-    let rest = &comment[comment.find("jenkinsfilelint:")? + "jenkinsfilelint:".len()..];
+    let (at, prefix) = DIRECTIVES
+        .iter()
+        .filter_map(|p| comment.find(p).map(|at| (at, p)))
+        .min()?;
+    let rest = &comment[at + prefix.len()..];
     let list = rest.trim_start().strip_prefix("ignore[")?;
     let list = &list[..list.find(']')?];
     Some(list.split(',').map(str::trim).filter(|r| !r.is_empty()).collect())
@@ -261,6 +270,15 @@ mod tests {
         assert_eq!(ignored_rules(" jenkinsfilelint: ignore secret-interpolation"), None);
         assert_eq!(ignored_rules(" jenkinsfilelint: ignore[unclosed"), None);
         assert_eq!(ignored_rules(" just a comment"), None);
+        assert_eq!(
+            ignored_rules(" jenkins-lint: ignore[secret-interpolation]"),
+            Some(vec!["secret-interpolation"])
+        );
+        assert_eq!(
+            ignored_rules(" TODO; jenkins-lint: ignore[a, b] the token is fake"),
+            Some(vec!["a", "b"])
+        );
+        assert_eq!(ignored_rules(" jenkins-lint: ignore[unclosed"), None);
     }
 
     #[test]

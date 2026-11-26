@@ -989,7 +989,7 @@ mod tests {
         let outcome = super::audit_source(src, &super::Filter::default());
         let text = super::audit_text("J", &outcome, super::Mode::Safe);
         assert!(text.starts_with("J:2:16: high: secret-interpolation: TOKEN is a secret"), "{text}");
-        assert!(text.ends_with("\n  help: https://jenkinsci.github.io/jenkinsfilelint/audit/secret-interpolation/\n"));
+        assert!(text.ends_with("\n  help: https://jenkinsci.github.io/jenkins-lint/audit/secret-interpolation/\n"));
         let json = super::audit_json("J", &outcome, &[]);
         assert!(json.contains("\"line\":2,\"column\":16,\"end_line\":2,\"end_column\":24"), "{json}");
         let sarif = crate::audit::sarif::sarif(&[("dir\\J".to_string(), outcome)]);

@@ -16,24 +16,24 @@ class TestVersion:
             mock_version.side_effect = importlib.metadata.PackageNotFoundError()
 
             # Remove the module from cache if it exists
-            original = sys.modules.pop("jenkinsfilelint", None)
+            original = sys.modules.pop("jenkins_lint", None)
             try:
                 # Now import it fresh
-                import jenkinsfilelint
+                import jenkins_lint
 
                 # Check that it fell back to the dev version
-                assert jenkinsfilelint.__version__ == "0.0.0.dev0"
+                assert jenkins_lint.__version__ == "0.0.0.dev0"
             finally:
                 # Clean up: put the original package back. Its submodules
                 # (cli, offline, ...) are attributes of that object, and
-                # mock.patch("jenkinsfilelint.offline...") looks them up there.
+                # mock.patch("jenkins_lint.offline...") looks them up there.
                 if original is not None:
-                    sys.modules["jenkinsfilelint"] = original
+                    sys.modules["jenkins_lint"] = original
 
     def test_version_when_package_installed(self):
         """Test version is retrieved when package is installed."""
-        import jenkinsfilelint
+        import jenkins_lint
 
         # When package is installed, version should be a string
-        assert isinstance(jenkinsfilelint.__version__, str)
-        assert len(jenkinsfilelint.__version__) > 0
+        assert isinstance(jenkins_lint.__version__, str)
+        assert len(jenkins_lint.__version__) > 0

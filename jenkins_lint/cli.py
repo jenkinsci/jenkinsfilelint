@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Command-line interface for jenkinsfilelint."""
+"""Command-line interface for jenkins-lint."""
 
 import os
 import re
@@ -352,7 +352,7 @@ def _run_local_validation(args: argparse.Namespace) -> None:
     _validate_files(linter, args)
 
     # In --local mode, the container stays running so subsequent
-    # invocations are fast.  Use ``jenkinsfilelint server stop`` to
+    # invocations are fast.  Use ``jenkins-lint server stop`` to
     # shut it down explicitly.
 
 
@@ -524,7 +524,7 @@ def _run_audit(args: argparse.Namespace) -> None:
 
 
 def main():
-    """Main entry point for jenkinsfilelint.
+    """Main entry point for jenkins-lint.
 
     Dispatches ``server`` subcommands (start|stop|status|restart) or runs the
     linting CLI. Files are checked with the configured Jenkins server, with a
@@ -597,7 +597,7 @@ def main():
         action="store_true",
         help="Validate using a local Docker-based Jenkins server (no remote Jenkins required). "
         "The container is started automatically on first use and stays running for fast "
-        "subsequent invocations. Use 'jenkinsfilelint server stop' to shut it down.",
+        "subsequent invocations. Use 'jenkins-lint server stop' to shut it down.",
     )
     mode.add_argument(
         "--offline",

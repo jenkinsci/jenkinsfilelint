@@ -2,8 +2,8 @@ name: Release Package
 
 # Publishes two packages to PyPI when a GitHub release is published:
 #   jenkinsfilelint-engine  prebuilt wheels of the offline engine (Rust)
-#   jenkinsfilelint         the pure-Python package, which pins the engine
-# The engine goes first, so jenkinsfilelint never points at an engine version
+#   jenkins-lint            the pure-Python package, which pins the engine
+# The engine goes first, so jenkins-lint never points at an engine version
 # that is not on PyPI yet. Pull requests and manual runs build and test both
 # without publishing. A manual run with "publish: testpypi" goes through the
 # same jobs against TestPyPI, as a dry run of a release.
@@ -103,7 +103,7 @@ jobs:
         if-no-files-found: error
 
   python-dist:
-    name: jenkinsfilelint sdist and wheel
+    name: jenkins-lint sdist and wheel
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -134,7 +134,7 @@ jobs:
 
   test:
     # Install the exact files that will be published, on the platform each
-    # wheel is for, and run jenkinsfilelint --offline. No Rust is involved:
+    # wheel is for, and run jenkins-lint --offline. No Rust is involved:
     # --only-binary refuses to build the engine from source.
     name: Test ${{ matrix.target }}
     needs: [engine-wheels, python-dist]
@@ -181,8 +181,8 @@ jobs:
         python -m pip install --only-binary jenkinsfilelint-engine wheels/engine/*.whl
         python -m pip install --only-binary jenkinsfilelint-engine wheels/python/*.whl
         jenkinsfilelint-engine --version
-        jenkinsfilelint --offline --verbose tests/Jenkinsfile
-        if jenkinsfilelint --offline tests/Jenkinsfile.fail; then
+        jenkins-lint --offline --verbose tests/Jenkinsfile
+        if jenkins-lint --offline tests/Jenkinsfile.fail; then
           echo "tests/Jenkinsfile.fail should fail"
           exit 1
         fi
@@ -246,13 +246,13 @@ jobs:
         skip-existing: true
 
   publish:
-    name: Publish jenkinsfilelint
+    name: Publish jenkins-lint
     needs: [publish-engine]
     if: github.event_name == 'release' || inputs.publish == 'testpypi'
     runs-on: ubuntu-latest
     environment:
       name: ${{ github.event_name == 'release' && 'pypi' || 'testpypi' }}
-      url: ${{ github.event_name == 'release' && 'https://pypi.org' || 'https://test.pypi.org' }}/p/jenkinsfilelint
+      url: ${{ github.event_name == 'release' && 'https://pypi.org' || 'https://test.pypi.org' }}/p/jenkins-lint
     permissions:
       id-token: write  # required for PyPI Trusted Publishing (OIDC)
     steps:
@@ -293,19 +293,19 @@ jobs:
       uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
       with:
         python-version: '3.x'
-    - name: Install jenkinsfilelint
+    - name: Install jenkins-lint
       env:
         INDEX: ${{ github.event_name == 'release' && 'https://pypi.org/simple/' || 'https://test.pypi.org/simple/' }}
       run: |
         wheel=$(ls wheels/python/*.whl)
-        version=${wheel##*/jenkinsfilelint-}
+        version=${wheel##*/jenkins_lint-}
         version=${version%%-*}
         # Dependencies other than the engine come from PyPI, never TestPyPI.
         python -m pip install requests
         # A new upload can take a minute to show up in the index.
         for attempt in 1 2 3 4 5 6 7 8 9 10; do
           if python -m pip install --no-cache-dir --only-binary jenkinsfilelint-engine \
-              --index-url "$INDEX" "jenkinsfilelint==$version"; then
+              --index-url "$INDEX" "jenkins-lint==$version"; then
             break
           fi
           if [ "$attempt" = 10 ]; then
@@ -313,12 +313,12 @@ jobs:
           fi
           sleep 30
         done
-        python -m pip list | grep jenkinsfilelint
+        python -m pip list | grep -E "jenkins-lint|jenkinsfilelint-engine"
     - name: Check offline mode
       run: |
         jenkinsfilelint-engine --version
-        jenkinsfilelint --offline --verbose tests/Jenkinsfile
-        if jenkinsfilelint --offline tests/Jenkinsfile.fail; then
+        jenkins-lint --offline --verbose tests/Jenkinsfile
+        if jenkins-lint --offline tests/Jenkinsfile.fail; then
           echo "tests/Jenkinsfile.fail should fail"
           exit 1
         fi

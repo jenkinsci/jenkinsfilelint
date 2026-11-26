@@ -39,12 +39,12 @@ jobs:
 
     - name: Test CLI installation
       run: |
-        jenkinsfilelint --help
+        jenkins-lint --help
         jenkinsfilelint-engine --version
 
     - name: Run unit tests
       run: |
-        pytest tests/ -v -m "not docker" --cov=jenkinsfilelint --cov-report=term-missing --cov-report=xml
+        pytest tests/ -v -m "not docker" --cov=jenkins_lint --cov-report=term-missing --cov-report=xml
       shell: bash
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5  # v7.1.1
@@ -80,4 +80,4 @@ jobs:
         run: |
           pytest tests/test_docker_linter.py -v -m docker
         env:
-          JENKINSFILELINT_SERVER_IMAGE: ghcr.io/jenkinsci/jenkinsfilelint-server:test
+          JENKINS_LINT_SERVER_IMAGE: ghcr.io/jenkinsci/jenkinsfilelint-server:test

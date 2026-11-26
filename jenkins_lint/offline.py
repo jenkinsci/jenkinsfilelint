@@ -12,8 +12,10 @@ import subprocess
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
-# Path of an engine binary to use instead of the installed one.
-ENGINE_ENV = "JENKINSFILELINT_ENGINE"
+# Path of an engine binary to use instead of the installed one. The name from
+# before the project was renamed still works.
+ENGINE_ENV = "JENKINS_LINT_ENGINE"
+OLD_ENGINE_ENV = "JENKINSFILELINT_ENGINE"
 
 ENGINE_MISSING_MESSAGE = (
     "The offline engine (jenkinsfilelint-engine) is not installed. "
@@ -83,7 +85,7 @@ def find_engine() -> str:
     Raises:
         OfflineEngineError: if the engine is not installed.
     """
-    path = os.environ.get(ENGINE_ENV)
+    path = os.environ.get(ENGINE_ENV) or os.environ.get(OLD_ENGINE_ENV)
     if path:
         return path
     try:

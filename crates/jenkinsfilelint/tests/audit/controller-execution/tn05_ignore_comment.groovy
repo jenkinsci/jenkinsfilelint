@@ -1,5 +1,5 @@
 pipeline {
-    // jenkinsfilelint: ignore[controller-execution] this job backs up JENKINS_HOME
+    // jenkins-lint: ignore[controller-execution] this job backs up JENKINS_HOME
     agent { label 'built-in' }
     stages {
         stage('Backup') {
@@ -10,6 +10,6 @@ pipeline {
     }
 }
 
-node('built-in') { // jenkinsfilelint: ignore[controller-execution]
+node('built-in') { // jenkins-lint: ignore[controller-execution]
     sh 'df -h'
 }

@@ -1,23 +1,49 @@
-- id: jenkinsfilelint
-  name: jenkinsfilelint
+- id: jenkins-lint
+  name: jenkins-lint
   description: Lint Jenkinsfiles and Groovy files with the configured Jenkins server, or offline when none is configured.
-  entry: jenkinsfilelint
+  entry: jenkins-lint
+  language: python
+  types: [file]
+  files: ^.*(Jenkinsfile.*|.*\.groovy)$
+  require_serial: true
+- id: jenkins-lint-offline
+  name: jenkins-lint (offline)
+  description: Check Jenkinsfile syntax and Declarative Pipeline structure without a Jenkins server, even when one is configured.
+  entry: jenkins-lint --offline
+  language: python
+  types: [file]
+  files: ^.*(Jenkinsfile.*|.*\.groovy)$
+  require_serial: true
+- id: jenkins-lint-audit
+  name: jenkins-lint (audit)
+  description: Find security problems in Jenkinsfiles and Groovy files offline, such as secrets interpolated into shell steps.
+  entry: jenkins-lint --audit
+  language: python
+  types: [file]
+  files: ^.*(Jenkinsfile.*|.*\.groovy)$
+  require_serial: true
+# The hook ids from before the project was renamed from jenkinsfilelint, so
+# that `pre-commit autoupdate` does not break existing configurations.
+- id: jenkinsfilelint
+  name: jenkins-lint
+  description: Old id of the jenkins-lint hook.
+  entry: jenkins-lint
   language: python
   types: [file]
   files: ^.*(Jenkinsfile.*|.*\.groovy)$
   require_serial: true
 - id: jenkinsfilelint-offline
-  name: jenkinsfilelint (offline)
-  description: Check Jenkinsfile syntax and Declarative Pipeline structure without a Jenkins server, even when one is configured.
-  entry: jenkinsfilelint --offline
+  name: jenkins-lint (offline)
+  description: Old id of the jenkins-lint-offline hook.
+  entry: jenkins-lint --offline
   language: python
   types: [file]
   files: ^.*(Jenkinsfile.*|.*\.groovy)$
   require_serial: true
 - id: jenkinsfilelint-audit
-  name: jenkinsfilelint (audit)
-  description: Find security problems in Jenkinsfiles and Groovy files offline, such as secrets interpolated into shell steps.
-  entry: jenkinsfilelint --audit
+  name: jenkins-lint (audit)
+  description: Old id of the jenkins-lint-audit hook.
+  entry: jenkins-lint --audit
   language: python
   types: [file]
   files: ^.*(Jenkinsfile.*|.*\.groovy)$

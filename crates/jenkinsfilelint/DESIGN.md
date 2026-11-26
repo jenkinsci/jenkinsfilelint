@@ -2,7 +2,7 @@
 
 ## Problem
 
-`jenkinsfilelint` checks a Jenkinsfile by sending it to a Jenkins
+`jenkins-lint` checks a Jenkinsfile by sending it to a Jenkins
 controller, either an existing one or a container started with `--local`.
 Both are accurate, but both need a controller: credentials or Docker, a
 JVM, and seconds to minutes of start-up. That keeps the hook out of many
@@ -89,9 +89,9 @@ mistakes in them are all caught.
    shared-library steps in a config file.
 2. **Distribution.** Done: this crate is published to PyPI as
    `jenkinsfilelint-engine`, maturin binary wheels (`bindings = "bin"`,
-   like ruff) for Linux, macOS and Windows plus an sdist. `jenkinsfilelint`
+   like ruff) for Linux, macOS and Windows plus an sdist. `jenkins-lint`
    stays pure Python, depends on the engine pinned to the exact version, and
-   runs it for `--offline`, the `jenkinsfilelint-offline` pre-commit hook,
+   runs it for `--offline`, the `jenkins-lint-offline` pre-commit hook,
    and whenever no Jenkins server is configured. Keeping the root package pure Python matters because pre-commit
    installs hooks from source: a maturin-built root package would make every
    pre-commit user compile Rust. The dependency is limited to platforms with

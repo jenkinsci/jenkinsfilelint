@@ -27,7 +27,7 @@ class Repo:
     def __init__(self, path):
         self.path = path
         self.git("init", "--quiet")
-        self.write("README.md", "jenkinsfilelint\n")
+        self.write("README.md", "jenkins-lint\n")
         self.commit("first commit")
 
     def git(self, *args):
@@ -147,7 +147,7 @@ def test_engine_unchanged(repo):
     repo.engine("0.1.0")
     repo.commit("add the engine")
     repo.release("v1.6.0")
-    repo.write("jenkinsfilelint/cli.py", "print('hello')\n")
+    repo.write("jenkins_lint/cli.py", "print('hello')\n")
     repo.commit("change the Python package only")
     assert check(repo.path) == ["The engine is the same as in v1.6.0 (0.1.0)."]
 

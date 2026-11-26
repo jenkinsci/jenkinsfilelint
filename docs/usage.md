@@ -22,16 +22,16 @@ configured.
 
 ## CLI
 
-You can also run `jenkinsfilelint` directly on any file or directory:
+You can also run `jenkins-lint` directly on any file or directory:
 
 ```bash
-pip install jenkinsfilelint
+pip install jenkins-lint
 
-jenkinsfilelint Jenkinsfile                   # offline, or remote if JENKINS_URL is set
-jenkinsfilelint Jenkinsfile Jenkinsfile.prod tests/Jenkinsfile
-jenkinsfilelint .                             # every Jenkinsfile in this directory
-jenkinsfilelint --local Jenkinsfile           # a Jenkins in Docker
-jenkinsfilelint --offline Jenkinsfile         # offline, even if JENKINS_URL is set
+jenkins-lint Jenkinsfile                   # offline, or remote if JENKINS_URL is set
+jenkins-lint Jenkinsfile Jenkinsfile.prod tests/Jenkinsfile
+jenkins-lint .                             # every Jenkinsfile in this directory
+jenkins-lint --local Jenkinsfile           # a Jenkins in Docker
+jenkins-lint --offline Jenkinsfile         # offline, even if JENKINS_URL is set
 ```
 
 With `--verbose`, a run that checks offline because no Jenkins server is
@@ -46,9 +46,9 @@ configured starts by saying so:
 A directory is searched recursively, in every mode:
 
 ```bash
-jenkinsfilelint .
-jenkinsfilelint --audit .
-jenkinsfilelint pipelines/ Jenkinsfile
+jenkins-lint .
+jenkins-lint --audit .
+jenkins-lint pipelines/ Jenkinsfile
 ```
 
 | File | Picked |
@@ -64,7 +64,7 @@ plain Groovy helpers are left out. So are notes and copies such as
 `Jenkinsfile.md` and `Jenkinsfile.bak`.
 
 A pipeline with any other name, like `ci/deploy.pipeline`, is not found. Pass
-its path as well: `jenkinsfilelint . ci/deploy.pipeline`.
+its path as well: `jenkins-lint . ci/deploy.pipeline`.
 
 Directories of tools are left out: `.git`, `.venv`, `venv`, `.tox`,
 `node_modules`, `target`, `site`, `__pycache__` and the like, and `build` next
@@ -89,21 +89,21 @@ error or could not be checked.
 instead of validating them, offline:
 
 ```console
-$ jenkinsfilelint --audit Jenkinsfile
+$ jenkins-lint --audit Jenkinsfile
 Jenkinsfile:8:36: high: script-injection: CHANGE_BRANCH is the name of the pull request's branch, and Groovy interpolates it into the sh script: ...
-  help: https://jenkinsci.github.io/jenkinsfilelint/audit/script-injection/
+  help: https://jenkinsci.github.io/jenkins-lint/audit/script-injection/
 Jenkinsfile:12:41: high: secret-interpolation: PASS is a secret, and Groovy interpolates it into the sh script: ...
-  help: https://jenkinsci.github.io/jenkinsfilelint/audit/secret-interpolation/
+  help: https://jenkinsci.github.io/jenkins-lint/audit/secret-interpolation/
 2 findings (2 high)
 ```
 
 ```yaml
 # .pre-commit-config.yaml
 repos:
-  - repo: https://github.com/jenkinsci/jenkinsfilelint
+  - repo: https://github.com/jenkinsci/jenkins-lint
     rev: # use the latest version
     hooks:
-      - id: jenkinsfilelint-audit
+      - id: jenkins-lint-audit
 ```
 
 [script-injection](audit/script-injection.md) finds pull request
@@ -121,7 +121,7 @@ without a tag or with `latest`.
 [unrestricted-input](audit/unrestricted-input.md) finds `input` steps
 without a `submitter`, which any user may approve, with `--persona pedantic`. `--persona`,
 `--min-severity` and `--min-confidence` choose what to see, a
-`// jenkinsfilelint: ignore[rule]` comment turns off one finding,
+`// jenkins-lint: ignore[rule]` comment turns off one finding,
 `--ignore RULE` turns off a rule everywhere,
 `--fix=all` rewrites the scripts it can fix, for you to review, and
 `--format sarif` writes a report for GitHub code scanning. See
@@ -133,10 +133,10 @@ Use `--include` (whitelist) and `--skip` (blacklist) to control which files are 
 
 ```bash
 # Only validate Jenkinsfiles
-jenkinsfilelint --include 'Jenkinsfile*' Jenkinsfile src/Utils.groovy
+jenkins-lint --include 'Jenkinsfile*' Jenkinsfile src/Utils.groovy
 
 # Exclude shared-library helper classes
-jenkinsfilelint --skip '*/src/*.groovy' --skip 'vars/*.groovy' Jenkinsfile src/Utils.groovy
+jenkins-lint --skip '*/src/*.groovy' --skip 'vars/*.groovy' Jenkinsfile src/Utils.groovy
 ```
 
 These work in every mode and in pre-commit too (with either hook id):
@@ -144,21 +144,21 @@ These work in every mode and in pre-commit too (with either hook id):
 **Exclude non-pipeline Groovy files (shared library helpers):**
 
 ```yaml
-- id: jenkinsfilelint
+- id: jenkins-lint
   args: ["--skip=*/src/*.groovy", "--skip=vars/*.groovy"]
 ```
 
 **Only validate files matching specific patterns:**
 
 ```yaml
-- id: jenkinsfilelint
+- id: jenkins-lint
   args: ["--include=Jenkinsfile*", "--include=pipelines/*.groovy"]
 ```
 
 You can also combine both — `--include` narrows first, then `--skip` removes from that set:
 
 ```yaml
-- id: jenkinsfilelint
+- id: jenkins-lint
   args: ["--include=Jenkinsfile*", "--skip=*/src/*.groovy"]
 ```
 
@@ -172,7 +172,7 @@ Use `--jobs` / `-j` to change how many requests are in flight at once — for
 example to go easier on a shared Jenkins controller:
 
 ```yaml
-- id: jenkinsfilelint
+- id: jenkins-lint
   args: ["--jobs=4"]  # use --jobs=1 to validate one file at a time
 ```
 

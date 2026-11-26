@@ -1,6 +1,6 @@
 # How It Works
 
-`jenkinsfilelint` answers one question: **"Will Jenkins accept this syntax?"**
+`jenkins-lint` answers one question: **"Will Jenkins accept this syntax?"**
 It either checks the file itself, offline, or POSTs it to a Jenkins's
 `/pipeline-model-converter/validate` endpoint.
 
@@ -11,8 +11,8 @@ It either checks the file itself, offline, or POSTs it to a Jenkins's
   reused across runs for near-instant validation.
 - **Offline mode** (`--offline`, and whenever no Jenkins server is
   configured): no Jenkins at all. The
-  [`jenkinsfilelint-engine`](https://github.com/jenkinsci/jenkinsfilelint/tree/main/crates/jenkinsfilelint) package, a dependency of
-  `jenkinsfilelint`, parses the file and checks the Declarative rules itself,
+  [`jenkinsfilelint-engine`](https://github.com/jenkinsci/jenkins-lint/tree/main/crates/jenkinsfilelint) package, a dependency of
+  `jenkins-lint`, parses the file and checks the Declarative rules itself,
   using the messages of Jenkins's validator. One run checks all files in
   milliseconds.
 

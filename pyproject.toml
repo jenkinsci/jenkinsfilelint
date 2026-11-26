@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "setuptools-scm>=8.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "jenkinsfilelint"
+name = "jenkins-lint"
 dynamic = ["version"]
 authors = [
     {name = "Xianpeng Shen", email = "xianpeng.shen@gmail.com"},
@@ -41,13 +41,13 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/jenkinsci/jenkinsfilelint"
+Homepage = "https://github.com/jenkinsci/jenkins-lint"
 
 [project.scripts]
-jenkinsfilelint = "jenkinsfilelint.cli:main"
+jenkins-lint = "jenkins_lint.cli:main"
 
 [tool.setuptools]
-packages = ["jenkinsfilelint"]
+packages = ["jenkins_lint"]
 
 [tool.setuptools_scm]
 # It would be nice to include the commit hash in the version, but that
@@ -72,7 +72,7 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["jenkinsfilelint"]
+source = ["jenkins_lint"]
 branch = true
 omit = ["*/tests/*", "*/__pycache__/*"]
 

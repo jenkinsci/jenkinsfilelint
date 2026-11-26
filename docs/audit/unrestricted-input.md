@@ -67,7 +67,7 @@ tests?", "Continue after this warning?". Anyone who can build the job could
 as well start another build that skips the question.
 
 ```groovy
-// jenkinsfilelint: ignore[unrestricted-input] a confirmation, not a security gate
+// jenkins-lint: ignore[unrestricted-input] a confirmation, not a security gate
 input 'Continue with the slow tests?'
 ```
 

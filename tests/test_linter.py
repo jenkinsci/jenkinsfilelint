@@ -9,7 +9,7 @@ import pytest
 
 import requests
 
-from jenkinsfilelint.linter import JenkinsfileLinter, NOT_DECLARATIVE_MESSAGE
+from jenkins_lint.linter import JenkinsfileLinter, NOT_DECLARATIVE_MESSAGE
 
 
 class TestJenkinsfileLinterInit:
