@@ -60,6 +60,7 @@ pub fn check(stmts: &[Stmt]) -> Vec<Finding> {
                 },
             },
             stmt_line: section.pos.line,
+            fix: None,
         });
     });
     findings

@@ -81,6 +81,25 @@ typo does not go unnoticed. With pre-commit:
   args: [--ignore, unpinned-library]
 ```
 
+## Fixing findings
+
+`--fix` rewrites the files to fix script-injection and secret-interpolation
+findings where that is safe, then reports what is left:
+
+```console
+$ jenkinsfilelint --audit --fix .
+Jenkinsfile:8:36: fixed: script-injection: CHANGE_BRANCH is the name of the pull request's branch, and Groovy interpolates it into the sh script: ...
+Jenkinsfile:12:41: high: secret-interpolation: PASS is a secret, and Groovy interpolates it into the sh script: ...
+  help: https://jenkinsci.github.io/jenkinsfilelint/audit/secret-interpolation/
+1 finding (1 high)
+1 fixed, 1 remaining
+```
+
+Without `--fix`, nothing changes, a finding it can fix ends with
+`(fixable with --fix)`, and the SARIF report carries the fix. See
+[How --fix fixes it](script-injection.md#how-fix-fixes-it) for what it
+changes and what it leaves.
+
 ## Output
 
 - `--format text` (default): one line per finding, and a link to the rule.
@@ -110,5 +129,5 @@ recordIssues tool: sarif(pattern: 'audit.sarif')
 | Code | Meaning |
 |---|---|
 | `0` | No findings shown, or `--format sarif` |
-| `1` | A finding was shown, or a file could not be read or parsed |
+| `1` | A finding was shown, or a file could not be read or parsed. With `--fix`, a finding is left |
 | `2` | Wrong command-line options |

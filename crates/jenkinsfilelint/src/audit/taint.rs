@@ -8,6 +8,7 @@
 
 use std::collections::{HashMap, HashSet};
 
+use super::fix::Script;
 use super::script_injection::{self, Input};
 use super::secret_interpolation::{self, Kind};
 use crate::ast::{visit, Arg, Expr, Node, Stmt, StrPart};
@@ -71,6 +72,9 @@ pub struct Flow {
     pub value: Use,
     /// Where the statement it is in starts.
     pub stmt_line: usize,
+    /// The script literal it is in, when that literal is the step's
+    /// argument itself: an index into the walk's scripts.
+    pub script: Option<usize>,
 }
 
 /// What a step runs: its script, or the command line it runs in a shell.
@@ -100,8 +104,9 @@ pub fn how_it_gets_there(u: &Use, step: &str) -> String {
     }
 }
 
-/// Every flow in a file, in the order the walk meets them.
-pub fn flows(stmts: &[Stmt]) -> Vec<Flow> {
+/// Every flow in a file, in the order the walk meets them, and the script
+/// literals passed straight to shell steps.
+pub fn flows(stmts: &[Stmt]) -> (Vec<Flow>, Vec<Script>) {
     let sources = script_injection::sources(stmts);
     let root = sources
         .names
@@ -113,9 +118,10 @@ pub fn flows(stmts: &[Stmt]) -> Vec<Flow> {
         prefixes: sources.prefixes,
         images: docker_images(stmts),
         flows: Vec::new(),
+        scripts: Vec::new(),
     };
     w.block(stmts);
-    w.flows
+    (w.flows, w.scripts)
 }
 
 /// What a name refers to.
@@ -138,6 +144,7 @@ struct Walker {
     /// Variables that hold a Docker image: `def img = docker.image(...)`.
     images: HashSet<String>,
     flows: Vec<Flow>,
+    scripts: Vec<Script>,
 }
 
 impl Walker {
@@ -252,14 +259,15 @@ impl Walker {
                                 Arg::Named { .. } => None,
                             });
                             if let Some(script) = script {
-                                self.sink(Sink::Script, s, script, true, line);
+                                let index = self.script(s, script);
+                                self.sink(Sink::Script, s, script, true, line, index);
                             }
                         }
                         s => {
                             for a in args {
                                 let value = arg_value(a);
                                 if matches!(value, Expr::Str { .. }) {
-                                    self.sink(Sink::Argument, s, value, false, line);
+                                    self.sink(Sink::Argument, s, value, false, line, None);
                                 }
                             }
                         }
@@ -337,7 +345,7 @@ impl Walker {
 
     /// Record the labeled values in `value` as flows into `step`, once per
     /// value and place.
-    fn sink(&mut self, sink: Sink, step: &str, value: &Expr, deep: bool, line: usize) {
+    fn sink(&mut self, sink: Sink, step: &str, value: &Expr, deep: bool, line: usize, script: Option<usize>) {
         let mut seen = Vec::new();
         for u in self.uses(value, deep) {
             let key = (u.name.clone(), u.span);
@@ -350,8 +358,63 @@ impl Walker {
                 step: step.to_string(),
                 value: u,
                 stmt_line: line,
+                script,
             });
         }
+    }
+
+    /// Record a GString passed as a shell step's script, with the
+    /// environment variable each placeholder reads.
+    fn script(&mut self, step: &str, e: &Expr) -> Option<usize> {
+        let Expr::Str {
+            interp: true, parts, pos, ..
+        } = e
+        else {
+            return None;
+        };
+        let placeholders = parts
+            .iter()
+            .filter_map(|p| match p {
+                StrPart::Placeholder(ph) => Some((ph.span, ph.expr.as_ref().and_then(|x| self.environment_name(x)))),
+                StrPart::Text(_) => None,
+            })
+            .collect();
+        self.scripts.push(Script {
+            step: step.to_string(),
+            pos: *pos,
+            placeholders,
+        });
+        Some(self.scripts.len() - 1)
+    }
+
+    /// The environment variable that `e` reads, by a name the shell can
+    /// read it by: `X` for `env.X`, `env['X']` and `params.X`, and for `X`
+    /// when it is an environment variable here.
+    fn environment_name(&self, e: &Expr) -> Option<String> {
+        let (name, _) = name_of(e)?;
+        let binding = |var: &str| self.scopes.iter().rev().find_map(|s| s.get(var));
+        let var = if let Some(var) = name.strip_prefix("env.") {
+            var
+        } else if let Some(var) = name.strip_prefix("params.") {
+            // A build parameter is an environment variable, unless a
+            // variable of the same name hides it.
+            match binding(var) {
+                None | Some(Binding::Source(Label::Input(_))) => var,
+                _ => return None,
+            }
+        } else {
+            match binding(&name) {
+                Some(Binding::Source(_) | Binding::Holds(_, true)) => &name,
+                Some(Binding::Holds(_, false)) => return None,
+                None if self.prefixes.iter().any(|(p, _)| name.starts_with(p.as_str())) || JENKINS_VARIABLES.contains(&name.as_str()) => {
+                    &name
+                }
+                None => return None,
+            }
+        };
+        let shell_name = var.chars().next().is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+            && var.chars().all(|c| c.is_ascii_alphanumeric() || c == '_');
+        shell_name.then(|| var.to_string())
     }
 
     /// The Docker Pipeline steps that join their arguments into a shell
@@ -369,7 +432,7 @@ impl Walker {
             _ => return,
         };
         for e in command_line {
-            self.sink(Sink::Script, step, e, true, line);
+            self.sink(Sink::Script, step, e, true, line, None);
         }
     }
 
@@ -573,6 +636,26 @@ impl Walker {
         true
     }
 }
+
+/// Environment variables that Jenkins sets in every build, which Groovy
+/// reads by name too.
+const JENKINS_VARIABLES: &[&str] = &[
+    "BUILD_DISPLAY_NAME",
+    "BUILD_ID",
+    "BUILD_NUMBER",
+    "BUILD_TAG",
+    "BUILD_URL",
+    "EXECUTOR_NUMBER",
+    "JENKINS_HOME",
+    "JENKINS_URL",
+    "JOB_BASE_NAME",
+    "JOB_NAME",
+    "JOB_URL",
+    "NODE_LABELS",
+    "NODE_NAME",
+    "WORKSPACE",
+    "WORKSPACE_TMP",
+];
 
 /// Methods and properties whose result tells something about a string
 /// without holding its text: a length, a boolean.

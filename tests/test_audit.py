@@ -313,3 +313,79 @@ class TestAuditCLI:
 def test_finding_render():
     f = Finding("r", "high", "medium", "it leaks", 3, 7, "https://h")
     assert f.render("J") == "J:3:7: high: r: it leaks\n  help: https://h"
+
+
+UNFIXABLE = (
+    "withCredentials([string(credentialsId: 'c', variable: 'TOKEN')]) {\n"
+    '    sh "deploy ${TOKEN.trim()}"\n'
+    "}\n"
+)
+
+
+class TestFix:
+    def test_audit_files_fixes_and_reports_what_is_left(self, tmp_path):
+        f = write(tmp_path, "Jenkinsfile", LEAKS)
+        result = audit_files([f], fix=True)[f]
+        assert result.findings == []
+        assert [(x.rule, x.line, x.column) for x in result.fixed] == [
+            ("secret-interpolation", 2, 25)
+        ]
+        assert 'sh \'curl -u "$USER":"$PASS" https://example.com\'' in (
+            tmp_path / "Jenkinsfile"
+        ).read_text(encoding="utf-8")
+
+    def test_without_fix_nothing_changes(self, tmp_path, capsys):
+        f = write(tmp_path, "Jenkinsfile", LEAKS)
+        assert run_cli(["--audit", f]) == 1
+        assert "(fixable with --fix)\n  help: " in capsys.readouterr().out
+        assert (tmp_path / "Jenkinsfile").read_text(encoding="utf-8") == LEAKS
+
+    def test_fix(self, tmp_path, capsys):
+        f = write(tmp_path, "Jenkinsfile", LEAKS)
+        assert run_cli(["--audit", "--fix", f]) == 0
+        out = capsys.readouterr().out
+        assert out.startswith(
+            f"{f}:2:25: fixed: secret-interpolation: PASS is a secret"
+        )
+        assert out.endswith("\n1 fixed, 0 remaining\n")
+        assert "help:" not in out
+        assert run_cli(["--audit", "--fix", f]) == 0
+        assert capsys.readouterr().out == "0 fixed, 0 remaining\n"
+
+    def test_what_cannot_be_fixed_fails_the_run(self, tmp_path, capsys):
+        fixable = write(tmp_path, "Jenkinsfile", LEAKS)
+        unfixable = write(tmp_path, "Jenkinsfile.prod", UNFIXABLE)
+        assert run_cli(["--audit", "--fix", fixable, unfixable]) == 1
+        out = capsys.readouterr().out
+        assert f"{fixable}:2:25: fixed: secret-interpolation" in out
+        assert f"{unfixable}:2:16: high: secret-interpolation" in out
+        assert "(fixable with --fix)" not in out
+        assert out.endswith("1 finding (1 high)\n1 fixed, 1 remaining\n")
+        assert (tmp_path / "Jenkinsfile.prod").read_text(encoding="utf-8") == UNFIXABLE
+
+    def test_directory(self, tmp_path, monkeypatch, capsys):
+        write(tmp_path, "Jenkinsfile", LEAKS)
+        (tmp_path / "ci").mkdir()
+        write(tmp_path, os.path.join("ci", "deploy.jenkinsfile"), LEAKS)
+        monkeypatch.chdir(tmp_path)
+        assert run_cli(["--audit", "--fix", "."]) == 0
+        assert capsys.readouterr().out.endswith("2 fixed, 0 remaining\n")
+        assert '"$PASS"' in (tmp_path / "ci" / "deploy.jenkinsfile").read_text()
+
+    def test_report_formats(self, tmp_path):
+        f = write(tmp_path, "Jenkinsfile", LEAKS)
+        output, _, code = audit_report([f], "sarif")
+        assert code == 0
+        assert '"fixes":[{"description"' in output
+        output, _, code = audit_report([f], "json", fix=True)
+        assert code == 0
+        report = json.loads(output)[0]
+        assert (report["findings"], [x["rule"] for x in report["fixed"]]) == (
+            [],
+            ["secret-interpolation"],
+        )
+
+    def test_needs_audit(self, tmp_path, capsys):
+        f = write(tmp_path, "Jenkinsfile", LEAKS)
+        assert run_cli(["--offline", "--fix", f]) == 2
+        assert "argument --fix: requires --audit" in capsys.readouterr().err

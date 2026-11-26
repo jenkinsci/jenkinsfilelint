@@ -9,7 +9,7 @@ Groovy syntax and Declarative Pipeline structure without a Jenkins controller.
 import json
 import os
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 # Path of an engine binary to use instead of the installed one.
@@ -49,13 +49,20 @@ class Finding:
     line: int
     column: int
     help: str
+    # ``--fix`` would rewrite the script it is in.
+    fixable: bool = False
 
     def render(self, path: str) -> str:
         """``file:line:col: severity: rule: message``, and where to read more."""
+        fixable = " (fixable with --fix)" if self.fixable else ""
         return (
             f"{path}:{self.line}:{self.column}: {self.severity}: {self.rule}: "
-            f"{self.message}\n  help: {self.help}"
+            f"{self.message}{fixable}\n  help: {self.help}"
         )
+
+    def render_fixed(self, path: str) -> str:
+        """``file:line:col: fixed: rule: message``, for what ``--fix`` fixed."""
+        return f"{path}:{self.line}:{self.column}: fixed: {self.rule}: {self.message}"
 
 
 @dataclass
@@ -65,6 +72,8 @@ class AuditResult:
     findings: List[Finding]
     # Syntax errors and read errors, as ``file:line:col: error: message``.
     errors: List[str]
+    # What ``--fix`` fixed, where it was before.
+    fixed: List[Finding] = field(default_factory=list)
 
 
 def find_engine() -> str:
@@ -165,6 +174,7 @@ def _audit_args(
     min_severity: str,
     min_confidence: str,
     ignore: Optional[List[str]] = None,
+    fix: bool = False,
 ) -> List[str]:
     args = [
         "--audit",
@@ -177,6 +187,8 @@ def _audit_args(
     ]
     for rules in ignore or []:
         args += ["--ignore", rules]
+    if fix:
+        args.append("--fix")
     return args
 
 
@@ -187,14 +199,16 @@ def audit_files(
     min_severity: str = "low",
     min_confidence: str = "low",
     ignore: Optional[List[str]] = None,
+    fix: bool = False,
 ) -> Dict[str, AuditResult]:
-    """Run the security checks on files with one run of the engine.
+    """Run the security checks on files with one run of the engine. With
+    *fix*, the engine rewrites the files to fix what it safely can first.
 
     Raises:
         OfflineEngineError: if the engine is missing or fails.
     """
     engine = engine or find_engine()
-    options = _audit_args(persona, min_severity, min_confidence, ignore)
+    options = _audit_args(persona, min_severity, min_confidence, ignore, fix)
     reports = _reports(engine, [*options, "--format", "json", "--", *paths], len(paths))
     return {
         path: _parse(engine, report, lambda r, path=path: _audit_result(path, r))
@@ -210,6 +224,7 @@ def audit_report(
     min_severity: str = "low",
     min_confidence: str = "low",
     ignore: Optional[List[str]] = None,
+    fix: bool = False,
 ) -> Tuple[str, str, int]:
     """Run the security checks and return the engine's report as is, in
     ``json`` or ``sarif``: its output, its error output and its exit code.
@@ -218,7 +233,7 @@ def audit_report(
         OfflineEngineError: if the engine is missing or fails.
     """
     engine = engine or find_engine()
-    options = _audit_args(persona, min_severity, min_confidence, ignore)
+    options = _audit_args(persona, min_severity, min_confidence, ignore, fix)
     proc = _run(engine, [*options, "--format", fmt, "--", *paths])
     if proc.returncode not in (0, 1) or not proc.stdout.strip():
         detail = proc.stderr.strip() or f"exit code {proc.returncode}"
@@ -260,8 +275,9 @@ def _audit_result(path: str, report: dict) -> AuditResult:
     """
     if "error" in report:
         return AuditResult([], [f"Error reading file {path}: {report['error']}"])
-    findings = [
-        Finding(
+
+    def finding(f: dict) -> Finding:
+        return Finding(
             rule=f["rule"],
             severity=f["severity"],
             confidence=f["confidence"],
@@ -269,11 +285,15 @@ def _audit_result(path: str, report: dict) -> AuditResult:
             line=f["line"],
             column=f["column"],
             help=f["help"],
+            fixable=f.get("fixable", False),
         )
-        for f in report["findings"]
-    ]
+
     errors = [
         f"{path}:{d['line']}:{d['column']}: error: {d['message']}"
         for d in report["diagnostics"]
     ]
-    return AuditResult(findings, errors)
+    return AuditResult(
+        [finding(f) for f in report["findings"]],
+        errors,
+        [finding(f) for f in report.get("fixed", [])],
+    )

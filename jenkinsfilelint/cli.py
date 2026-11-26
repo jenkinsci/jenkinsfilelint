@@ -441,6 +441,7 @@ def _audit_options(args: argparse.Namespace) -> dict:
         "min_severity": args.min_severity or "low",
         "min_confidence": args.min_confidence or "low",
         "ignore": args.ignore,
+        "fix": args.fix,
     }
 
 
@@ -470,6 +471,7 @@ def _run_audit(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     counts = {severity: 0 for severity in SEVERITIES}
+    fixed = 0
     failed = False
     for jenkinsfile in args.jenkinsfile:
         reason = _skip_reason(jenkinsfile, args)
@@ -478,6 +480,9 @@ def _run_audit(args: argparse.Namespace) -> None:
                 print(f"⊘ {jenkinsfile}: Skipped ({reason})")
             continue
         result = results[jenkinsfile]
+        for finding in result.fixed:
+            print(finding.render_fixed(jenkinsfile))
+            fixed += 1
         for line in result.errors:
             sys.stdout.flush()  # keep the output in file order when piped
             print(line, file=sys.stderr)
@@ -492,6 +497,8 @@ def _run_audit(args: argparse.Namespace) -> None:
     if total:
         parts = ", ".join(f"{counts[s]} {s}" for s in SEVERITIES if counts.get(s))
         print(f"{total} finding{'' if total == 1 else 's'} ({parts})")
+    if args.fix:
+        print(f"{fixed} fixed, {total} remaining")
     sys.exit(1 if total or failed else 0)
 
 
@@ -614,6 +621,14 @@ def main():
         "comma-separated list and can be used multiple times.",
     )
     audit.add_argument(
+        "--fix",
+        action="store_true",
+        help="Rewrite the files to fix what is safe to fix, then report the "
+        "findings that remain: script-injection and secret-interpolation in sh, "
+        "powershell and pwsh scripts whose every value the shell can read from "
+        "its environment.",
+    )
+    audit.add_argument(
         "--format",
         choices=("text", "json", "sarif"),
         default="text",
@@ -659,7 +674,7 @@ def main():
     args = parser.parse_args()
 
     if not args.audit:
-        for option in ("persona", "min_severity", "min_confidence", "ignore"):
+        for option in ("persona", "min_severity", "min_confidence", "ignore", "fix"):
             if getattr(args, option):
                 flag = "--" + option.replace("_", "-")
                 parser.error(f"argument {flag}: requires --audit")
