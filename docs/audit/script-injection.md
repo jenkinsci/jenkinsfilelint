@@ -151,6 +151,10 @@ finding appears.
   passes the image name in the environment.
 - **What a step or method returns**: in `def r = api.lookup(env.CHANGE_TITLE)`,
   `r` is not the title.
+- **Variables of the file with the same name**: in
+  `def call(Map params) { sh "deploy ${params.target}" }`, `params` is the
+  step's argument, not the build parameters, and a method or closure
+  parameter named `CHANGE_TITLE` is not the pull request title.
 - **Values checked before use.** The rule does not follow `if` conditions.
   See [When to ignore it](#when-to-ignore-it).
 

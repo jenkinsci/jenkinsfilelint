@@ -126,6 +126,8 @@ pub enum Stmt {
     },
     MethodDef {
         name: String,
+        /// The names of its parameters.
+        params: Vec<String>,
         body: Vec<Stmt>,
         pos: Pos,
     },

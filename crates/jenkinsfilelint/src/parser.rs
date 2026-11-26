@@ -153,6 +153,48 @@ impl Parser {
         Ok(())
     }
 
+    /// The parameter list of a method, `(Map config = [:], String... rest)`,
+    /// skipped as `skip_balanced` does, and the names of its parameters: the
+    /// last word before a `=` default, a `,` or the closing `)`.
+    fn method_params(&mut self) -> PResult<Vec<String>> {
+        let start = self.expect("(")?.pos;
+        let mut params = Vec::new();
+        let mut name = None;
+        // Nesting of `( )`, which ends the list, and of `[ ]` and `< >`.
+        let mut parens = 1;
+        let mut depth = 0usize;
+        let mut in_default = false;
+        loop {
+            if self.at_eof() {
+                return Err(Diagnostic::error(start, "Unclosed '('"));
+            }
+            let t = self.next();
+            match t.kind {
+                TokKind::Punct("(") => parens += 1,
+                TokKind::Punct(")") => {
+                    parens -= 1;
+                    if parens == 0 {
+                        break;
+                    }
+                }
+                _ if parens > 1 => {}
+                TokKind::Punct("[") => depth += 1,
+                TokKind::Punct("]") => depth = depth.saturating_sub(1),
+                TokKind::Punct("<") if !in_default => depth += 1,
+                TokKind::Punct(">") if !in_default => depth = depth.saturating_sub(1),
+                TokKind::Punct("=") if depth == 0 => in_default = true,
+                TokKind::Punct(",") if depth == 0 => {
+                    params.extend(name.take());
+                    in_default = false;
+                }
+                TokKind::Ident(n) if depth == 0 && !in_default => name = Some(n),
+                _ => {}
+            }
+        }
+        params.extend(name);
+        Ok(params)
+    }
+
     // ---------------------------------------------------------------
     // Statements
     // ---------------------------------------------------------------
@@ -271,10 +313,10 @@ impl Parser {
                 let at = self.i;
                 let name = self.ident_name().unwrap_or_default();
                 self.next();
-                self.skip_balanced("(", ")")?;
+                let params = self.method_params()?;
                 if self.peek().is_punct("{") {
                     let body = self.block()?;
-                    return Ok(Stmt::MethodDef { name, body, pos });
+                    return Ok(Stmt::MethodDef { name, params, body, pos });
                 }
                 self.i = at;
             }
@@ -643,7 +685,7 @@ impl Parser {
         if self.peek().is_punct("(") && !self.peek().nl_before {
             // Method definition. On the next line, `(a, b) = f()` is a
             // statement of its own.
-            self.skip_balanced("(", ")")?;
+            let params = self.method_params()?;
             if self.peek().is_ident("throws") {
                 self.next();
                 self.skip_type()?;
@@ -652,7 +694,7 @@ impl Parser {
                 }
             }
             let body = self.block()?;
-            return Ok(Stmt::MethodDef { name, body, pos });
+            return Ok(Stmt::MethodDef { name, params, body, pos });
         }
         let mut names = vec![name];
         let mut value = None;
@@ -1857,6 +1899,22 @@ mod tests {
         assert_eq!(params("def c = { a }"), (vec![], 1));
         // Without an arrow, `a, b` is not a parameter list.
         fails("def c = { a, b }");
+    }
+
+    #[test]
+    fn method_parameters() {
+        let params = |src: &str| match ok(src).remove(0) {
+            Stmt::MethodDef { params, .. } => params,
+            other => panic!("{src}: {other:?}"),
+        };
+        assert!(params("def call() { }").is_empty());
+        assert_eq!(params("def call(Map params = [:]) { }"), ["params"]);
+        assert_eq!(
+            params("void run(Map<String, Object> cfg, List<String> xs = ['a', 'b'], String... rest) { }"),
+            ["cfg", "xs", "rest"]
+        );
+        assert_eq!(params("def f(a, b = g(1, 2), final int c) { }"), ["a", "b", "c"]);
+        assert_eq!(params("@NonCPS\nparse(text) { }"), ["text"]);
     }
 
     #[test]
