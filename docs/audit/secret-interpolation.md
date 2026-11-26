@@ -92,6 +92,22 @@ so that only the Groovy value is interpolated:
 sh "curl -u \"\$USER:\$PASS\" ${env.NEXUS_URL}"
 ```
 
+## How `--fix` fixes it
+
+`jenkinsfilelint --audit --fix=all` makes this change for you. Like the
+fix for script-injection, it is unsafe, so review it, with `--diff` first:
+
+```groovy
+sh "curl -u ${USER}:${PASS} https://nexus.example.com"     // before
+sh 'curl -u "$USER":"$PASS" https://nexus.example.com'     // after
+```
+
+In `powershell` and `pwsh`, a secret becomes `${env:PASS}`. `bat` steps are
+left to you, and so is a script that also needs a Groovy value, such as a
+local variable or a method call: the escaped form above is the fix for it.
+The rules for what `--fix` rewrites are the same as for
+[script-injection](script-injection.md#how-fix-fixes-it).
+
 ## What it does not report
 
 - **Paths to secret files.** `file(variable: 'KUBECONFIG')`,

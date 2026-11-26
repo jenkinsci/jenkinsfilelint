@@ -26,7 +26,7 @@ dependencies = [
     # on 64-bit Windows says AMD64, and a 32-bit Linux userland on a 64-bit
     # kernel says x86_64 or aarch64. That is why there are 32-bit wheels
     # (i686, armv7l, win32) for every 64-bit machine listed here.
-    """jenkinsfilelint-engine==0.3.1; \
+    """jenkinsfilelint-engine==0.4.0; \
     (sys_platform == 'linux' and (platform_machine == 'x86_64' or platform_machine == 'aarch64' \
         or platform_machine == 'i686' or platform_machine == 'armv7l')) \
     or (sys_platform == 'darwin' and (platform_machine == 'x86_64' or platform_machine == 'arm64')) \

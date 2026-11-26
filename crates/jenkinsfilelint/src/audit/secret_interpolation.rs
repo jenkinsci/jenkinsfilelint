@@ -9,7 +9,8 @@
 
 use std::collections::HashMap;
 
-use super::taint::{self, Flow, Label, Sink, Use};
+use super::fix::{Disposition, Fix};
+use super::taint::{self, Flow, How, Label, Sink, Use};
 use super::{Confidence, Finding, Persona, Rule, Severity};
 use crate::ast::{Arg, Expr};
 
@@ -30,7 +31,7 @@ pub enum Kind {
     Username,
 }
 
-pub fn check(flows: &[Flow]) -> Vec<Finding> {
+pub fn check(flows: &[Flow], fixes: &[Option<Fix>]) -> Vec<Finding> {
     let mut findings = Vec::new();
     for f in flows {
         let Label::Secret(kind) = f.value.label else { continue };
@@ -68,9 +69,25 @@ pub fn check(flows: &[Flow]) -> Vec<Finding> {
             message,
             span: f.value.span,
             stmt_line: f.stmt_line,
+            fix: fix(f, fixes),
         });
     }
     findings
+}
+
+/// What `--fix` makes of a script that a secret is interpolated into.
+/// Unsafe, as for script-injection: the quoted value is no longer split.
+const FIX: Disposition = Disposition::Unsafe;
+
+/// `--fix` rewrites a script that a secret is interpolated into, so that
+/// the shell reads the secret from the environment, where
+/// `withCredentials` puts it.
+fn fix(f: &Flow, fixes: &[Option<Fix>]) -> Option<Fix> {
+    if f.sink != Sink::Script || f.value.how != How::Interpolated {
+        return None;
+    }
+    let fix = f.script.and_then(|i| fixes[i].clone())?;
+    Some(Fix { disposition: FIX, ..fix })
 }
 
 /// `X = credentials('id')` in an `environment` block sets X, and X_USR and
@@ -185,7 +202,7 @@ mod tests {
 
     fn messages(src: &str, filter: Filter) -> Vec<String> {
         let (tokens, comments) = tokenize_with_comments(src).unwrap();
-        audit(&parse(tokens).unwrap(), &comments, &[], &filter)
+        audit(src, &parse(tokens).unwrap(), &comments, &[], &filter)
             .into_iter()
             .map(|f| f.message)
             .collect()

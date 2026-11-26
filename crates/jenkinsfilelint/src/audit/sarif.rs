@@ -93,10 +93,22 @@ pub fn sarif(files: &[(String, Result<Vec<Finding>, Diagnostic>)]) -> String {
             Ok(findings) => {
                 for f in findings {
                     let index = RULES.iter().position(|r| r.id == f.rule).unwrap_or(0);
-                    let extra = format!(
+                    let mut extra = format!(
                         ",\"properties\":{{\"severity\":\"{}\",\"confidence\":\"{}\"}}",
                         f.severity, f.confidence
                     );
+                    if let Some(fix) = &f.fix {
+                        extra.push_str(&format!(
+                            ",\"fixes\":[{{\"description\":{{\"text\":\"Let the shell read the value from the environment\"}},\
+                             \"artifactChanges\":[{{\"artifactLocation\":{{\"uri\":\"{}\"}},\"replacements\":[{{\
+                             \"deletedRegion\":{},\"insertedContent\":{{\"text\":\"{}\"}}}}]}}],\
+                             \"properties\":{{\"disposition\":\"{}\"}}}}]",
+                            json_escape(&uri(path)),
+                            region(fix.span.start, fix.span.end),
+                            json_escape(&fix.text),
+                            fix.disposition.name()
+                        ));
+                    }
                     results.push(result(
                         f.rule,
                         index,

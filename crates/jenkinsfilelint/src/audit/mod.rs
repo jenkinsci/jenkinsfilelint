@@ -8,6 +8,7 @@
 //! the line above the statement it is in.
 
 mod controller_execution;
+pub mod fix;
 pub mod sarif;
 mod script_injection;
 mod secret_interpolation;
@@ -112,6 +113,8 @@ pub struct Finding {
     /// above that turns it off, even when the finding is further down, as
     /// in a multi-line string.
     pub stmt_line: usize,
+    /// The rewrite of the script it is in that `--fix` makes.
+    pub fix: Option<fix::Fix>,
 }
 
 /// Which findings to show.
@@ -145,8 +148,9 @@ impl Filter {
 }
 
 /// Run every rule on a parsed file and keep the findings the filter shows
-/// and no comment turns off, in file order.
-pub fn audit(stmts: &[Stmt], comments: &[Comment], annotations: &[Annotation], filter: &Filter) -> Vec<Finding> {
+/// and no comment turns off, in file order. `src` is the file's text, which
+/// fixes rewrite.
+pub fn audit(src: &str, stmts: &[Stmt], comments: &[Comment], annotations: &[Annotation], filter: &Filter) -> Vec<Finding> {
     let ignores: Vec<(usize, Vec<&str>)> = comments
         .iter()
         .filter_map(|c| ignored_rules(&c.text).map(|rules| (c.pos.line, rules)))
@@ -157,10 +161,12 @@ pub fn audit(stmts: &[Stmt], comments: &[Comment], annotations: &[Annotation], f
             applies && rules.contains(&f.rule)
         })
     };
-    let flows = taint::flows(stmts);
-    let mut findings: Vec<Finding> = script_injection::check(&flows)
+    let (flows, scripts) = taint::flows(stmts);
+    let source = fix::Source::new(src);
+    let fixes: Vec<Option<fix::Fix>> = scripts.iter().map(|s| fix::plan(&source, s)).collect();
+    let mut findings: Vec<Finding> = script_injection::check(&flows, &fixes)
         .into_iter()
-        .chain(secret_interpolation::check(&flows))
+        .chain(secret_interpolation::check(&flows, &fixes))
         .chain(controller_execution::check(stmts))
         .chain(unpinned_library::check(stmts, annotations))
         .chain(unpinned_image::check(stmts))

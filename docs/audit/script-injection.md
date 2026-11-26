@@ -93,6 +93,47 @@ withEnv(["SLUG=${slug}"]) {
 `bat` needs delayed expansion because cmd expands `%X%` before it parses the
 line, so `&` or `|` in the value still runs.
 
+## How `--fix` fixes it
+
+`jenkinsfilelint --audit --fix=all` makes this change for you. It puts the
+script in single quotes and has the shell read each value from the
+environment, in double quotes:
+
+```groovy
+sh "git checkout ${env.CHANGE_BRANCH}"   // before
+sh 'git checkout "$CHANGE_BRANCH"'       // after
+```
+
+In `powershell` and `pwsh`, a value becomes `${env:CHANGE_BRANCH}`.
+
+It rewrites a script only when all of these hold, and otherwise leaves the
+script and its finding as they are:
+
+- The script is a string in double or triple double quotes, passed straight
+  to `sh`, `powershell` or `pwsh`.
+- Every placeholder in it reads an environment variable: `$X`, `${X}`,
+  `${env.X}`, `${env['X']}` or `${params.X}`, where `X` is a pull request or
+  webhook variable, a build parameter, a `withCredentials`, `environment` or
+  `withEnv` variable, or one that Jenkins sets in every build, such as
+  `BUILD_NUMBER`. A local variable, a method call such as `.trim()` or
+  `currentBuild` anywhere in the script keeps all of it as it is.
+- The text around the placeholders has no quote, backslash or `$`, so it
+  means the same in single quotes. There is no here-document, `[[` or
+  `eval`, and no `Invoke-Expression` in PowerShell, where each value must also
+  stand alone as an argument.
+- No value is where a command goes, as in `sh "${CMD}"`: quoted, a command
+  line would become one command name.
+
+`bat` steps, Docker Pipeline command lines and values joined with `+` are
+left to you.
+
+The fix is **unsafe**: each value is quoted now, so the shell no longer
+splits it into words, and a value that holds several arguments on purpose
+becomes one. So `--fix` alone does not make it: use `--fix=all`, and look at
+the change first with `--diff`. Before it writes a file, it audits the fixed
+text again, and keeps a fix only if the file still parses and no new
+finding appears.
+
 ## What it does not report
 
 - **Choice and boolean parameters** the file declares. Jenkins accepts only
