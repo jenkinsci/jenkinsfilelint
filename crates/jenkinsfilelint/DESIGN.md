@@ -2,8 +2,8 @@
 
 ## Problem
 
-`jenkins-lint` checks a Jenkinsfile by sending it to a Jenkins
-controller, either an existing one or a container started with `--local`.
+`jenkins-lint` began by sending a Jenkinsfile to a Jenkins controller,
+either an existing one or, before 2.0, a container started with `--local`.
 Both are accurate, but both need a controller: credentials or Docker, a
 JVM, and seconds to minutes of start-up. That keeps the hook out of many
 pre-commit setups and most editors.
@@ -91,11 +91,10 @@ mistakes in them are all caught.
    `jenkinsfilelint-engine`, maturin binary wheels (`bindings = "bin"`,
    like ruff) for Linux, macOS and Windows plus an sdist. `jenkins-lint`
    stays pure Python, depends on the engine pinned to the exact version, and
-   runs it for `--offline`, the `jenkins-lint-offline` pre-commit hook,
-   and whenever no Jenkins server is configured. Keeping the root package pure Python matters because pre-commit
+   runs it for every check. Keeping the root package pure Python matters because pre-commit
    installs hooks from source: a maturin-built root package would make every
    pre-commit user compile Rust. The dependency is limited to platforms with
-   a wheel, so other platforms keep the remote and Docker modes. GitHub
+   a wheel, so other platforms can still use `--remote`. GitHub
    Releases and Homebrew later.
 3. **Editor and web.** JSON output already exists for editors; add a
    WebAssembly build for a web playground.

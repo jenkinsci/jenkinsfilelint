@@ -24,8 +24,8 @@ jenkins-lint .          # every Jenkinsfile in this directory
 jenkins-lint --audit .  # and look for security problems
 ```
 
-That works as is: with no Jenkins server configured, files are checked
-offline. Then add the pre-commit hook (see [Pre-commit hook](pre-commit.md)) or keep
+That works as is: files are checked offline, and `--remote` also checks them
+with your own Jenkins. Then add the pre-commit hook (see [Pre-commit hook](pre-commit.md)) or keep
 using the [CLI](usage.md#cli).
 
 ## Security audit rules

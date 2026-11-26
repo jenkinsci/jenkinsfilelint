@@ -89,7 +89,7 @@ class JenkinsfileLinter:
         if not self.jenkins_url:
             return (
                 False,
-                "Jenkins URL not provided. Set JENKINS_URL environment variable or pass --jenkins-url.",
+                "Jenkins URL not provided. Pass --remote URL, or set JENKINS_URL and pass --remote.",
             )
 
         # Read the Jenkinsfile content
@@ -164,7 +164,7 @@ class JenkinsfileLinter:
         if not self.jenkins_url:
             return (
                 False,
-                "Jenkins URL not provided. Set JENKINS_URL environment variable or pass --jenkins-url.",
+                "Jenkins URL not provided. Pass --remote URL, or set JENKINS_URL and pass --remote.",
             )
 
         return self._validate_with_jenkins(jenkinsfile_path)

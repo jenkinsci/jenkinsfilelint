@@ -1,20 +1,16 @@
 # How It Works
 
 `jenkins-lint` answers one question: **"Will Jenkins accept this syntax?"**
-It either checks the file itself, offline, or POSTs it to a Jenkins's
-`/pipeline-model-converter/validate` endpoint.
+It checks the file itself, offline, and with `--remote` also POSTs it to a
+Jenkins's `/pipeline-model-converter/validate` endpoint.
 
-- **Remote mode**: validates against your existing Jenkins server using the URL
-  and credentials you configure. Used whenever a Jenkins setting is present.
-- **Local mode** (`--local`): automatically starts a lightweight Jenkins
-  container (via Docker or Podman) and validates against it. The container is
-  reused across runs for near-instant validation.
-- **Offline mode** (`--offline`, and whenever no Jenkins server is
-  configured): no Jenkins at all. The
+- **Offline** (always): no Jenkins at all. The
   [`jenkinsfilelint-engine`](https://github.com/jenkinsci/jenkins-lint/tree/main/crates/jenkinsfilelint) package, a dependency of
   `jenkins-lint`, parses the file and checks the Declarative rules itself,
   using the messages of Jenkins's validator. One run checks all files in
   milliseconds.
+- **Remote** (`--remote URL`): the files that pass offline are then validated
+  by your Jenkins server, with the URL and credentials you give.
 
 **Scripted Pipelines and other Groovy files.** The endpoint only checks
 Declarative syntax. For a file with no `pipeline { … }` block (a Scripted

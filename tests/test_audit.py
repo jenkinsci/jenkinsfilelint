@@ -301,10 +301,9 @@ class TestAuditCLI:
             (["--format", "sarif"], "argument --format: requires --audit"),
             (["--ignore", "unpinned-image"], "argument --ignore: requires --audit"),
             (
-                ["--audit", "--jenkins-url", "http://j"],
-                "argument --audit: not allowed with argument --jenkins-url",
+                ["--audit", "--remote", "http://j"],
+                "argument --remote: not allowed with argument --audit",
             ),
-            (["--audit", "--local"], "not allowed with argument"),
             (["--audit", "--persona", "everyone"], "invalid choice: 'everyone'"),
         ],
     )

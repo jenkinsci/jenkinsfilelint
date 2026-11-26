@@ -262,14 +262,12 @@ class TestMain:
         assert run(str(tmp_path), "--verbose") == 0
         assert f"No files to check found in {tmp_path}" in capsys.readouterr().out
 
-    @pytest.mark.parametrize("mode", ["--local", "--jenkins-url=https://j.example"])
-    def test_nothing_found_starts_no_jenkins(self, tmp_path, mode):
-        with (
-            patch("jenkins_lint.cli.LocalJenkins") as local,
-            patch("jenkins_lint.cli.JenkinsfileLinter") as linter,
-        ):
+    @pytest.mark.parametrize(
+        "mode", ["--remote=https://j.example", "--jenkins-url=https://j.example"]
+    )
+    def test_nothing_found_calls_no_jenkins(self, tmp_path, mode):
+        with patch("jenkins_lint.cli.JenkinsfileLinter") as linter:
             assert run(str(tmp_path), mode) == 0
-        local.assert_not_called()
         linter.assert_not_called()
 
     def test_remote_mode_checks_found_files(self, tmp_path, monkeypatch):

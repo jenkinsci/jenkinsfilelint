@@ -10,6 +10,17 @@ import time
 from unittest.mock import patch, Mock
 from jenkins_lint import cli as cli_module
 from jenkins_lint.cli import main, should_skip_file, should_include_file
+from jenkins_lint.offline import OfflineEngineError
+
+
+@pytest.fixture(autouse=True)
+def no_engine():
+    """These tests are about Jenkins: without the engine, --remote sends
+    every file to Jenkins, so the mocked responses decide the result."""
+    with patch(
+        "jenkins_lint.cli.find_engine", side_effect=OfflineEngineError("no engine")
+    ):
+        yield
 
 
 def _http_response(status_code, body=b'{"status": "ok"}', url=None):
@@ -51,8 +62,8 @@ class TestCLIMain:
             .endswith(f"jenkins-lint {cli_module.__version__}")
         )
 
-    def test_validate_single_valid_file(self, capsys):
-        """Credentials without a URL select a Jenkins server, which needs a URL."""
+    def test_credentials_without_remote(self, capsys):
+        """Credentials do nothing without --remote, so they are an error."""
         f = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".groovy")
         f.write("pipeline { agent any }")
         f.flush()
@@ -63,35 +74,15 @@ class TestCLIMain:
             with patch("sys.argv", ["jenkins-lint", "--username", "user", temp_path]):
                 with pytest.raises(SystemExit) as exc_info:
                     main()
-                assert exc_info.value.code == 1
+                assert exc_info.value.code == 2
 
             captured = capsys.readouterr()
-            assert "jenkins url not provided" in captured.err.lower()
-        finally:
-            os.unlink(temp_path)
-
-    def test_validate_single_invalid_file(self, capsys):
-        """An empty file, with a Jenkins server selected but no URL."""
-        f = tempfile.NamedTemporaryFile(mode="w", delete=False)
-        f.write("")  # Empty file
-        f.flush()
-        f.close()
-        temp_path = f.name
-
-        try:
-            with patch("sys.argv", ["jenkins-lint", "--username", "user", temp_path]):
-                with pytest.raises(SystemExit) as exc_info:
-                    main()
-                assert exc_info.value.code == 1
-
-            captured = capsys.readouterr()
-            # Error message is printed without filename prefix for deduplication
-            assert "jenkins url not provided" in captured.err.lower()
+            assert "argument --username: requires --remote" in captured.err
         finally:
             os.unlink(temp_path)
 
     def test_validate_multiple_files(self, capsys):
-        """With a Jenkins server selected but no URL, every file fails.
+        """When Jenkins refuses every file, the error is printed once.
 
         Error messages should be deduplicated - the same error should only
         appear once even when multiple files have the same error.
@@ -109,19 +100,24 @@ class TestCLIMain:
         temp_path2 = f2.name
 
         try:
-            with patch(
-                "sys.argv",
-                ["jenkins-lint", "--username", "user", temp_path1, temp_path2],
+            with (
+                patch(
+                    "sys.argv",
+                    ["jenkins-lint", "--remote", "https://j", temp_path1, temp_path2],
+                ),
+                patch(
+                    "jenkins_lint.linter.requests.Session.post",
+                    return_value=_http_response(401),
+                ),
             ):
                 with pytest.raises(SystemExit) as exc_info:
                     main()
                 assert exc_info.value.code == 1
 
             captured = capsys.readouterr()
-            # Verify the error is present
-            assert "jenkins url not provided" in captured.err.lower()
-            # Verify deduplication - the credentials message should appear exactly once
-            assert captured.err.lower().count("jenkins url not provided") == 1
+            assert "401" in captured.err
+            # Deduplication: the same message appears once for both files
+            assert captured.err.count("401 Client Error") == 1
         finally:
             os.unlink(temp_path1)
             os.unlink(temp_path2)
@@ -150,7 +146,7 @@ class TestCLIMain:
             os.unlink(temp_path2)
 
     def test_validate_with_verbose_flag(self, capsys):
-        """Verbose output, with a Jenkins server selected but no URL."""
+        """Verbose output names each file it sends."""
         f = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".groovy")
         f.write("pipeline { agent any }")
         f.flush()
@@ -158,17 +154,22 @@ class TestCLIMain:
         temp_path = f.name
 
         try:
-            with patch(
-                "sys.argv",
-                ["jenkins-lint", "--username", "user", "--verbose", temp_path],
+            with (
+                patch(
+                    "sys.argv",
+                    ["jenkins-lint", "--remote", "https://j", "--verbose", temp_path],
+                ),
+                patch(
+                    "jenkins_lint.linter.requests.Session.post",
+                    return_value=_http_response(200),
+                ),
             ):
                 with pytest.raises(SystemExit) as exc_info:
                     main()
-                assert exc_info.value.code == 1
+                assert exc_info.value.code == 0
 
             captured = capsys.readouterr()
             assert "Validating" in captured.out
-            assert "jenkins url not provided" in captured.err.lower()
         finally:
             os.unlink(temp_path)
 
@@ -281,7 +282,10 @@ class TestCLIMain:
 
     def test_validate_nonexistent_file(self, capsys):
         """Test validation of a nonexistent file."""
-        with patch("sys.argv", ["jenkins-lint", "/nonexistent/file.groovy"]):
+        with patch(
+            "sys.argv",
+            ["jenkins-lint", "--remote", "https://j", "/nonexistent/file.groovy"],
+        ):
             with pytest.raises(SystemExit) as exc_info:
                 main()
             assert exc_info.value.code == 1
@@ -306,7 +310,7 @@ class TestCLIMain:
                     "JENKINS_TOKEN": "envtoken",
                 },
             ):
-                with patch("sys.argv", ["jenkins-lint", temp_path]):
+                with patch("sys.argv", ["jenkins-lint", "--remote", temp_path]):
                     with patch(
                         "jenkins_lint.linter.requests.Session.post"
                     ) as mock_post:
@@ -544,24 +548,27 @@ class TestCLIIncludeOption:
         temp_path = f.name
 
         try:
-            with patch(
-                "sys.argv",
-                [
-                    "jenkins-lint",
-                    "--username",
-                    "user",
-                    "--include",
-                    "Jenkinsfile*",
-                    temp_path,
-                ],
+            with (
+                patch(
+                    "sys.argv",
+                    [
+                        "jenkins-lint",
+                        "--remote",
+                        "https://j",
+                        "--include",
+                        "Jenkinsfile*",
+                        temp_path,
+                    ],
+                ),
+                patch(
+                    "jenkins_lint.linter.requests.Session.post",
+                    return_value=_http_response(200),
+                ) as post,
             ):
                 with pytest.raises(SystemExit) as exc_info:
                     main()
-                # A Jenkins server but no URL → URL error → exit 1
-                assert exc_info.value.code == 1
-
-            captured = capsys.readouterr()
-            assert "jenkins url not provided" in captured.err.lower()
+                assert exc_info.value.code == 0
+            post.assert_called_once()
         finally:
             os.unlink(temp_path)
 
@@ -713,132 +720,6 @@ class TestCLIIncludeOption:
             os.rmdir(groovy_dir)
 
 
-class TestCLILocalMode:
-    """Test the --local flag."""
-
-    def test_local_mode_validates_file(self):
-        """Test that --local starts a container and validates files."""
-        f = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".groovy")
-        f.write("pipeline { agent any }")
-        f.flush()
-        f.close()
-        temp_path = f.name
-
-        try:
-            with (
-                patch("sys.argv", ["jenkins-lint", "--local", "--verbose", temp_path]),
-                patch("jenkins_lint.cli.LocalJenkins") as mock_local_cls,
-                patch("jenkins_lint.linter.requests.Session.post") as mock_post,
-            ):
-                mock_instance = Mock()
-                mock_instance.ensure_running.return_value = "http://127.0.0.1:18080"
-                mock_local_cls.return_value = mock_instance
-
-                mock_response = Mock()
-                mock_response.status_code = 200
-                mock_response.json.return_value = {"status": "ok"}
-                mock_response.raise_for_status = Mock()
-                mock_post.return_value = mock_response
-
-                with pytest.raises(SystemExit) as exc_info:
-                    main()
-                assert exc_info.value.code == 0
-
-            # Verify container was started
-            mock_instance.ensure_running.assert_called_once()
-            # Verify validation against local URL
-            mock_post.assert_called_once()
-            call_url = mock_post.call_args[0][0]
-            assert "127.0.0.1" in call_url
-        finally:
-            os.unlink(temp_path)
-
-    def test_local_mode_fails_on_runtime_error(self):
-        """Test that --local exits with code 1 when container setup fails."""
-        f = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".groovy")
-        f.write("pipeline { agent any }")
-        f.flush()
-        f.close()
-        temp_path = f.name
-
-        try:
-            with (
-                patch("sys.argv", ["jenkins-lint", "--local", temp_path]),
-                patch("jenkins_lint.cli.LocalJenkins") as mock_local_cls,
-            ):
-                mock_instance = Mock()
-                mock_instance.ensure_running.side_effect = RuntimeError(
-                    "Docker not found"
-                )
-                mock_local_cls.return_value = mock_instance
-
-                with pytest.raises(SystemExit) as exc_info:
-                    main()
-                assert exc_info.value.code == 1
-        finally:
-            os.unlink(temp_path)
-
-    def test_local_mode_verbose_output(self, capsys):
-        """Test that --local with --verbose prints the local URL."""
-        f = tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".groovy")
-        f.write("pipeline { agent any }")
-        f.flush()
-        f.close()
-        temp_path = f.name
-
-        try:
-            with (
-                patch("sys.argv", ["jenkins-lint", "--local", "--verbose", temp_path]),
-                patch("jenkins_lint.cli.LocalJenkins") as mock_local_cls,
-                patch("jenkins_lint.linter.requests.Session.post") as mock_post,
-            ):
-                mock_instance = Mock()
-                mock_instance.ensure_running.return_value = "http://127.0.0.1:18080"
-                mock_local_cls.return_value = mock_instance
-
-                mock_response = Mock()
-                mock_response.status_code = 200
-                mock_response.json.return_value = {"status": "ok"}
-                mock_response.raise_for_status = Mock()
-                mock_post.return_value = mock_response
-
-                with pytest.raises(SystemExit) as exc_info:
-                    main()
-                assert exc_info.value.code == 0
-
-            captured = capsys.readouterr()
-            assert "http://127.0.0.1:18080" in captured.out
-            assert "Jenkinsfile successfully validated" in captured.out
-        finally:
-            os.unlink(temp_path)
-
-    def test_local_mode_is_quiet_on_success(self, tmp_path, capsys):
-        """Without --verbose, a valid file in --local mode prints nothing."""
-        jenkinsfile = tmp_path / "Jenkinsfile"
-        jenkinsfile.write_text("pipeline { agent any }")
-
-        with (
-            patch("sys.argv", ["jenkins-lint", "--local", str(jenkinsfile)]),
-            patch("jenkins_lint.cli.LocalJenkins") as mock_local_cls,
-            patch("jenkins_lint.linter.requests.Session.post") as mock_post,
-        ):
-            mock_local_cls.return_value.ensure_running.return_value = (
-                "http://127.0.0.1:18080"
-            )
-            mock_post.return_value.json.return_value = {"status": "ok"}
-
-            with pytest.raises(SystemExit) as exc_info:
-                main()
-
-        assert exc_info.value.code == 0
-        assert mock_post.call_args.args == (
-            "http://127.0.0.1:18080/pipeline-model-converter/validate",
-        )
-        captured = capsys.readouterr()
-        assert captured.out == ""
-        assert captured.err == ""
-
-
 def _validate_reply(post_kwargs):
     """Answer like Jenkins's validate endpoint does for the posted file."""
     source = post_kwargs["data"]["jenkinsfile"]
@@ -939,50 +820,6 @@ class TestCLICredentialHandling:
         captured = capsys.readouterr()
         assert self.TOKEN not in captured.out
         assert self.TOKEN not in captured.err
-
-
-class TestMainServerDispatch:
-    """Test the server subcommand dispatch in main()."""
-
-    @patch("jenkins_lint.cli.handle_server_command")
-    def test_server_subcommand_dispatches(self, mock_handle):
-        """'server' as first arg should dispatch to handle_server_command."""
-        with patch("sys.argv", ["jenkins-lint", "server", "stop"]):
-            main()
-
-        mock_handle.assert_called_once_with(["stop"])
-
-    def test_regular_args_runs_linter(self):
-        """Non-server args should run the linter (server dispatch)."""
-        with patch(
-            "sys.argv",
-            [
-                "jenkins-lint",
-                "--jenkins-url",
-                "http://jenkins.example.com",
-                "Jenkinsfile",
-            ],
-        ):
-            # main() will parse args and try to validate
-            # the file doesn't exist → SystemExit 1
-            with pytest.raises(SystemExit) as exc:
-                main()
-            assert exc.value.code == 1
-
-    def test_local_flag_not_dispatched_as_server(self, capsys):
-        """--local should not be treated as a server subcommand."""
-        # Simulate a machine without Docker/Podman so the test never talks to a
-        # real container runtime (no image pull, no container left running).
-        with (
-            patch("sys.argv", ["jenkins-lint", "--local", "Jenkinsfile"]),
-            patch("jenkins_lint.local._find_runtime", return_value=None),
-        ):
-            with pytest.raises(SystemExit) as exc:
-                main()
-            # Should exit 1 (no Docker), not 2 (bad server action)
-            assert exc.value.code == 1
-
-        assert "Neither 'docker' nor 'podman'" in capsys.readouterr().err
 
 
 class TestWindowsUTF8Encoding:

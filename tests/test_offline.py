@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for --offline mode and the jenkinsfilelint-engine binary it runs."""
+"""Tests for offline checking and the jenkinsfilelint-engine binary it runs."""
 
 import importlib.util
 import json
@@ -14,7 +14,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from jenkins_lint.cli import NO_JENKINS_NO_ENGINE, NO_JENKINS_NOTE, main
+from jenkins_lint.cli import OFFLINE_NOTE, REMOVED_LOCAL, main
 from jenkins_lint.offline import (
     ENGINE_ENV,
     OLD_ENGINE_ENV,
@@ -267,20 +267,27 @@ class TestLintFiles:
 
 
 class TestOfflineCLI:
-    """--offline options, with the engine mocked."""
+    """Offline options, with the engine mocked."""
 
     @pytest.mark.parametrize(
-        "other",
-        [
-            ["--local"],
-            ["--jenkins-url", "https://j"],
-            ["--username", "u"],
-            ["--token", "t"],
-        ],
+        "other", [["--remote", "https://j"], ["--jenkins-url", "https://j"]]
     )
-    def test_not_allowed_with_other_modes(self, other, capsys):
+    def test_offline_not_allowed_with_remote(self, other, capsys):
         assert run_cli(["--offline", *other, "Jenkinsfile"]) == 2
-        assert "not allowed with argument" in capsys.readouterr().err
+        assert "not allowed with argument --remote" in capsys.readouterr().err
+
+    @pytest.mark.parametrize("option", ["--username", "--token"])
+    def test_credentials_require_remote(self, option, capsys):
+        assert run_cli([option, "x", "Jenkinsfile"]) == 2
+        assert f"argument {option}: requires --remote" in capsys.readouterr().err
+
+    def test_local_was_removed(self, capsys):
+        assert run_cli(["--local", "Jenkinsfile"]) == 2
+        assert REMOVED_LOCAL in capsys.readouterr().err
+
+    def test_server_command_was_removed(self, capsys):
+        assert run_cli(["server", "start"]) == 2
+        assert REMOVED_LOCAL in capsys.readouterr().err
 
     def test_jenkins_url_env_variable_is_ignored(self, tmp_path, monkeypatch):
         monkeypatch.setenv("JENKINS_URL", "https://jenkins.example.com")
@@ -368,13 +375,13 @@ class TestOfflineCLI:
 
 
 class TestDefaultMode:
-    """Without --offline or --local: Jenkins when one is configured, else offline.
+    """Files are checked offline unless --remote asks for Jenkins too.
 
     conftest.py clears JENKINS_URL, JENKINS_USER and JENKINS_TOKEN.
     """
 
     def offline_run(self, tmp_path, argv, reports=None, returncode=0):
-        """Run the CLI with the engine mocked; return (code, output, engine run)."""
+        """Run the CLI with the engine mocked; return (code, engine run)."""
         f = tmp_path / "Jenkinsfile"
         f.write_text("")
         if reports is None:
@@ -391,7 +398,7 @@ class TestDefaultMode:
         post.assert_not_called()
         return code, run
 
-    def test_no_jenkins_checks_offline_quietly(self, tmp_path, capsys):
+    def test_checks_offline_quietly(self, tmp_path, capsys):
         code, run = self.offline_run(tmp_path, [])
         assert code == 0
         run.assert_called_once()
@@ -410,31 +417,31 @@ class TestDefaultMode:
         assert code == 1
         assert capsys.readouterr() == ("", f"{f}:1:1: error: E\n")
 
-    def test_verbose_says_why_it_checks_offline(self, tmp_path, capsys):
+    def test_verbose_says_what_offline_skips(self, tmp_path, capsys):
         code, _ = self.offline_run(tmp_path, ["--verbose"])
         assert code == 0
         captured = capsys.readouterr()
         assert captured.out.splitlines()[:2] == [
-            NO_JENKINS_NOTE,
+            OFFLINE_NOTE,
             "✓ Offline engine: engine",
         ]
         assert captured.err == ""
 
-    def test_offline_flag_has_no_note(self, tmp_path, capsys):
-        code, _ = self.offline_run(tmp_path, ["--offline", "--verbose"])
+    def test_offline_flag_changes_nothing(self, tmp_path, capsys):
+        """--offline is what happens anyway; scripts from before 2.0 keep working."""
+        code, run = self.offline_run(tmp_path, ["--offline"])
         assert code == 0
-        out = capsys.readouterr().out
-        assert out.startswith("✓ Offline engine: engine\n")
-        assert NO_JENKINS_NOTE not in out
+        run.assert_called_once()
+        assert capsys.readouterr() == ("", "")
 
     def test_no_note_when_every_file_is_skipped(self, tmp_path, capsys):
         f = tmp_path / "Jenkinsfile"
         with patch("jenkins_lint.cli.find_engine", side_effect=OfflineEngineError("x")):
             assert run_cli(["--verbose", "--skip", "Jenkinsfile", str(f)]) == 0
         captured = capsys.readouterr()
-        assert NO_JENKINS_NOTE not in captured.out + captured.err
+        assert OFFLINE_NOTE not in captured.out + captured.err
 
-    def test_no_jenkins_and_no_engine(self, tmp_path, capsys):
+    def test_no_engine(self, tmp_path, capsys):
         f = tmp_path / "Jenkinsfile"
         f.write_text("")
         with patch(
@@ -442,67 +449,95 @@ class TestDefaultMode:
             side_effect=OfflineEngineError(ENGINE_MISSING_MESSAGE),
         ):
             assert run_cli([str(f)]) == 1
-        assert capsys.readouterr().err.splitlines() == [
-            NO_JENKINS_NO_ENGINE,
-            f"✗ {ENGINE_MISSING_MESSAGE}",
-        ]
+        assert capsys.readouterr().err.splitlines() == [f"✗ {ENGINE_MISSING_MESSAGE}"]
 
-    @pytest.mark.parametrize(
-        "setting",
-        [
-            {"env": {"JENKINS_URL": "https://jenkins.example.com"}},
-            {"env": {"JENKINS_USER": "user"}},
-            {"env": {"JENKINS_TOKEN": "token"}},
-            {"argv": ["--jenkins-url", "https://jenkins.example.com"]},
-            {"argv": ["--username", "user"]},
-            {"argv": ["--token", "token"]},
-        ],
-        ids=[
-            "JENKINS_URL",
-            "JENKINS_USER",
-            "JENKINS_TOKEN",
-            "--jenkins-url",
-            "--username",
-            "--token",
-        ],
-    )
-    def test_any_jenkins_setting_selects_jenkins(self, setting, tmp_path, monkeypatch):
-        for name, value in setting.get("env", {}).items():
-            monkeypatch.setenv(name, value)
-        f = tmp_path / "Jenkinsfile"
-        f.write_text("")
-        with (
-            patch("jenkins_lint.cli._run_remote_validation") as remote,
-            patch("jenkins_lint.cli.find_engine") as find,
-        ):
-            main_argv = [*setting.get("argv", []), str(f)]
-            with patch("sys.argv", ["jenkins-lint", *main_argv]):
-                main()
-        remote.assert_called_once()
-        find.assert_not_called()
-
-    def test_empty_jenkins_url_is_not_a_setting(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("JENKINS_URL", "")
+    @pytest.mark.parametrize("name", ["JENKINS_URL", "JENKINS_USER", "JENKINS_TOKEN"])
+    def test_environment_alone_stays_offline(self, name, tmp_path, monkeypatch):
+        """Jenkins sets JENKINS_URL in every build: it must not switch modes."""
+        monkeypatch.setenv(name, "https://jenkins.example.com")
         code, run = self.offline_run(tmp_path, [])
         assert code == 0
         run.assert_called_once()
 
-    def test_jenkins_url_without_offline_flag_uses_jenkins(self, tmp_path, monkeypatch):
-        """Existing users who set JENKINS_URL keep the check they had."""
-        monkeypatch.setenv("JENKINS_URL", "https://jenkins.example.com")
+    @pytest.mark.parametrize(
+        "argv",
+        [
+            ["--remote", "https://jenkins.example.com"],
+            ["--jenkins-url=https://jenkins.example.com"],
+        ],
+        ids=["--remote", "--jenkins-url"],
+    )
+    def test_remote_selects_jenkins(self, argv, tmp_path):
         f = tmp_path / "Jenkinsfile"
-        f.write_text("pipeline {}")
+        f.write_text("")
+        with patch("jenkins_lint.cli._run_remote_validation") as remote:
+            with patch("sys.argv", ["jenkins-lint", *argv, str(f)]):
+                main()
+        remote.assert_called_once()
+        assert remote.call_args.args[1] == "https://jenkins.example.com"
+
+    def test_bare_remote_uses_jenkins_url(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("JENKINS_URL", "https://from-env.example.com")
+        f = tmp_path / "Jenkinsfile"
+        f.write_text("")
+        with patch("jenkins_lint.cli._run_remote_validation") as remote:
+            with patch("sys.argv", ["jenkins-lint", "--remote", str(f)]):
+                main()
+        assert remote.call_args.args[1] == "https://from-env.example.com"
+        assert remote.call_args.args[0].jenkinsfile == [str(f)]
+
+    def test_bare_remote_without_jenkins_url(self, capsys):
+        assert run_cli(["--remote", "Jenkinsfile"]) == 2
+        assert "no URL given and JENKINS_URL is not set" in capsys.readouterr().err
+
+
+class TestRemote:
+    """--remote: offline first, then Jenkins for the files that pass."""
+
+    def remote_run(self, tmp_path, reports, engine=True):
+        good = tmp_path / "Jenkinsfile"
+        bad = tmp_path / "Jenkinsfile.bad"
+        for f in (good, bad):
+            f.write_text("pipeline {}")
         response = Mock(status_code=200, text="Jenkinsfile successfully validated.")
+        find = (
+            {"return_value": "engine"}
+            if engine
+            else {"side_effect": OfflineEngineError(ENGINE_MISSING_MESSAGE)}
+        )
         with (
+            patch("jenkins_lint.cli.find_engine", **find),
+            patch(
+                "jenkins_lint.offline.subprocess.run",
+                return_value=engine_output(reports(good, bad), returncode=1),
+            ),
             patch(
                 "jenkins_lint.linter.requests.Session.post", return_value=response
             ) as post,
-            patch("jenkins_lint.cli.find_engine") as find,
         ):
-            assert run_cli([str(f)]) == 0
+            code = run_cli(["--remote", "https://j.example", str(good), str(bad)])
+        return code, post, good, bad
+
+    def test_offline_errors_are_not_sent(self, tmp_path, capsys):
+        def reports(good, bad):
+            error = {"line": 1, "column": 1, "severity": "error", "message": "E"}
+            return [
+                {"file": str(good), "declarative": True, "diagnostics": []},
+                {"file": str(bad), "declarative": True, "diagnostics": [error]},
+            ]
+
+        code, post, good, bad = self.remote_run(tmp_path, reports)
+        assert code == 1
         post.assert_called_once()
-        assert post.call_args.args[0].startswith("https://jenkins.example.com")
-        find.assert_not_called()
+        assert post.call_args.kwargs["data"]["jenkinsfile"] == "pipeline {}"
+        captured = capsys.readouterr()
+        assert f"{bad}:1:1: error: E" in captured.err
+        assert f"✓ {good}: Valid" in captured.out
+
+    def test_without_engine_every_file_is_sent(self, tmp_path):
+        code, post, _, _ = self.remote_run(tmp_path, lambda g, b: [], engine=False)
+        assert code == 0
+        assert post.call_count == 2
 
 
 def load_cases():
@@ -535,7 +570,7 @@ class TestAgainstJenkinsVerdicts:
         want = EXPECTED[name]
         path = str(CASES / f"{name}.groovy")
 
-        code = run_cli(["--offline", "--verbose", path])
+        code = run_cli(["--verbose", path])
         captured = capsys.readouterr()
 
         diagnostic = re.compile(rf"{re.escape(path)}:\d+:\d+: (error|warning): (.*)")
@@ -638,7 +673,7 @@ class TestAgainstJenkinsVerdicts:
         )
         assert proc.returncode == 1, proc.stderr
         assert f"✓ {ROOT / 'tests' / 'Jenkinsfile'}: Valid" in proc.stdout
-        assert NO_JENKINS_NOTE not in proc.stdout + proc.stderr
+        assert OFFLINE_NOTE not in proc.stdout + proc.stderr
         lines = proc.stderr.splitlines()
         assert lines[0].startswith(
             f"{ROOT / 'tests' / 'Jenkinsfile.fail'}:2:5: error: "

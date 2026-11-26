@@ -21,7 +21,7 @@ ENGINE_MISSING_MESSAGE = (
     "The offline engine (jenkinsfilelint-engine) is not installed. "
     "No prebuilt wheel exists for this platform; install it from source with "
     "'pip install jenkinsfilelint-engine' (needs a Rust toolchain), "
-    "or validate with a Jenkins server (--jenkins-url) or --local."
+    "or validate with your Jenkins server (--remote URL)."
 )
 
 

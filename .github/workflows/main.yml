@@ -72,12 +72,7 @@ jobs:
           pip install ./crates/jenkinsfilelint
           pip install -e ".[dev]"
 
-      - name: Build the server image with local config
-        run: |
-          docker build -t ghcr.io/jenkinsci/jenkinsfilelint-server:test docker/
-
       - name: Run Docker integration tests
+        # Builds docker/ and checks against that Jenkins (tests/jenkins_server.py).
         run: |
           pytest tests/test_docker_linter.py -v -m docker
-        env:
-          JENKINS_LINT_SERVER_IMAGE: ghcr.io/jenkinsci/jenkinsfilelint-server:test

@@ -1,17 +1,11 @@
-# jenkinsfilelint-server
+# A minimal Jenkins for development: the Docker integration tests and
+# corpus/compare.py check the offline engine against its validator.
+# jenkins-lint itself does not use it. Only includes the plugins needed for
+# the /pipeline-model-converter/validate endpoint. Runs in unsecured mode
+# bound to 127.0.0.1, safe for local-only use.
 #
-# Minimal Jenkins image for local Declarative Pipeline validation.
-# Only includes the plugins needed for the /pipeline-model-converter/validate endpoint.
-# Runs in unsecured mode bound to 127.0.0.1 — safe for local-only use.
-#
-# Build:
-#   docker build -t jenkinsfilelint-server docker/
-#
-# Run:
-#   docker run -d --rm \
-#     --name jenkinsfilelint-server \
-#     -p 127.0.0.1:18080:8080 \
-#     jenkinsfilelint-server
+# Build and run it with:
+#   python3 tests/jenkins_server.py start
 
 FROM jenkins/jenkins:lts-jdk21
 
