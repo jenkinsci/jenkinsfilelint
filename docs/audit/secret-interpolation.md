@@ -94,7 +94,7 @@ sh "curl -u \"\$USER:\$PASS\" ${env.NEXUS_URL}"
 
 ## How `--fix` fixes it
 
-`jenkinsfilelint --audit --fix=all` makes this change for you. Like the
+`jenkins-lint --audit --fix=all` makes this change for you. Like the
 fix for script-injection, it is unsafe, so review it, with `--diff` first:
 
 ```groovy
@@ -138,7 +138,7 @@ When the value is not really secret, for example a fake token in a test
 pipeline:
 
 ```groovy
-// jenkinsfilelint: ignore[secret-interpolation] the token in this test is fake
+// jenkins-lint: ignore[secret-interpolation] the token in this test is fake
 sh "deploy --token ${TOKEN}"
 ```
 

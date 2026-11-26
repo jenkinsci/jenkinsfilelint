@@ -12,7 +12,7 @@ pre-commit install
 
 The first line builds `jenkinsfilelint-engine` from this checkout, so the tests
 run against the engine you are working on. To try another engine binary
-without installing it, set `JENKINSFILELINT_ENGINE` to its path.
+without installing it, set `JENKINS_LINT_ENGINE` to its path.
 
 Run pre-commit before submitting:
 
@@ -23,10 +23,10 @@ pre-commit run --all-files
 ## Testing
 
 ```bash
-pytest tests/ -v --cov=jenkinsfilelint
+pytest tests/ -v --cov=jenkins_lint
 ```
 
-`tests/test_offline.py` also runs `jenkinsfilelint --offline` end to end on the
+`tests/test_offline.py` also runs `jenkins-lint --offline` end to end on the
 cases in `crates/jenkinsfilelint/tests/jenkins/`. For the engine itself, see
 [crates/jenkinsfilelint/README.md](crates/jenkinsfilelint/README.md#development).
 
@@ -52,9 +52,9 @@ and the version does not. The release workflow runs it on pull requests that
 touch `crates/`, and before a release uploads anything.
 
 Publishing a GitHub release runs `.github/workflows/release.yml`. It builds
-the engine wheels and the `jenkinsfilelint` package, installs them on each
+the engine wheels and the `jenkins-lint` package, installs them on each
 platform, then uploads `jenkinsfilelint-engine` (skipping files already on
-PyPI) and only then `jenkinsfilelint`, and finally installs both from PyPI on
+PyPI) and only then `jenkins-lint`, and finally installs both from PyPI on
 Linux, macOS and Windows. Pull requests that touch `crates/` or
 `pyproject.toml` run the same workflow without uploading.
 
@@ -66,12 +66,12 @@ gh workflow run release.yml --ref <branch> -f publish=testpypi
 
 The same jobs then upload to TestPyPI (environment `testpypi`, which needs a
 TestPyPI trusted publisher for each of the two projects) and install from
-there. `jenkinsfilelint` gets a development version such as
+there. `jenkins-lint` gets a development version such as
 `1.5.1.post1.dev18`, so every commit can be uploaded once.
 
 Both packages are uploaded with tokens for the same trusted publisher, so on
 PyPI and TestPyPI the publishers of the two projects must be configured
-identically: owner `jenkinsci`, repository `jenkinsfilelint`, workflow
+identically: owner `jenkinsci`, repository `jenkins-lint`, workflow
 `release.yml` and the same environment. A publisher that differs, even only
 in its environment, is a separate publisher, and the token it gets can upload
 only to its own project.

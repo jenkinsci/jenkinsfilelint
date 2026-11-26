@@ -8,10 +8,10 @@ every commit that touches a Jenkinsfile is automatically validated.
 ```yaml
 # .pre-commit-config.yaml
 repos:
-  - repo: https://github.com/jenkinsci/jenkinsfilelint
+  - repo: https://github.com/jenkinsci/jenkins-lint
     rev: # use the latest version
     hooks:
-      - id: jenkinsfilelint-offline
+      - id: jenkins-lint-offline
 ```
 
 ```bash
@@ -20,17 +20,17 @@ pre-commit install
 ```
 
 Nothing else to install or configure: no credentials, no container, no Rust
-toolchain. The check runs `jenkinsfilelint --offline`, which uses a small
-native engine that ships as a prebuilt wheel. The `jenkinsfilelint` hook does
-the same when no Jenkins server is configured; `jenkinsfilelint-offline` stays
+toolchain. The check runs `jenkins-lint --offline`, which uses a small
+native engine that ships as a prebuilt wheel. The `jenkins-lint` hook does
+the same when no Jenkins server is configured; `jenkins-lint-offline` stays
 offline even when `JENKINS_URL` is set in your shell. It reports errors with
 the same wording as Jenkins's validator, at the line and column where they
 are:
 
 ```bash
 git commit -m "Update Jenkinsfile"
-jenkinsfilelint (offline)................................................Failed
-- hook id: jenkinsfilelint-offline
+jenkins-lint (offline)................................................Failed
+- hook id: jenkins-lint-offline
 - exit code: 1
 
 Jenkinsfile:4:9: error: Expected one of "steps", "stages", or "parallel" for stage "Build"
@@ -50,10 +50,10 @@ warns about agent types it does not know. Use remote or local mode for those.
 ```yaml
 # .pre-commit-config.yaml
 repos:
-  - repo: https://github.com/jenkinsci/jenkinsfilelint
+  - repo: https://github.com/jenkinsci/jenkins-lint
     rev: # use the latest or a specific version, e.g. v1.4.0
     hooks:
-      - id: jenkinsfilelint
+      - id: jenkins-lint
 ```
 
 Set credentials via environment variables, then install:
@@ -72,10 +72,10 @@ pre-commit install
 ```yaml
 # .pre-commit-config.yaml
 repos:
-  - repo: https://github.com/jenkinsci/jenkinsfilelint
+  - repo: https://github.com/jenkinsci/jenkins-lint
     rev: # use the latest or a specific version, e.g. v1.4.0
     hooks:
-      - id: jenkinsfilelint
+      - id: jenkins-lint
         args: ["--local"]
 ```
 
@@ -102,7 +102,7 @@ pre-commit install
 When you're done, stop the container:
 
 ```bash
-jenkinsfilelint server stop
+jenkins-lint server stop
 ```
 
 ## What happens on commit
@@ -111,15 +111,15 @@ A valid file passes silently:
 
 ```bash
 git commit -m "Update Jenkinsfile"
-jenkinsfilelint..........................................................Passed
+jenkins-lint..........................................................Passed
 ```
 
 A syntax error blocks the commit with a clear message:
 
 ```bash
 git commit -m "Update Jenkinsfile"
-jenkinsfilelint..........................................................Failed
-- hook id: jenkinsfilelint
+jenkins-lint..........................................................Failed
+- hook id: jenkins-lint
 - exit code: 1
 
 Errors encountered validating Jenkinsfile:
@@ -132,4 +132,4 @@ Fix the error and re-commit.
 
 ## Security audit
 
-The `jenkinsfilelint-audit` hook runs the [security audit](usage.md#security-audit).
+The `jenkins-lint-audit` hook runs the [security audit](usage.md#security-audit).

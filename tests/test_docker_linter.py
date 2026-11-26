@@ -20,8 +20,8 @@ import subprocess
 
 import pytest
 
-from jenkinsfilelint.linter import JenkinsfileLinter, NOT_DECLARATIVE_MESSAGE
-from jenkinsfilelint.local import LocalJenkins
+from jenkins_lint.linter import JenkinsfileLinter, NOT_DECLARATIVE_MESSAGE
+from jenkins_lint.local import LocalJenkins
 
 pytestmark = pytest.mark.docker
 
@@ -39,13 +39,13 @@ BAD_JENKINSFILE = os.path.join(_HERE, "Jenkinsfile.fail")
 def _ensure_image(tag: str) -> str:
     """Make sure the Docker image *tag* is available locally.
 
-    - If ``JENKINSFILELINT_SERVER_IMAGE`` is explicitly set in the
+    - If ``JENKINS_LINT_SERVER_IMAGE`` is explicitly set in the
       environment, trust that and do nothing.
     - If *tag* is the default published image, let
       :meth:`LocalJenkins.ensure_running` pull it.
     - Otherwise build from ``docker/`` so it can be used locally.
     """
-    if "JENKINSFILELINT_SERVER_IMAGE" in os.environ:
+    if "JENKINS_LINT_SERVER_IMAGE" in os.environ:
         return tag  # caller is responsible
 
     if tag == "ghcr.io/jenkinsci/jenkinsfilelint-server:latest":
@@ -69,7 +69,7 @@ def _ensure_image(tag: str) -> str:
 def server_image() -> str:
     """Resolve and prepare the server image tag."""
     tag = os.environ.get(
-        "JENKINSFILELINT_SERVER_IMAGE",
+        "JENKINS_LINT_SERVER_IMAGE",
         "ghcr.io/jenkinsci/jenkinsfilelint-server:latest",
     )
     return _ensure_image(tag)
@@ -99,7 +99,7 @@ class TestDockerEndToEnd:
     """Real end-to-end validation against a live Jenkins container.
 
     These tests exercise the exact same code path that a user hitting
-    ``jenkinsfilelint --local Jenkinsfile`` would take.
+    ``jenkins-lint --local Jenkinsfile`` would take.
     """
 
     def test_good_jenkinsfile_passes(self, local_jenkins_url: str) -> None:

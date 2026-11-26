@@ -91,7 +91,7 @@ the default version to a tag instead.
   integration tests.
 
 ```groovy
-// jenkinsfilelint: ignore[unpinned-library] this job tests the library's main branch
+// jenkins-lint: ignore[unpinned-library] this job tests the library's main branch
 @Library('pipeline-library@main') _
 ```
 

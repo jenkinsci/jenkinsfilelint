@@ -10,8 +10,8 @@ from unittest.mock import patch
 
 import pytest
 
-from jenkinsfilelint.cli import main
-from jenkinsfilelint.offline import (
+from jenkins_lint.cli import main
+from jenkins_lint.offline import (
     AuditResult,
     Finding,
     OfflineEngineError,
@@ -22,7 +22,7 @@ from jenkinsfilelint.offline import (
 
 ROOT = Path(__file__).resolve().parent.parent
 CASES = ROOT / "crates" / "jenkinsfilelint" / "tests" / "audit"
-HELP = "https://jenkinsci.github.io/jenkinsfilelint/audit/secret-interpolation/"
+HELP = "https://jenkinsci.github.io/jenkins-lint/audit/secret-interpolation/"
 LEAKS = (
     "withCredentials([usernamePassword(credentialsId: 'c', usernameVariable: 'USER', "
     "passwordVariable: 'PASS')]) {\n"
@@ -50,7 +50,7 @@ def engine():
 
 def run_cli(argv):
     """Run the CLI in-process and return its exit code."""
-    with patch("sys.argv", ["jenkinsfilelint", *argv]):
+    with patch("sys.argv", ["jenkins-lint", *argv]):
         with pytest.raises(SystemExit) as exc_info:
             main()
     return exc_info.value.code
@@ -117,7 +117,7 @@ class TestAuditFiles:
     )
     def test_malformed_report(self, report):
         out = subprocess.CompletedProcess([], 1, json.dumps([report]), "")
-        with patch("jenkinsfilelint.offline.subprocess.run", return_value=out):
+        with patch("jenkins_lint.offline.subprocess.run", return_value=out):
             with pytest.raises(OfflineEngineError, match="Unexpected output from e"):
                 audit_files(["Jenkinsfile"], "e")
 
@@ -158,7 +158,7 @@ class TestAuditReport:
         sarif = json.loads(output)
         assert sarif["version"] == "2.1.0"
         run = sarif["runs"][0]
-        assert run["tool"]["driver"]["name"] == "jenkinsfilelint"
+        assert run["tool"]["driver"]["name"] == "jenkins-lint"
         rules = {r["id"]: r for r in run["tool"]["driver"]["rules"]}
         assert set(rules) >= {"script-injection", "secret-interpolation"}
         rule = rules["secret-interpolation"]
@@ -181,11 +181,11 @@ class TestAuditReport:
 
     def test_engine_fails(self):
         crashed = subprocess.CompletedProcess([], 101, "", "thread 'main' panicked")
-        with patch("jenkinsfilelint.offline.subprocess.run", return_value=crashed):
+        with patch("jenkins_lint.offline.subprocess.run", return_value=crashed):
             with pytest.raises(OfflineEngineError, match="panicked"):
                 audit_report(["Jenkinsfile"], "sarif", "e")
         silent = subprocess.CompletedProcess([], 2, "", "")
-        with patch("jenkinsfilelint.offline.subprocess.run", return_value=silent):
+        with patch("jenkins_lint.offline.subprocess.run", return_value=silent):
             with pytest.raises(OfflineEngineError, match="exit code 2"):
                 audit_report(["Jenkinsfile"], "json", "e")
 
@@ -255,7 +255,7 @@ class TestAuditCLI:
 
     def test_everything_skipped_needs_no_engine(self, tmp_path):
         f = write(tmp_path, "Jenkinsfile", LEAKS)
-        with patch("jenkinsfilelint.cli.find_engine") as find:
+        with patch("jenkins_lint.cli.find_engine") as find:
             assert run_cli(["--audit", "--skip", "*", f]) == 0
         find.assert_not_called()
 
@@ -283,7 +283,7 @@ class TestAuditCLI:
     def test_engine_missing(self, tmp_path, capsys):
         f = write(tmp_path, "Jenkinsfile", LEAKS)
         with patch(
-            "jenkinsfilelint.cli.find_engine",
+            "jenkins_lint.cli.find_engine",
             side_effect=OfflineEngineError("no engine"),
         ):
             assert run_cli(["--audit", f]) == 1
@@ -391,8 +391,8 @@ class TestFix:
             ],
             [],
         )
-        with patch("jenkinsfilelint.cli.audit_files", return_value={"J": result}):
-            with patch("jenkinsfilelint.cli.find_engine", return_value="e"):
+        with patch("jenkins_lint.cli.audit_files", return_value={"J": result}):
+            with patch("jenkins_lint.cli.find_engine", return_value="e"):
                 assert run_cli(["--audit", "J"]) == 1
                 out = capsys.readouterr().out
                 assert out.startswith("J:1:1: high: script-injection: [*] m\n")

@@ -1,5 +1,5 @@
 ci:
-  skip: [jenkinsfilelint]
+  skip: [jenkins-lint]
 
 # Test Jenkinsfiles of the offline linter: kept byte for byte, and many are
 # invalid on purpose.
@@ -24,16 +24,16 @@ repos:
     hooks:
       - id: hadolint
   - repo: local
-    # This is a "local" hook to run jenkinsfilelint
+    # This is a "local" hook to run jenkins-lint
     hooks:
-      - id: jenkinsfilelint
-        name: jenkinsfilelint
+      - id: jenkins-lint
+        name: jenkins-lint
         description: Lint Jenkinsfiles and Groovy files.
-        entry: jenkinsfilelint
+        entry: jenkins-lint
         language: python
         additional_dependencies: ['requests']
         files: (?i)^(.*/)?(Jenkinsfile[^/]*|.*\.groovy)$
-        exclude: ^jenkinsfilelint/
+        exclude: ^jenkins_lint/
         pass_filenames: true
         verbose: true
-        stages: [manual]  # pre-commit run jenkinsfilelint --all-files --hook-stage manual
+        stages: [manual]  # pre-commit run jenkins-lint --all-files --hook-stage manual

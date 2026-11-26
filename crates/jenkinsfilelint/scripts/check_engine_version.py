@@ -8,7 +8,7 @@
 
 A release uploads jenkinsfilelint-engine only if its version is not on PyPI
 yet. So when the engine's code changes and its version stays the same, the
-release is green, nothing new is uploaded, and `pip install jenkinsfilelint`
+release is green, nothing new is uploaded, and `pip install jenkins-lint`
 keeps installing the old engine.
 
 For the second check, this script compares the files that go into the engine

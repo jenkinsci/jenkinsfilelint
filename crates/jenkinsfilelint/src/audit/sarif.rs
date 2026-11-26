@@ -139,8 +139,8 @@ pub fn sarif(files: &[(String, Result<Vec<Finding>, Diagnostic>)]) -> String {
     }
     format!(
         "{{\"$schema\":\"https://json.schemastore.org/sarif-2.1.0.json\",\"version\":\"2.1.0\",\"runs\":[{{\
-         \"tool\":{{\"driver\":{{\"name\":\"jenkinsfilelint\",\
-         \"informationUri\":\"https://github.com/jenkinsci/jenkinsfilelint\",\"rules\":[{}]}}}},\
+         \"tool\":{{\"driver\":{{\"name\":\"jenkins-lint\",\
+         \"informationUri\":\"https://github.com/jenkinsci/jenkins-lint\",\"rules\":[{}]}}}},\
          \"columnKind\":\"unicodeCodePoints\",\"results\":[{}]}}]}}",
         rules.join(","),
         results.join(",")

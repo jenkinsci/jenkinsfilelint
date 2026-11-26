@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from jenkinsfilelint.cli import expand_paths, find_files, looks_like_pipeline, main
+from jenkins_lint.cli import expand_paths, find_files, looks_like_pipeline, main
 
 VALID = "pipeline {\n  agent any\n  stages { stage('a') { steps { echo 'a' } } }\n}\n"
 INVALID = "pipeline {\n  agent any\n}\n"
@@ -33,7 +33,7 @@ def found(root, audit=False):
 
 
 def run(*argv):
-    with patch("sys.argv", ["jenkinsfilelint", *argv]):
+    with patch("sys.argv", ["jenkins-lint", *argv]):
         with pytest.raises(SystemExit) as exc_info:
             main()
     return exc_info.value.code
@@ -265,8 +265,8 @@ class TestMain:
     @pytest.mark.parametrize("mode", ["--local", "--jenkins-url=https://j.example"])
     def test_nothing_found_starts_no_jenkins(self, tmp_path, mode):
         with (
-            patch("jenkinsfilelint.cli.LocalJenkins") as local,
-            patch("jenkinsfilelint.cli.JenkinsfileLinter") as linter,
+            patch("jenkins_lint.cli.LocalJenkins") as local,
+            patch("jenkins_lint.cli.JenkinsfileLinter") as linter,
         ):
             assert run(str(tmp_path), mode) == 0
         local.assert_not_called()
@@ -275,7 +275,7 @@ class TestMain:
     def test_remote_mode_checks_found_files(self, tmp_path, monkeypatch):
         write(tmp_path, "Jenkinsfile", "ci/Jenkinsfile")
         monkeypatch.chdir(tmp_path)
-        with patch("jenkinsfilelint.cli.JenkinsfileLinter") as linter:
+        with patch("jenkins_lint.cli.JenkinsfileLinter") as linter:
             linter.return_value.validate.return_value = (True, "")
             assert run(".", "--jenkins-url=https://j.example") == 0
         checked = {c.args[0] for c in linter.return_value.validate.call_args_list}

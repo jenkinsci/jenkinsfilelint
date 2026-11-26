@@ -95,7 +95,7 @@ line, so `&` or `|` in the value still runs.
 
 ## How `--fix` fixes it
 
-`jenkinsfilelint --audit --fix=all` makes this change for you. It puts the
+`jenkins-lint --audit --fix=all` makes this change for you. It puts the
 script in single quotes and has the shell read each value from the
 environment, in double quotes:
 
@@ -190,7 +190,7 @@ syntax:
 if (!(env.CHANGE_BRANCH ==~ /[A-Za-z0-9._\/-]+/)) {
     error 'Unexpected branch name'
 }
-// jenkinsfilelint: ignore[script-injection] checked above
+// jenkins-lint: ignore[script-injection] checked above
 sh "git checkout ${env.CHANGE_BRANCH}"
 ```
 

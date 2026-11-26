@@ -1,7 +1,7 @@
-"""Local Docker container lifecycle management for jenkinsfilelint.
+"""Local Docker container lifecycle management for jenkins-lint.
 
 This module manages a minimal Jenkins container that runs on localhost,
-allowing ``jenkinsfilelint --local`` to validate Jenkinsfiles without
+allowing ``jenkins-lint --local`` to validate Jenkinsfiles without
 requiring a remote Jenkins server.
 """
 
@@ -221,8 +221,12 @@ class LocalJenkins:
         image: Optional[str] = None,
         port: Optional[int] = None,
     ):
-        self.image = image or os.environ.get(
-            "JENKINSFILELINT_SERVER_IMAGE", DEFAULT_IMAGE
+        # JENKINSFILELINT_SERVER_IMAGE is the name from before the rename.
+        self.image = (
+            image
+            or os.environ.get("JENKINS_LINT_SERVER_IMAGE")
+            or os.environ.get("JENKINSFILELINT_SERVER_IMAGE")
+            or DEFAULT_IMAGE
         )
         self.port = port or DEFAULT_PORT
         self._runtime: Optional[str] = None
@@ -334,11 +338,11 @@ class LocalJenkins:
 
 
 def handle_server_command(argv: list[str]) -> None:
-    """Handle the ``jenkinsfilelint server <action>`` subcommand."""
+    """Handle the ``jenkins-lint server <action>`` subcommand."""
     import argparse
 
     parser = argparse.ArgumentParser(
-        prog="jenkinsfilelint server",
+        prog="jenkins-lint server",
         description="Manage the local Jenkins validation server container.",
     )
     parser.add_argument(

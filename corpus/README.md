@@ -26,12 +26,12 @@ python3 corpus/collect.py
 python3 corpus/fetch.py
 
 # Start the Jenkins of local mode, which keeps running, then compare:
-jenkinsfilelint --local Jenkinsfile
+jenkins-lint --local Jenkinsfile
 python3 corpus/compare.py --copy /tmp/look
 ```
 
 `compare.py` uses the engine built in `crates/jenkinsfilelint/target/release`
-(or `JENKINSFILELINT_ENGINE`), keeps Jenkins's answers in
+(or `JENKINS_LINT_ENGINE`), keeps Jenkins's answers in
 `corpus/.cache/jenkins.jsonl` so that later runs only ask about new files,
 and writes every file's verdicts to `corpus/.cache/report.tsv`.
 

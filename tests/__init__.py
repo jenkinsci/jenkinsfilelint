@@ -1,1 +1,1 @@
-"""Tests for jenkinsfilelint."""
+"""Tests for jenkins-lint."""

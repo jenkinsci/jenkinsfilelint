@@ -4,7 +4,7 @@
 Usage: python3 corpus/compare.py [--jenkins-url URL] [--engine PATH] [--copy DIR]
 
 Needs the files that fetch.py downloaded, and a Jenkins with the
-Declarative validator, such as the one `jenkinsfilelint --local` starts
+Declarative validator, such as the one `jenkins-lint --local` starts
 (the default URL). Jenkins's answers are kept in <cache>/jenkins.jsonl by
 blob, so a later run only asks about new files: delete it after changing
 the server or its plugins.
@@ -46,7 +46,7 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 sys.path.insert(0, str(REPO))
 
-from jenkinsfilelint.linter import JenkinsfileLinter  # noqa: E402
+from jenkins_lint.linter import JenkinsfileLinter  # noqa: E402
 
 from fetch import read_manifest  # noqa: E402
 
@@ -92,7 +92,9 @@ LOOK_AT = ("false-error", "missed", "other-message")
 
 
 def default_engine():
-    env = os.environ.get("JENKINSFILELINT_ENGINE")
+    env = os.environ.get("JENKINS_LINT_ENGINE") or os.environ.get(
+        "JENKINSFILELINT_ENGINE"
+    )
     if env:
         return env
     built = REPO / "crates/jenkinsfilelint/target/release/jenkinsfilelint-engine"

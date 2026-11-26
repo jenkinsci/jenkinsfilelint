@@ -8,7 +8,7 @@ from unittest.mock import call, patch, Mock
 
 import pytest
 
-from jenkinsfilelint.local import (
+from jenkins_lint.local import (
     LocalJenkins,
     handle_server_command,
     _run,
@@ -30,7 +30,7 @@ from jenkinsfilelint.local import (
 
 @pytest.fixture
 def fake_clock():
-    """Replace ``time`` in ``jenkinsfilelint.local`` with a deterministic clock.
+    """Replace ``time`` in ``jenkins_lint.local`` with a deterministic clock.
 
     ``sleep()`` advances ``monotonic()`` instantly, so readiness polling can be
     tested without real waiting.
@@ -40,7 +40,7 @@ def fake_clock():
     def _sleep(seconds):
         now[0] += seconds
 
-    with patch("jenkinsfilelint.local.time") as mock_time:
+    with patch("jenkins_lint.local.time") as mock_time:
         mock_time.monotonic.side_effect = lambda: now[0]
         mock_time.sleep.side_effect = _sleep
         yield mock_time
@@ -54,7 +54,7 @@ def fake_clock():
 class TestRun:
     """Test the subprocess wrapper."""
 
-    @patch("jenkinsfilelint.local.subprocess.run")
+    @patch("jenkins_lint.local.subprocess.run")
     def test_runs_argument_list_without_shell(self, mock_subprocess_run):
         """Commands are passed as an argument list, never through a shell."""
         result = _run(["docker", "ps"])
@@ -68,7 +68,7 @@ class TestRun:
             check=True,
         )
 
-    @patch("jenkinsfilelint.local.subprocess.run")
+    @patch("jenkins_lint.local.subprocess.run")
     def test_forwards_timeout_check_and_extra_kwargs(self, mock_subprocess_run):
         """Custom timeout/check values and extra kwargs reach subprocess.run."""
         _run(["docker", "pull", "img"], timeout=60, check=False, env={"LC_ALL": "C"})
@@ -91,19 +91,19 @@ class TestRun:
 class TestFindRuntime:
     """Test container runtime discovery."""
 
-    @patch("jenkinsfilelint.local.shutil.which")
+    @patch("jenkins_lint.local.shutil.which")
     def test_finds_docker(self, mock_which):
         """Should return 'docker' when it's on PATH."""
         mock_which.side_effect = lambda x: f"/usr/bin/{x}" if x == "docker" else None
         assert _find_runtime() == "/usr/bin/docker"
 
-    @patch("jenkinsfilelint.local.shutil.which")
+    @patch("jenkins_lint.local.shutil.which")
     def test_falls_back_to_podman(self, mock_which):
         """Should return 'podman' when docker is not on PATH."""
         mock_which.side_effect = lambda x: "/usr/bin/podman" if x == "podman" else None
         assert _find_runtime() == "/usr/bin/podman"
 
-    @patch("jenkinsfilelint.local.shutil.which")
+    @patch("jenkins_lint.local.shutil.which")
     def test_returns_none_when_neither_found(self, mock_which):
         """Should return None when neither docker nor podman is found."""
         mock_which.return_value = None
@@ -118,7 +118,7 @@ class TestFindRuntime:
 class TestContainerID:
     """Test container ID lookup."""
 
-    @patch("jenkinsfilelint.local._run")
+    @patch("jenkins_lint.local._run")
     def test_returns_id_when_running(self, mock_run):
         """Should return the container ID when a container is running."""
         mock_result = Mock()
@@ -132,7 +132,7 @@ class TestContainerID:
             check=False,
         )
 
-    @patch("jenkinsfilelint.local._run")
+    @patch("jenkins_lint.local._run")
     def test_returns_none_when_no_container(self, mock_run):
         """Should return None when no container is running."""
         mock_result = Mock()
@@ -142,7 +142,7 @@ class TestContainerID:
         result = _container_id("docker")
         assert result is None
 
-    @patch("jenkinsfilelint.local._run")
+    @patch("jenkins_lint.local._run")
     def test_returns_none_on_error(self, mock_run):
         """Should return None when the docker command fails."""
         mock_run.side_effect = subprocess.TimeoutExpired(cmd="docker", timeout=5)
@@ -150,7 +150,7 @@ class TestContainerID:
         result = _container_id("docker")
         assert result is None
 
-    @patch("jenkinsfilelint.local._run")
+    @patch("jenkins_lint.local._run")
     def test_returns_none_when_runtime_binary_disappears(self, mock_run):
         """Should return None when the runtime binary cannot be executed."""
         mock_run.side_effect = FileNotFoundError("docker")
@@ -166,7 +166,7 @@ class TestContainerID:
 class TestContainerIsRunning:
     """Test container running state check."""
 
-    @patch("jenkinsfilelint.local._run")
+    @patch("jenkins_lint.local._run")
     def test_returns_true_when_running(self, mock_run):
         """Should return True when container status is 'running'."""
         mock_result = Mock()
@@ -175,7 +175,7 @@ class TestContainerIsRunning:
 
         assert _container_is_running("docker", "abc123") is True
 
-    @patch("jenkinsfilelint.local._run")
+    @patch("jenkins_lint.local._run")
     def test_returns_false_when_not_running(self, mock_run):
         """Should return False when container status is not 'running'."""
         mock_result = Mock()
@@ -184,21 +184,21 @@ class TestContainerIsRunning:
 
         assert _container_is_running("docker", "abc123") is False
 
-    @patch("jenkinsfilelint.local._run")
+    @patch("jenkins_lint.local._run")
     def test_returns_false_on_error(self, mock_run):
         """Should return False when the docker command fails."""
         mock_run.side_effect = subprocess.TimeoutExpired(cmd="docker", timeout=5)
 
         assert _container_is_running("docker", "abc123") is False
 
-    @patch("jenkinsfilelint.local._run")
+    @patch("jenkins_lint.local._run")
     def test_returns_false_when_runtime_binary_disappears(self, mock_run):
         """Should return False when the runtime binary cannot be executed."""
         mock_run.side_effect = FileNotFoundError("docker")
 
         assert _container_is_running("docker", "abc123") is False
 
-    @patch("jenkinsfilelint.local._run")
+    @patch("jenkins_lint.local._run")
     def test_inspects_the_given_container(self, mock_run):
         """Should query the state of exactly the requested container."""
         mock_run.return_value = Mock(stdout="running\n")
@@ -219,7 +219,7 @@ class TestContainerIsRunning:
 class TestStartContainer:
     """Test container startup."""
 
-    @patch("jenkinsfilelint.local._run")
+    @patch("jenkins_lint.local._run")
     def test_starts_container_and_returns_id(self, mock_run):
         """Should start a container and return its ID."""
         mock_result = Mock()
@@ -248,7 +248,7 @@ class TestStartContainer:
         assert "127.0.0.1:18080:8080" in " ".join(run_cmd)
         assert "my-image:latest" in run_cmd
 
-    @patch("jenkinsfilelint.local._run")
+    @patch("jenkins_lint.local._run")
     def test_exact_runtime_commands(self, mock_run):
         """The container is published on loopback only, with no extra privileges."""
         mock_run.return_value = Mock(stdout="cid\n")
@@ -277,7 +277,7 @@ class TestStartContainer:
             ),
         ]
 
-    @patch("jenkinsfilelint.local._run")
+    @patch("jenkins_lint.local._run")
     def test_pull_failure_is_non_fatal(self, mock_run):
         """Should warn on pull failure and continue if image is local."""
         # First call (pull) fails, second (rm) succeeds, third (run) succeeds
@@ -290,7 +290,7 @@ class TestStartContainer:
         cid = _start_container("docker", "my-image")
         assert cid == "abc123"
 
-    @patch("jenkinsfilelint.local._run")
+    @patch("jenkins_lint.local._run")
     def test_pull_timeout_is_non_fatal(self, mock_run):
         """Should warn on pull timeout and continue if image is local."""
         # First call (pull) times out, second (rm) succeeds, third (run) succeeds
@@ -303,7 +303,7 @@ class TestStartContainer:
         cid = _start_container("docker", "my-image")
         assert cid == "abc123"
 
-    @patch("jenkinsfilelint.local._run")
+    @patch("jenkins_lint.local._run")
     def test_cleans_up_existing_container_with_same_name(self, mock_run):
         """Should remove an existing container with the same name before starting."""
         mock_pull_result = Mock()
@@ -323,7 +323,7 @@ class TestStartContainer:
         # check=False so it doesn't raise when no container exists
         assert mock_run.call_args_list[1].kwargs.get("check") is False
 
-    @patch("jenkinsfilelint.local._run")
+    @patch("jenkins_lint.local._run")
     def test_raises_runtime_error_on_run_failure(self, mock_run):
         """Should raise RuntimeError when container fails to start after a
         successful pull."""
@@ -343,7 +343,7 @@ class TestStartContainer:
         with pytest.raises(RuntimeError, match="Failed to start container"):
             _start_container("docker", "my-image")
 
-    @patch("jenkinsfilelint.local._run")
+    @patch("jenkins_lint.local._run")
     def test_raises_runtime_error_on_run_timeout(self, mock_run):
         """Should raise RuntimeError when docker run times out after a
         successful pull."""
@@ -361,7 +361,7 @@ class TestStartContainer:
         with pytest.raises(RuntimeError, match="Timed out waiting for container"):
             _start_container("docker", "my-image")
 
-    @patch("jenkinsfilelint.local._run")
+    @patch("jenkins_lint.local._run")
     def test_raises_runtime_error_when_no_id_returned(self, mock_run):
         """Should raise RuntimeError when no container ID is returned."""
         # First call (pull) succeeds, second (rm) succeeds, third (run) returns empty ID
@@ -385,7 +385,7 @@ class TestStartContainer:
 class TestStopContainer:
     """Test container shutdown."""
 
-    @patch("jenkinsfilelint.local._run")
+    @patch("jenkins_lint.local._run")
     def test_stops_and_removes_container(self, mock_run):
         """Should stop and remove the container."""
         _stop_container("docker", "abc123", timeout=10)
@@ -398,7 +398,7 @@ class TestStopContainer:
         rm_args = mock_run.call_args_list[1][0][0]
         assert rm_args[:3] == ["docker", "rm", "--force"]
 
-    @patch("jenkinsfilelint.local._run")
+    @patch("jenkins_lint.local._run")
     def test_does_not_raise_on_timeout(self, mock_run):
         """Should not raise when stop times out."""
         mock_run.side_effect = subprocess.TimeoutExpired(cmd="docker", timeout=5)
@@ -415,7 +415,7 @@ class TestStopContainer:
 class TestContainerLogs:
     """Test container log retrieval."""
 
-    @patch("jenkinsfilelint.local._run")
+    @patch("jenkins_lint.local._run")
     def test_returns_stdout_plus_stderr(self, mock_run):
         """Should return combined stdout and stderr."""
         mock_result = Mock()
@@ -430,7 +430,7 @@ class TestContainerLogs:
             check=False,
         )
 
-    @patch("jenkinsfilelint.local._run")
+    @patch("jenkins_lint.local._run")
     def test_returns_fallback_on_timeout(self, mock_run):
         """Should return fallback message on TimeoutExpired."""
         mock_run.side_effect = subprocess.TimeoutExpired(cmd="docker", timeout=5)
@@ -438,7 +438,7 @@ class TestContainerLogs:
         logs = _container_logs("docker", "abc123")
         assert logs == "<unable to read logs>"
 
-    @patch("jenkinsfilelint.local._run")
+    @patch("jenkins_lint.local._run")
     def test_returns_fallback_on_file_not_found(self, mock_run):
         """Should return fallback message on FileNotFoundError."""
         mock_run.side_effect = FileNotFoundError("docker not found")
@@ -455,7 +455,7 @@ class TestContainerLogs:
 class TestWaitForJenkins:
     """Test Jenkins readiness probe."""
 
-    @patch("jenkinsfilelint.local.urllib.request.urlopen")
+    @patch("jenkins_lint.local.urllib.request.urlopen")
     def test_returns_true_when_ready(self, mock_urlopen, fake_clock):
         """Should return True when Jenkins responds with HTTP 200."""
         mock_response = Mock()
@@ -466,7 +466,7 @@ class TestWaitForJenkins:
         mock_urlopen.assert_called_with("http://127.0.0.1:18080/login", timeout=5)
         fake_clock.sleep.assert_not_called()
 
-    @patch("jenkinsfilelint.local.urllib.request.urlopen")
+    @patch("jenkins_lint.local.urllib.request.urlopen")
     def test_returns_false_on_timeout(self, mock_urlopen, fake_clock):
         """Should return False when Jenkins does not become ready."""
         mock_urlopen.side_effect = ConnectionError("Connection refused")
@@ -476,7 +476,7 @@ class TestWaitForJenkins:
         assert mock_urlopen.call_count == 10 // POLL_INTERVAL
         fake_clock.sleep.assert_called_with(POLL_INTERVAL)
 
-    @patch("jenkinsfilelint.local.urllib.request.urlopen")
+    @patch("jenkins_lint.local.urllib.request.urlopen")
     def test_retries_on_connection_errors(self, mock_urlopen, fake_clock):
         """Should retry when connection is refused."""
         # First two calls fail, third succeeds
@@ -491,7 +491,7 @@ class TestWaitForJenkins:
         assert mock_urlopen.call_count == 3
         assert fake_clock.sleep.call_args_list == [call(POLL_INTERVAL)] * 2
 
-    @patch("jenkinsfilelint.local.urllib.request.urlopen")
+    @patch("jenkins_lint.local.urllib.request.urlopen")
     def test_retries_while_jenkins_is_starting(self, mock_urlopen, fake_clock):
         """HTTP 503 ("Jenkins is getting ready") is retried until it is ready."""
         starting = urllib.error.HTTPError(
@@ -506,7 +506,7 @@ class TestWaitForJenkins:
         assert mock_urlopen.call_count == 2
         mock_urlopen.assert_called_with("http://127.0.0.1:18080/login", timeout=5)
 
-    @patch("jenkinsfilelint.local.urllib.request.urlopen")
+    @patch("jenkins_lint.local.urllib.request.urlopen")
     def test_keeps_polling_on_non_200_status(self, mock_urlopen, fake_clock):
         """A non-200 response that does not raise is not treated as ready."""
         mock_urlopen.side_effect = [Mock(status=204), Mock(status=200)]
@@ -536,20 +536,38 @@ class TestLocalJenkins:
         assert lj.image == "my-jenkins:latest"
         assert lj.port == 9999
 
-    @patch.dict(os.environ, {"JENKINSFILELINT_SERVER_IMAGE": "custom-image:v1"})
+    @patch.dict(os.environ, {"JENKINS_LINT_SERVER_IMAGE": "custom-image:v1"})
     def test_image_from_env_var(self):
         """Should read image from environment variable."""
         lj = LocalJenkins()
         assert lj.image == "custom-image:v1"
 
-    @patch("jenkinsfilelint.local._find_runtime")
+    @patch.dict(os.environ, {"JENKINSFILELINT_SERVER_IMAGE": "old-image:v1"})
+    def test_image_from_old_env_var(self):
+        """The variable's name from before the rename still works."""
+        os.environ.pop("JENKINS_LINT_SERVER_IMAGE", None)
+        lj = LocalJenkins()
+        assert lj.image == "old-image:v1"
+
+    @patch.dict(
+        os.environ,
+        {
+            "JENKINS_LINT_SERVER_IMAGE": "new:v1",
+            "JENKINSFILELINT_SERVER_IMAGE": "old:v1",
+        },
+    )
+    def test_new_env_var_wins(self):
+        """The new name wins when both are set."""
+        assert LocalJenkins().image == "new:v1"
+
+    @patch("jenkins_lint.local._find_runtime")
     def test_runtime_discovery(self, mock_find):
         """Should discover the runtime."""
         mock_find.return_value = "/usr/bin/docker"
         lj = LocalJenkins()
         assert lj.runtime == "/usr/bin/docker"
 
-    @patch("jenkinsfilelint.local._find_runtime")
+    @patch("jenkins_lint.local._find_runtime")
     def test_runtime_not_found_raises(self, mock_find):
         """Should raise RuntimeError when no runtime is found."""
         mock_find.return_value = None
@@ -557,14 +575,14 @@ class TestLocalJenkins:
         with pytest.raises(RuntimeError, match="Neither 'docker' nor 'podman'"):
             _ = lj.runtime
 
-    @patch("jenkinsfilelint.local._container_id")
-    @patch("jenkinsfilelint.local._find_runtime")
+    @patch("jenkins_lint.local._container_id")
+    @patch("jenkins_lint.local._find_runtime")
     def test_status_running(self, mock_find, mock_cid):
         """Status should indicate running when container is up."""
         mock_find.return_value = "/usr/bin/docker"
         mock_cid.return_value = "abc123"
 
-        with patch("jenkinsfilelint.local._container_is_running") as mock_ir:
+        with patch("jenkins_lint.local._container_is_running") as mock_ir:
             mock_ir.return_value = True
             lj = LocalJenkins()
             state = lj.status()
@@ -574,8 +592,8 @@ class TestLocalJenkins:
         assert state["port"] == DEFAULT_PORT
         assert state["url"] == f"http://127.0.0.1:{DEFAULT_PORT}"
 
-    @patch("jenkinsfilelint.local._container_id")
-    @patch("jenkinsfilelint.local._find_runtime")
+    @patch("jenkins_lint.local._container_id")
+    @patch("jenkins_lint.local._find_runtime")
     def test_status_not_running(self, mock_find, mock_cid):
         """Status should indicate not running when container is absent."""
         mock_find.return_value = "/usr/bin/docker"
@@ -588,16 +606,16 @@ class TestLocalJenkins:
         assert state["container_id"] is None
         assert state["url"] is None
 
-    @patch("jenkinsfilelint.local._container_id")
-    @patch("jenkinsfilelint.local._find_runtime")
+    @patch("jenkins_lint.local._container_id")
+    @patch("jenkins_lint.local._find_runtime")
     def test_ensure_running_reuses_existing(self, mock_find, mock_cid):
         """Should reuse existing running container."""
         mock_find.return_value = "/usr/bin/docker"
         mock_cid.return_value = "abc123"
 
         with (
-            patch("jenkinsfilelint.local._container_is_running") as mock_ir,
-            patch("jenkinsfilelint.local._wait_for_jenkins") as mock_wait,
+            patch("jenkins_lint.local._container_is_running") as mock_ir,
+            patch("jenkins_lint.local._wait_for_jenkins") as mock_wait,
         ):
             mock_ir.return_value = True
             mock_wait.return_value = True
@@ -609,16 +627,16 @@ class TestLocalJenkins:
         # Should NOT try to start a new container
         # (no _start_container call)
 
-    @patch("jenkinsfilelint.local._container_id")
-    @patch("jenkinsfilelint.local._find_runtime")
+    @patch("jenkins_lint.local._container_id")
+    @patch("jenkins_lint.local._find_runtime")
     def test_ensure_running_starts_new(self, mock_find, mock_cid):
         """Should start a new container when none is running."""
         mock_find.return_value = "/usr/bin/docker"
         mock_cid.return_value = None  # No existing container
 
         with (
-            patch("jenkinsfilelint.local._start_container") as mock_start,
-            patch("jenkinsfilelint.local._wait_for_jenkins") as mock_wait,
+            patch("jenkins_lint.local._start_container") as mock_start,
+            patch("jenkins_lint.local._wait_for_jenkins") as mock_wait,
         ):
             mock_start.return_value = "new-container-id"
             mock_wait.return_value = True
@@ -629,19 +647,19 @@ class TestLocalJenkins:
         assert url == f"http://127.0.0.1:{DEFAULT_PORT}"
         mock_start.assert_called_once()
 
-    @patch("jenkinsfilelint.local._container_id")
-    @patch("jenkinsfilelint.local._find_runtime")
+    @patch("jenkins_lint.local._container_id")
+    @patch("jenkins_lint.local._find_runtime")
     def test_ensure_running_raises_on_timeout(self, mock_find, mock_cid):
         """Should raise RuntimeError when Jenkins does not become ready."""
         mock_find.return_value = "/usr/bin/docker"
         mock_cid.return_value = None
 
         with (
-            patch("jenkinsfilelint.local._start_container") as mock_start,
-            patch("jenkinsfilelint.local._wait_for_jenkins") as mock_wait,
-            patch("jenkinsfilelint.local._container_is_running") as mock_ir,
-            patch("jenkinsfilelint.local._stop_container") as mock_stop,
-            patch("jenkinsfilelint.local._container_logs") as mock_logs,
+            patch("jenkins_lint.local._start_container") as mock_start,
+            patch("jenkins_lint.local._wait_for_jenkins") as mock_wait,
+            patch("jenkins_lint.local._container_is_running") as mock_ir,
+            patch("jenkins_lint.local._stop_container") as mock_stop,
+            patch("jenkins_lint.local._container_logs") as mock_logs,
         ):
             mock_start.return_value = "new-container-id"
             mock_wait.return_value = False
@@ -661,8 +679,8 @@ class TestLocalJenkins:
             )
             assert lj._container_id is None
 
-    @patch("jenkinsfilelint.local._container_id")
-    @patch("jenkinsfilelint.local._find_runtime")
+    @patch("jenkins_lint.local._container_id")
+    @patch("jenkins_lint.local._find_runtime")
     def test_container_id_is_cached(self, mock_find, mock_cid):
         """The container ID is looked up once and then reused."""
         mock_find.return_value = "/usr/bin/docker"
@@ -674,17 +692,17 @@ class TestLocalJenkins:
 
         mock_cid.assert_called_once_with("/usr/bin/docker")
 
-    @patch("jenkinsfilelint.local._container_id")
-    @patch("jenkinsfilelint.local._find_runtime")
+    @patch("jenkins_lint.local._container_id")
+    @patch("jenkins_lint.local._find_runtime")
     def test_ensure_running_replaces_stale_container(self, mock_find, mock_cid):
         """A known container that is no longer running is replaced."""
         mock_find.return_value = "/usr/bin/docker"
         mock_cid.return_value = "stale-id"
 
         with (
-            patch("jenkinsfilelint.local._container_is_running", return_value=False),
-            patch("jenkinsfilelint.local._start_container") as mock_start,
-            patch("jenkinsfilelint.local._wait_for_jenkins", return_value=True),
+            patch("jenkins_lint.local._container_is_running", return_value=False),
+            patch("jenkins_lint.local._start_container") as mock_start,
+            patch("jenkins_lint.local._wait_for_jenkins", return_value=True),
         ):
             mock_start.return_value = "fresh-id"
 
@@ -695,27 +713,27 @@ class TestLocalJenkins:
         mock_start.assert_called_once_with("/usr/bin/docker", "my-image:1", port=19090)
         assert lj.container_id == "fresh-id"
 
-    @patch("jenkinsfilelint.local._container_id")
-    @patch("jenkinsfilelint.local._find_runtime")
+    @patch("jenkins_lint.local._container_id")
+    @patch("jenkins_lint.local._find_runtime")
     def test_stop_removes_container(self, mock_find, mock_cid):
         """Should stop and remove the container."""
         mock_find.return_value = "/usr/bin/docker"
         mock_cid.return_value = "abc123"
 
-        with patch("jenkinsfilelint.local._stop_container") as mock_stop:
+        with patch("jenkins_lint.local._stop_container") as mock_stop:
             lj = LocalJenkins()
             lj.stop()
 
         mock_stop.assert_called_once()
 
-    @patch("jenkinsfilelint.local._container_id")
-    @patch("jenkinsfilelint.local._find_runtime")
+    @patch("jenkins_lint.local._container_id")
+    @patch("jenkins_lint.local._find_runtime")
     def test_stop_reports_and_forgets_container(self, mock_find, mock_cid, capsys):
         """Stopping clears the cached ID and reports success on stderr."""
         mock_find.return_value = "/usr/bin/docker"
         mock_cid.return_value = "abc123"
 
-        with patch("jenkinsfilelint.local._stop_container") as mock_stop:
+        with patch("jenkins_lint.local._stop_container") as mock_stop:
             lj = LocalJenkins()
             lj.stop()
 
@@ -723,23 +741,23 @@ class TestLocalJenkins:
         assert lj._container_id is None
         assert "Jenkins container stopped" in capsys.readouterr().err
 
-    @patch("jenkinsfilelint.local._container_id")
-    @patch("jenkinsfilelint.local._find_runtime")
+    @patch("jenkins_lint.local._container_id")
+    @patch("jenkins_lint.local._find_runtime")
     def test_stop_when_not_running(self, mock_find, mock_cid, capsys):
         """Should not error when stopping a non-running container."""
         mock_find.return_value = "/usr/bin/docker"
         mock_cid.return_value = None
 
         lj = LocalJenkins()
-        with patch("jenkinsfilelint.local._stop_container") as mock_stop:
+        with patch("jenkins_lint.local._stop_container") as mock_stop:
             # Should not raise
             lj.stop()
 
         mock_stop.assert_not_called()
         assert "No Jenkins container is running" in capsys.readouterr().err
 
-    @patch("jenkinsfilelint.local._container_id")
-    @patch("jenkinsfilelint.local._find_runtime")
+    @patch("jenkins_lint.local._container_id")
+    @patch("jenkins_lint.local._find_runtime")
     def test_restart_stops_then_starts(self, mock_find, mock_cid):
         """Restart should stop and re-start the container."""
         mock_find.return_value = "/usr/bin/docker"
@@ -767,7 +785,7 @@ class TestLocalJenkins:
 class TestHandleServerCommand:
     """Test the server subcommand handler."""
 
-    @patch("jenkinsfilelint.local.LocalJenkins")
+    @patch("jenkins_lint.local.LocalJenkins")
     def test_server_start(self, mock_local_cls, capsys):
         """'server start' should call ensure_running."""
         mock_instance = Mock()
@@ -779,7 +797,7 @@ class TestHandleServerCommand:
         mock_instance.ensure_running.assert_called_once()
         assert "Jenkins is ready at http://127.0.0.1:18080" in capsys.readouterr().err
 
-    @patch("jenkinsfilelint.local.LocalJenkins")
+    @patch("jenkins_lint.local.LocalJenkins")
     def test_server_stop(self, mock_local_cls):
         """'server stop' should call stop."""
         mock_instance = Mock()
@@ -789,7 +807,7 @@ class TestHandleServerCommand:
 
         mock_instance.stop.assert_called_once()
 
-    @patch("jenkinsfilelint.local.LocalJenkins")
+    @patch("jenkins_lint.local.LocalJenkins")
     def test_server_status(self, mock_local_cls, capsys):
         """'server status' should call status."""
         mock_instance = Mock()
@@ -810,7 +828,7 @@ class TestHandleServerCommand:
         assert "Container: abc123def456\n" in err
         assert "URL:       http://127.0.0.1:18080" in err
 
-    @patch("jenkinsfilelint.local.LocalJenkins")
+    @patch("jenkins_lint.local.LocalJenkins")
     def test_server_restart(self, mock_local_cls, capsys):
         """'server restart' should call restart."""
         mock_instance = Mock()
@@ -825,7 +843,7 @@ class TestHandleServerCommand:
             in capsys.readouterr().err
         )
 
-    @patch("jenkinsfilelint.local.LocalJenkins")
+    @patch("jenkins_lint.local.LocalJenkins")
     def test_server_start_raises_on_runtime_error(self, mock_local_cls, capsys):
         """Should exit with code 1 on RuntimeError."""
         mock_instance = Mock()
@@ -838,7 +856,7 @@ class TestHandleServerCommand:
         assert exc.value.code == 1
         assert "something broke" in capsys.readouterr().err
 
-    @patch("jenkinsfilelint.local.LocalJenkins")
+    @patch("jenkins_lint.local.LocalJenkins")
     def test_server_status_not_running(self, mock_local_cls, capsys):
         """'server status' should show not-running message when container is down."""
         mock_instance = Mock()

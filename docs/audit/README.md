@@ -1,24 +1,24 @@
 # Security audit
 
-`jenkinsfilelint --audit` finds ways a pipeline can be attacked or can leak
+`jenkins-lint --audit` finds ways a pipeline can be attacked or can leak
 secrets. It runs offline, without Jenkins, and reads Jenkinsfiles and
 shared library files with the same parser as the syntax check.
 
 ```console
-$ jenkinsfilelint --audit Jenkinsfile
+$ jenkins-lint --audit Jenkinsfile
 Jenkinsfile:8:36: high: script-injection: CHANGE_BRANCH is the name of the pull request's branch, and Groovy interpolates it into the sh script: ...
-  help: https://jenkinsci.github.io/jenkinsfilelint/audit/script-injection/
+  help: https://jenkinsci.github.io/jenkins-lint/audit/script-injection/
 Jenkinsfile:12:41: high: secret-interpolation: PASS is a secret, and Groovy interpolates it into the sh script: ...
-  help: https://jenkinsci.github.io/jenkinsfilelint/audit/secret-interpolation/
+  help: https://jenkinsci.github.io/jenkins-lint/audit/secret-interpolation/
 2 findings (2 high)
 ```
 
-Give it a directory to check a whole repository, `jenkinsfilelint --audit .`.
+Give it a directory to check a whole repository, `jenkins-lint --audit .`.
 It picks every `*.groovy` under a `vars/` or `src/` directory, and the
 pipelines that the syntax check [finds in a directory](../usage.md#checking-a-directory).
 
 The rules were designed in
-[#65](https://github.com/jenkinsci/jenkinsfilelint/issues/65). To suggest a
+[#65](https://github.com/jenkinsci/jenkins-lint/issues/65). To suggest a
 new rule, or to report a finding that is wrong, open an issue.
 
 ## Rules
@@ -59,12 +59,14 @@ the rest.
 Add a comment on the finding's line, or on the line above its statement:
 
 ```groovy
-// jenkinsfilelint: ignore[secret-interpolation] the token in this test is fake
+// jenkins-lint: ignore[secret-interpolation] the token in this test is fake
 sh "deploy --token ${TOKEN}"
 ```
 
 Several rules go in one comment, separated by commas:
 `ignore[secret-interpolation, script-injection]`. Text after the `]` is free.
+Comments that start with `jenkinsfilelint:`, the name from before the
+rename, still work.
 
 ## Turning off a rule
 
@@ -72,7 +74,7 @@ When a rule does not fit a repository at all, turn it off for every file with
 `--ignore`:
 
 ```console
-$ jenkinsfilelint --audit --ignore unpinned-library Jenkinsfile
+$ jenkins-lint --audit --ignore unpinned-library Jenkinsfile
 ```
 
 `--ignore` takes a comma-separated list, `--ignore unpinned-library,unpinned-image`,
@@ -80,7 +82,7 @@ and can be given more than once. An unknown rule name is an error, so that a
 typo does not go unnoticed. With pre-commit:
 
 ```yaml
-- id: jenkinsfilelint-audit
+- id: jenkins-lint-audit
   args: [--ignore, unpinned-library]
 ```
 
@@ -104,7 +106,7 @@ change and what they leave.
 `--diff` prints what the fixes would change, and changes nothing:
 
 ```console
-$ jenkinsfilelint --audit --fix=all --diff Jenkinsfile
+$ jenkins-lint --audit --fix=all --diff Jenkinsfile
 --- Jenkinsfile
 +++ Jenkinsfile
 @@ -5,7 +5,7 @@
@@ -115,10 +117,10 @@ $ jenkinsfilelint --audit --fix=all --diff Jenkinsfile
              }
          }
      }
-$ jenkinsfilelint --audit --fix=all .
+$ jenkins-lint --audit --fix=all .
 Jenkinsfile:8:34: fixed: script-injection: CHANGE_BRANCH is the name of the pull request's branch, and Groovy interpolates it into the sh script: ...
 Jenkinsfile:12:41: high: secret-interpolation: TOKEN is a secret, and Groovy interpolates it into the sh script: ...
-  help: https://jenkinsci.github.io/jenkinsfilelint/audit/secret-interpolation/
+  help: https://jenkinsci.github.io/jenkins-lint/audit/secret-interpolation/
 Found 2 findings (1 fixed, 1 remaining).
 ```
 
@@ -144,7 +146,7 @@ edits, and the SARIF report carries the fixes for code scanning to suggest.
 In GitHub Actions:
 
 ```yaml
-- run: pipx run jenkinsfilelint --audit --format sarif Jenkinsfile > audit.sarif
+- run: pipx run jenkins-lint --audit --format sarif Jenkinsfile > audit.sarif
 - uses: github/codeql-action/upload-sarif@v3
   with:
     sarif_file: audit.sarif
@@ -153,7 +155,7 @@ In GitHub Actions:
 In Jenkins, with the Warnings Next Generation plugin:
 
 ```groovy
-sh 'jenkinsfilelint --audit --format sarif Jenkinsfile > audit.sarif'
+sh 'jenkins-lint --audit --format sarif Jenkinsfile > audit.sarif'
 recordIssues tool: sarif(pattern: 'audit.sarif')
 ```
 

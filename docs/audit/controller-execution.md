@@ -95,7 +95,7 @@ Then, in **Manage Jenkins > Nodes**, select **Built-In Node**, then
   confusion.
 
 ```groovy
-// jenkinsfilelint: ignore[controller-execution] this job backs up JENKINS_HOME
+// jenkins-lint: ignore[controller-execution] this job backs up JENKINS_HOME
 agent { label 'built-in' }
 ```
 

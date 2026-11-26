@@ -15,7 +15,7 @@
 
 FROM jenkins/jenkins:lts-jdk21
 
-LABEL org.opencontainers.image.source="https://github.com/jenkinsci/jenkinsfilelint"
+LABEL org.opencontainers.image.source="https://github.com/jenkinsci/jenkins-lint"
 LABEL org.opencontainers.image.description="Minimal Jenkins image for Declarative Pipeline syntax validation"
 LABEL org.opencontainers.image.licenses="MIT"
 

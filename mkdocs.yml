@@ -1,8 +1,8 @@
 site_name: Jenkinsfile Lint
 site_description: Catch Jenkinsfile syntax errors before they break your CI.
-site_url: https://jenkinsci.github.io/jenkinsfilelint/
-repo_url: https://github.com/jenkinsci/jenkinsfilelint
-repo_name: jenkinsci/jenkinsfilelint
+site_url: https://jenkinsci.github.io/jenkins-lint/
+repo_url: https://github.com/jenkinsci/jenkins-lint
+repo_name: jenkinsci/jenkins-lint
 edit_uri: edit/main/docs/
 docs_dir: docs
 copyright: >-
