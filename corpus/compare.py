@@ -4,7 +4,7 @@
 Usage: python3 corpus/compare.py [--jenkins-url URL] [--engine PATH] [--copy DIR]
 
 Needs the files that fetch.py downloaded, and a Jenkins with the
-Declarative validator, such as the one `jenkins-lint --local` starts
+Declarative validator, such as the one `tests/jenkins_server.py start` starts
 (the default URL). Jenkins's answers are kept in <cache>/jenkins.jsonl by
 blob, so a later run only asks about new files: delete it after changing
 the server or its plugins.

@@ -1,44 +1,42 @@
 # Usage
 
-## Which mode?
+## Offline, and Jenkins when you ask
 
-| | Offline | Remote | Local (`--local`) |
-|---|---|---|---|
-| Used when | no Jenkins server is configured, or with `--offline` | `JENKINS_URL` (or `--jenkins-url`) is set | `--local` is given |
-| Needs | nothing else | a Jenkins server and credentials | Docker or Podman |
-| Speed | milliseconds | a network round trip | 20–40 s first run, then fast |
-| Groovy syntax and Declarative structure | ✓ | ✓ | ✓ |
-| Step names and parameters, plugin agent types, tools | — | ✓ | ✓ (plugins in the image) |
+Every run checks the files offline: Groovy syntax and Declarative Pipeline
+structure, in milliseconds, with nothing but `pip install jenkins-lint`.
 
-Offline mode is the quick check that works anywhere, including CI images and
-machines without Docker. Remote and local mode ask a real Jenkins, so they also
-catch mistakes that depend on the plugins it has installed.
+`--remote` also sends the files that pass to a Jenkins server, which knows
+the plugins it has installed: step names and parameters, plugin agent types
+and tools. Files with an offline error are reported without a request.
 
-Any Jenkins setting (`JENKINS_URL`, `JENKINS_USER` or `JENKINS_TOKEN`, or the
-matching flag) selects remote mode. So a CI job that sets `JENKINS_TOKEN` but
-lost its `JENKINS_URL` secret fails with "Jenkins URL not provided" instead of
-quietly checking less. `--offline` checks offline even if a Jenkins server is
-configured.
+| | Offline (default) | `--remote URL` |
+|---|---|---|
+| Needs | nothing else | a Jenkins server, and credentials if it asks for them |
+| Speed | milliseconds | a network round trip per file |
+| Groovy syntax and Declarative structure | ✓ | ✓ |
+| Step names and parameters, plugin agent types, tools | — | ✓ |
+
+Only `--remote` turns remote checking on. `JENKINS_URL` alone never does:
+Jenkins sets it in every build, and a lint step in a job should not start
+calling the controller by itself. A bare `--remote` uses `JENKINS_URL` as the
+URL, and `JENKINS_USER` / `JENKINS_TOKEN` give the credentials.
 
 ## CLI
-
-You can also run `jenkins-lint` directly on any file or directory:
 
 ```bash
 pip install jenkins-lint
 
-jenkins-lint Jenkinsfile                   # offline, or remote if JENKINS_URL is set
+jenkins-lint Jenkinsfile                   # offline
 jenkins-lint Jenkinsfile Jenkinsfile.prod tests/Jenkinsfile
 jenkins-lint .                             # every Jenkinsfile in this directory
-jenkins-lint --local Jenkinsfile           # a Jenkins in Docker
-jenkins-lint --offline Jenkinsfile         # offline, even if JENKINS_URL is set
+jenkins-lint --remote https://ci.example.com Jenkinsfile
+jenkins-lint --remote Jenkinsfile          # the URL in JENKINS_URL
 ```
 
-With `--verbose`, a run that checks offline because no Jenkins server is
-configured starts by saying so:
+With `--verbose`, an offline run starts by saying what it does not check:
 
 ```text
-ℹ No Jenkins server configured, so checking offline: step names, step parameters and other plugin-dependent checks are skipped. Set JENKINS_URL to check with Jenkins.
+ℹ Checking offline: step names, step parameters and other plugin-dependent checks are skipped. Pass --remote to also check with your Jenkins.
 ```
 
 ## Checking a directory
@@ -178,5 +176,4 @@ example to go easier on a shared Jenkins controller:
 
 The hook runs as a single process (`require_serial: true`), so `--jobs` is the
 total load it puts on Jenkins. Overriding `require_serial: false` in your
-config would multiply that by the number of CPUs pre-commit uses, and in
-`--local` mode would race to start the container.
+config would multiply that by the number of CPUs pre-commit uses.

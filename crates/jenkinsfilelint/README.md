@@ -5,11 +5,9 @@ JVM. One ~500 KB binary that checks Groovy syntax and Declarative Pipeline
 structure, and reports errors with the same wording as Jenkins's own
 validator.
 
-This is the offline engine of `jenkins-lint`: it runs for `--offline`, the
-`jenkins-lint-offline` pre-commit hook, and whenever no Jenkins server is
-configured. Most people want
+This is the offline engine of `jenkins-lint`: it runs for every check. Most people want
 [jenkins-lint](https://github.com/jenkinsci/jenkins-lint) itself, which
-installs this package. The remote and Docker modes of `jenkins-lint` stay
+installs this package. `jenkins-lint --remote` stays
 the exact check; this one is the fast one. See [DESIGN.md](https://github.com/jenkinsci/jenkins-lint/blob/main/crates/jenkinsfilelint/DESIGN.md).
 
 ```console
@@ -81,7 +79,7 @@ Anything that depends on the plugins installed on a controller:
 - tool installations configured on the controller,
 - script-security sandbox rules.
 
-Use the remote or `--local` Docker mode of `jenkins-lint` for those.
+Use `jenkins-lint --remote` with your Jenkins for those.
 
 ## How close is it to the official validator?
 

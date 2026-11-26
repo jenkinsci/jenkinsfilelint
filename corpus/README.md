@@ -25,8 +25,8 @@ python3 corpus/collect.py
 # Download the files the manifest lists into corpus/.cache/files:
 python3 corpus/fetch.py
 
-# Start the Jenkins of local mode, which keeps running, then compare:
-jenkins-lint --local Jenkinsfile
+# Start a Jenkins with the plugins in docker/, which keeps running, then compare:
+python3 tests/jenkins_server.py start
 python3 corpus/compare.py --copy /tmp/look
 ```
 

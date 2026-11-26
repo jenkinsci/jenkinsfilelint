@@ -16,78 +16,25 @@ skipped in a plain ``pytest`` invocation unless ``-m docker`` is given.
 """
 
 import os
-import subprocess
 
 import pytest
 
 from jenkins_lint.linter import JenkinsfileLinter, NOT_DECLARATIVE_MESSAGE
-from jenkins_lint.local import LocalJenkins
+
+from . import jenkins_server
 
 pytestmark = pytest.mark.docker
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
 _HERE = os.path.dirname(__file__)
-_DOCKER_DIR = os.path.join(os.path.dirname(_HERE), "docker")
-
 GOOD_JENKINSFILE = os.path.join(_HERE, "Jenkinsfile")
 BAD_JENKINSFILE = os.path.join(_HERE, "Jenkinsfile.fail")
 
 
-def _ensure_image(tag: str) -> str:
-    """Make sure the Docker image *tag* is available locally.
-
-    - If ``JENKINS_LINT_SERVER_IMAGE`` is explicitly set in the
-      environment, trust that and do nothing.
-    - If *tag* is the default published image, let
-      :meth:`LocalJenkins.ensure_running` pull it.
-    - Otherwise build from ``docker/`` so it can be used locally.
-    """
-    if "JENKINS_LINT_SERVER_IMAGE" in os.environ:
-        return tag  # caller is responsible
-
-    if tag == "ghcr.io/jenkinsci/jenkinsfilelint-server:latest":
-        return tag  # will be pulled by LocalJenkins
-
-    # Local-only tag → build from source
-    subprocess.run(
-        ["docker", "build", "-t", tag, _DOCKER_DIR],
-        check=True,
-        capture_output=True,
-    )
-    return tag
-
-
-# ---------------------------------------------------------------------------
-# Module-scoped fixtures — one container start/stop per test module
-# ---------------------------------------------------------------------------
-
-
 @pytest.fixture(scope="module")
-def server_image() -> str:
-    """Resolve and prepare the server image tag."""
-    tag = os.environ.get(
-        "JENKINS_LINT_SERVER_IMAGE",
-        "ghcr.io/jenkinsci/jenkinsfilelint-server:latest",
-    )
-    return _ensure_image(tag)
-
-
-@pytest.fixture(scope="module")
-def local_jenkins_url(server_image: str) -> str:
-    """Start a local Jenkins container and return its base URL.
-
-    The container is started once before any test in the module and
-    torn down after all tests finish.
-    """
-    lj = LocalJenkins(image=server_image)
-    try:
-        url = lj.ensure_running()
+def local_jenkins_url():
+    """Build docker/, start Jenkins once for the module, then remove it."""
+    with jenkins_server.running() as url:
         yield url
-    finally:
-        lj.stop()
 
 
 # ---------------------------------------------------------------------------
@@ -98,8 +45,7 @@ def local_jenkins_url(server_image: str) -> str:
 class TestDockerEndToEnd:
     """Real end-to-end validation against a live Jenkins container.
 
-    These tests exercise the exact same code path that a user hitting
-    ``jenkins-lint --local Jenkinsfile`` would take.
+    These tests exercise the code path of ``jenkins-lint --remote URL``.
     """
 
     def test_good_jenkinsfile_passes(self, local_jenkins_url: str) -> None:
@@ -159,7 +105,7 @@ class TestDockerEndToEnd:
 
         If this test starts failing, it likely means Jenkins's CSRF
         protection is blocking anonymous requests, which would break the
-        linter's ``--local`` mode.
+        other tests here and corpus/compare.py.
         """
         import requests
 

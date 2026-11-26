@@ -26,7 +26,7 @@ pre-commit run --all-files
 pytest tests/ -v --cov=jenkins_lint
 ```
 
-`tests/test_offline.py` also runs `jenkins-lint --offline` end to end on the
+`tests/test_offline.py` also runs `jenkins-lint` end to end on the
 cases in `crates/jenkinsfilelint/tests/jenkins/`. For the engine itself, see
 [crates/jenkinsfilelint/README.md](crates/jenkinsfilelint/README.md#development).
 

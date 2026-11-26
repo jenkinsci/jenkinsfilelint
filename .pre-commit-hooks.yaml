@@ -1,6 +1,6 @@
 - id: jenkins-lint
   name: jenkins-lint
-  description: Lint Jenkinsfiles and Groovy files with the configured Jenkins server, or offline when none is configured.
+  description: Check Jenkinsfile syntax and Declarative Pipeline structure offline. Add --remote to also check with your Jenkins.
   entry: jenkins-lint
   language: python
   types: [file]
@@ -8,8 +8,8 @@
   require_serial: true
 - id: jenkins-lint-offline
   name: jenkins-lint (offline)
-  description: Check Jenkinsfile syntax and Declarative Pipeline structure without a Jenkins server, even when one is configured.
-  entry: jenkins-lint --offline
+  description: Same as the jenkins-lint hook, which checks offline since 2.0.
+  entry: jenkins-lint
   language: python
   types: [file]
   files: ^.*(Jenkinsfile.*|.*\.groovy)$
@@ -35,7 +35,7 @@
 - id: jenkinsfilelint-offline
   name: jenkins-lint (offline)
   description: Old id of the jenkins-lint-offline hook.
-  entry: jenkins-lint --offline
+  entry: jenkins-lint
   language: python
   types: [file]
   files: ^.*(Jenkinsfile.*|.*\.groovy)$
