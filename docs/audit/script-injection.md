@@ -95,7 +95,7 @@ line, so `&` or `|` in the value still runs.
 
 ## How `--fix` fixes it
 
-`jenkins-lint --audit --fix=all` makes this change for you. It puts the
+`jenkins-lint --fix --unsafe-fixes` makes this change for you. It puts the
 script in single quotes and has the shell read each value from the
 environment, in double quotes:
 
@@ -129,7 +129,7 @@ left to you.
 
 The fix is **unsafe**: each value is quoted now, so the shell no longer
 splits it into words, and a value that holds several arguments on purpose
-becomes one. So `--fix` alone does not make it: use `--fix=all`, and look at
+becomes one. So `--fix` alone does not make it: add `--unsafe-fixes`, and look at
 the change first with `--diff`. Before it writes a file, it audits the fixed
 text again, and keeps a fix only if the file still parses and no new
 finding appears.

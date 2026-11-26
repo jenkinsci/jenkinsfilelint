@@ -191,6 +191,22 @@ class TestAuditReport:
 
 
 class TestAuditCLI:
+    @pytest.mark.parametrize("command", [[], ["check"], ["audit"], ["--audit"]])
+    def test_one_check_for_everything(self, tmp_path, capsys, command):
+        """Jenkins's errors and the findings come from the same run."""
+        f = write(
+            tmp_path,
+            "Jenkinsfile",
+            "pipeline {\n  agent\n  stages { stage('A') { steps {\n"
+            '    sh "echo ${env.CHANGE_TITLE}"\n  } } }\n}\n',
+        )
+        assert run_cli([*command, f]) == 1
+        captured = capsys.readouterr()
+        assert captured.err.startswith(
+            f"{f}:2:3: error: Not a valid section definition"
+        )
+        assert f"{f}:4:14: high: script-injection: " in captured.out
+
     def test_findings(self, tmp_path, capsys):
         f = write(tmp_path, "Jenkinsfile", LEAKS)
         assert run_cli(["--audit", "--persona", "pedantic", f]) == 1
@@ -204,7 +220,7 @@ class TestAuditCLI:
         )
         assert out[-2:] == [
             "2 findings (1 high, 1 low)",
-            "2 fixable with --fix=all (unsafe, review the changes).",
+            "2 fixable with --fix --unsafe-fixes (they can change what the pipeline does, review them).",
         ]
 
     def test_script_injection(self, tmp_path, capsys):
@@ -243,7 +259,7 @@ class TestAuditCLI:
         assert run_cli(["--audit", "-v", "--skip", "*skipped*", f, skipped]) == 0
         out = capsys.readouterr().out
         assert "✓ Offline engine: " in out
-        assert f"✓ {f}: No findings" in out
+        assert f"⊘ {f}: Skipped (not a Declarative Pipeline)" in out
         assert f"⊘ {skipped}: Skipped (matches skip pattern)" in out
 
     def test_syntax_error(self, tmp_path, capsys):
@@ -292,19 +308,16 @@ class TestAuditCLI:
     @pytest.mark.parametrize(
         "argv, message",
         [
-            (["--persona", "auditor"], "argument --persona: requires --audit"),
-            (["--min-severity", "high"], "argument --min-severity: requires --audit"),
             (
-                ["--min-confidence", "low"],
-                "argument --min-confidence: requires --audit",
+                ["--format", "sarif", "--remote", "http://j"],
+                "argument --format: not allowed with argument --remote",
             ),
-            (["--format", "sarif"], "argument --format: requires --audit"),
-            (["--ignore", "unpinned-image"], "argument --ignore: requires --audit"),
             (
-                ["--audit", "--remote", "http://j"],
-                "argument --remote: not allowed with argument --audit",
+                ["--diff", "--remote", "http://j"],
+                "argument --diff: not allowed with argument --remote",
             ),
-            (["--audit", "--persona", "everyone"], "invalid choice: 'everyone'"),
+            (["--unsafe-fixes"], "argument --unsafe-fixes: requires --fix or --diff"),
+            (["--persona", "everyone"], "invalid choice: 'everyone'"),
         ],
     )
     def test_options(self, argv, message, capsys):
@@ -343,7 +356,7 @@ class TestFix:
         assert "[*]" not in out
         assert out.endswith(
             "1 finding (1 high)\n"
-            "1 fixable with --fix=all (unsafe, review the changes).\n"
+            "1 fixable with --fix --unsafe-fixes (they can change what the pipeline does, review them).\n"
         )
         assert (tmp_path / "Jenkinsfile").read_text(encoding="utf-8") == LEAKS
 
@@ -353,21 +366,25 @@ class TestFix:
         out = capsys.readouterr().out
         assert out.endswith(
             "Found 1 finding (0 fixed, 1 remaining).\n"
-            "1 fixable with --fix=all (unsafe, review the changes).\n"
+            "1 fixable with --fix --unsafe-fixes (they can change what the pipeline does, review them).\n"
         )
         assert (tmp_path / "Jenkinsfile").read_text(encoding="utf-8") == LEAKS
 
-    @pytest.mark.parametrize("mode", ["all", "unsafe-only"])
-    def test_fix(self, tmp_path, capsys, mode):
+    @pytest.mark.parametrize(
+        "flags",
+        [["--fix", "--unsafe-fixes"], ["--fix=all"], ["--fix=unsafe-only"]],
+        ids=["--unsafe-fixes", "--fix=all", "--fix=unsafe-only"],
+    )
+    def test_fix(self, tmp_path, capsys, flags):
         f = write(tmp_path, "Jenkinsfile", LEAKS)
-        assert run_cli(["--audit", f"--fix={mode}", f]) == 0
+        assert run_cli([*flags, f]) == 0
         out = capsys.readouterr().out
         assert out.startswith(
             f"{f}:2:25: fixed: secret-interpolation: PASS is a secret"
         )
         assert out.endswith("\nFound 1 finding (1 fixed, 0 remaining).\n")
         assert "help:" not in out
-        assert run_cli(["--audit", f"--fix={mode}", f]) == 0
+        assert run_cli([*flags, f]) == 0
         assert capsys.readouterr().out == "Found 0 findings (0 fixed, 0 remaining).\n"
 
     def test_what_cannot_be_fixed_fails_the_run(self, tmp_path, capsys):
@@ -398,7 +415,7 @@ class TestFix:
                 assert "J:2:1: high: script-injection: m\n" in out
                 assert out.endswith(
                     "[*] 1 fixable with --fix.\n"
-                    "1 more fixable with --fix=all (unsafe, review the changes).\n"
+                    "1 more fixable with --fix --unsafe-fixes (they can change what the pipeline does, review them).\n"
                 )
                 assert run_cli(["--audit", "--fix=unsafe-only", "J"]) == 1
                 assert capsys.readouterr().out.endswith(
@@ -447,8 +464,6 @@ class TestFix:
     @pytest.mark.parametrize(
         "argv, error",
         [
-            (["--offline", "--fix"], "argument --fix: requires --audit"),
-            (["--offline", "--diff"], "argument --diff: requires --audit"),
             (["--audit", "--fix=some"], "argument --fix: invalid choice: 'some'"),
             (
                 ["--audit", "--diff", "--format", "json"],

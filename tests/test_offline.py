@@ -133,7 +133,7 @@ class TestLintFiles:
         for f in (good, bad, scripted):
             f.write_text("")
         reports = [
-            {"file": str(good), "declarative": True, "diagnostics": []},
+            {"file": str(good), "declarative": True, "diagnostics": [], "findings": []},
             {
                 "file": str(bad),
                 "declarative": True,
@@ -293,7 +293,12 @@ class TestOfflineCLI:
         monkeypatch.setenv("JENKINS_URL", "https://jenkins.example.com")
         f = tmp_path / "Jenkinsfile"
         f.write_text("")
-        report = {"file": str(f), "declarative": True, "diagnostics": []}
+        report = {
+            "file": str(f),
+            "declarative": True,
+            "diagnostics": [],
+            "findings": [],
+        }
         with (
             patch("jenkins_lint.cli.find_engine", return_value="engine"),
             patch(
@@ -309,7 +314,12 @@ class TestOfflineCLI:
     def test_passing_file_is_quiet(self, declarative, tmp_path, capsys):
         f = tmp_path / "Jenkinsfile"
         f.write_text("")
-        report = {"file": str(f), "declarative": declarative, "diagnostics": []}
+        report = {
+            "file": str(f),
+            "declarative": declarative,
+            "diagnostics": [],
+            "findings": [],
+        }
         with (
             patch("jenkins_lint.cli.find_engine", return_value="engine"),
             patch(
@@ -338,7 +348,12 @@ class TestOfflineCLI:
             f.write_text("")
         skipped.parent.mkdir()
         skipped.write_text("")
-        report = {"file": str(keep), "declarative": True, "diagnostics": []}
+        report = {
+            "file": str(keep),
+            "declarative": True,
+            "diagnostics": [],
+            "findings": [],
+        }
         with (
             patch("jenkins_lint.cli.find_engine", return_value="engine"),
             patch(
@@ -362,7 +377,8 @@ class TestOfflineCLI:
                 ]
             )
         assert code == 0
-        assert run.call_args.args[0][4:] == [str(keep)]
+        engine_args = run.call_args.args[0]
+        assert engine_args[engine_args.index("--") + 1 :] == [str(keep)]
         out = capsys.readouterr().out
         assert f"✓ {keep}: Valid" in out
         assert f"⊘ {skipped}: Skipped (matches skip pattern)" in out
@@ -385,7 +401,9 @@ class TestDefaultMode:
         f = tmp_path / "Jenkinsfile"
         f.write_text("")
         if reports is None:
-            reports = [{"file": str(f), "declarative": True, "diagnostics": []}]
+            reports = [
+                {"file": str(f), "declarative": True, "diagnostics": [], "findings": []}
+            ]
         with (
             patch("jenkins_lint.cli.find_engine", return_value="engine"),
             patch(
@@ -412,6 +430,7 @@ class TestDefaultMode:
             "diagnostics": [
                 {"line": 1, "column": 1, "severity": "error", "message": "E"}
             ],
+            "findings": [],
         }
         code, _ = self.offline_run(tmp_path, [], reports=[report], returncode=1)
         assert code == 1
@@ -470,7 +489,7 @@ class TestDefaultMode:
     def test_remote_selects_jenkins(self, argv, tmp_path):
         f = tmp_path / "Jenkinsfile"
         f.write_text("")
-        with patch("jenkins_lint.cli._run_remote_validation") as remote:
+        with patch("jenkins_lint.cli._run_check") as remote:
             with patch("sys.argv", ["jenkins-lint", *argv, str(f)]):
                 main()
         remote.assert_called_once()
@@ -480,7 +499,7 @@ class TestDefaultMode:
         monkeypatch.setenv("JENKINS_URL", "https://from-env.example.com")
         f = tmp_path / "Jenkinsfile"
         f.write_text("")
-        with patch("jenkins_lint.cli._run_remote_validation") as remote:
+        with patch("jenkins_lint.cli._run_check") as remote:
             with patch("sys.argv", ["jenkins-lint", "--remote", str(f)]):
                 main()
         assert remote.call_args.args[1] == "https://from-env.example.com"
@@ -522,8 +541,18 @@ class TestRemote:
         def reports(good, bad):
             error = {"line": 1, "column": 1, "severity": "error", "message": "E"}
             return [
-                {"file": str(good), "declarative": True, "diagnostics": []},
-                {"file": str(bad), "declarative": True, "diagnostics": [error]},
+                {
+                    "file": str(good),
+                    "declarative": True,
+                    "diagnostics": [],
+                    "findings": [],
+                },
+                {
+                    "file": str(bad),
+                    "declarative": True,
+                    "diagnostics": [error],
+                    "findings": [],
+                },
             ]
 
         code, post, good, bad = self.remote_run(tmp_path, reports)
@@ -556,6 +585,13 @@ def load_cases():
 
 EXPECTED = load_cases()
 
+# The cases are about what Jenkins accepts: leave out the security checks.
+NO_AUDIT = [
+    "--ignore",
+    "controller-execution,script-injection,secret-interpolation,"
+    "unpinned-image,unpinned-library,unrestricted-input",
+]
+
 
 @pytest.mark.usefixtures("engine")
 class TestAgainstJenkinsVerdicts:
@@ -570,7 +606,7 @@ class TestAgainstJenkinsVerdicts:
         want = EXPECTED[name]
         path = str(CASES / f"{name}.groovy")
 
-        code = run_cli(["--verbose", path])
+        code = run_cli([*NO_AUDIT, "--verbose", path])
         captured = capsys.readouterr()
 
         diagnostic = re.compile(rf"{re.escape(path)}:\d+:\d+: (error|warning): (.*)")
@@ -602,7 +638,7 @@ class TestAgainstJenkinsVerdicts:
 
     def test_all_cases_in_one_run(self, capsys):
         paths = [str(CASES / f"{name}.groovy") for name in sorted(EXPECTED)]
-        assert run_cli(["--offline", *paths]) == 1
+        assert run_cli([*NO_AUDIT, *paths]) == 1
         captured = capsys.readouterr()
         for name, want in EXPECTED.items():
             path = str(CASES / f"{name}.groovy")

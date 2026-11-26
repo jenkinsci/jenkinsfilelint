@@ -1,11 +1,11 @@
 # Security audit
 
-`jenkins-lint --audit` finds ways a pipeline can be attacked or can leak
-secrets. It runs offline, without Jenkins, and reads Jenkinsfiles and
-shared library files with the same parser as the syntax check.
+Every `jenkins-lint` run also looks for ways a pipeline can be attacked or
+can leak secrets. It runs offline, without Jenkins, with the same parser as
+the syntax check, in the same run.
 
 ```console
-$ jenkins-lint --audit Jenkinsfile
+$ jenkins-lint Jenkinsfile
 Jenkinsfile:8:36: high: script-injection: CHANGE_BRANCH is the name of the pull request's branch, and Groovy interpolates it into the sh script: ...
   help: https://jenkinsci.github.io/jenkins-lint/audit/script-injection/
 Jenkinsfile:12:41: high: secret-interpolation: PASS is a secret, and Groovy interpolates it into the sh script: ...
@@ -13,9 +13,9 @@ Jenkinsfile:12:41: high: secret-interpolation: PASS is a secret, and Groovy inte
 2 findings (2 high)
 ```
 
-Give it a directory to check a whole repository, `jenkins-lint --audit .`.
-It picks every `*.groovy` under a `vars/` or `src/` directory, and the
-pipelines that the syntax check [finds in a directory](../usage.md#checking-a-directory).
+Give it a directory to check a whole repository, `jenkins-lint .`. It picks
+every `*.groovy` under a `vars/` or `src/` directory, and the pipelines it
+[finds in a directory](../usage.md#checking-a-directory).
 
 The rules were designed in
 [#65](https://github.com/jenkinsci/jenkins-lint/issues/65). To suggest a
@@ -33,7 +33,7 @@ new rule, or to report a finding that is wrong, open an issue.
 | [unrestricted-input](unrestricted-input.md) | An `input` without `submitter`, which any user may approve (pedantic) | ❌ |
 
 Fix: ✅ a safe fix, which `--fix` makes; ⚠ an unsafe fix, which
-`--fix=all` makes and you review; ❌ no fix.
+`--fix --unsafe-fixes` makes and you review; ❌ no fix.
 
 The first two follow a value through local variables, environment
 variables, `+` and string methods to the step that runs it, the way Groovy
@@ -74,7 +74,7 @@ When a rule does not fit a repository at all, turn it off for every file with
 `--ignore`:
 
 ```console
-$ jenkins-lint --audit --ignore unpinned-library Jenkinsfile
+$ jenkins-lint --ignore unpinned-library Jenkinsfile
 ```
 
 `--ignore` takes a comma-separated list, `--ignore unpinned-library,unpinned-image`,
@@ -82,7 +82,7 @@ and can be given more than once. An unknown rule name is an error, so that a
 typo does not go unnoticed. With pre-commit:
 
 ```yaml
-- id: jenkins-lint-audit
+- id: jenkins-lint
   args: [--ignore, unpinned-library]
 ```
 
@@ -95,8 +95,7 @@ safe or unsafe:
 
 - A **safe** fix keeps what the pipeline does. `--fix` makes the safe fixes.
 - An **unsafe** fix can change what it does, so review it before you commit
-  it. `--fix=all` makes the safe and unsafe fixes, `--fix=unsafe-only` only
-  the unsafe ones.
+  it. `--fix --unsafe-fixes` makes the safe and the unsafe fixes.
 
 The fixes for script-injection and secret-interpolation are unsafe: they
 quote each value for the shell, which no longer splits it into words. See
@@ -106,7 +105,7 @@ change and what they leave.
 `--diff` prints what the fixes would change, and changes nothing:
 
 ```console
-$ jenkins-lint --audit --fix=all --diff Jenkinsfile
+$ jenkins-lint --diff --unsafe-fixes Jenkinsfile
 --- Jenkinsfile
 +++ Jenkinsfile
 @@ -5,7 +5,7 @@
@@ -117,7 +116,7 @@ $ jenkins-lint --audit --fix=all --diff Jenkinsfile
              }
          }
      }
-$ jenkins-lint --audit --fix=all .
+$ jenkins-lint --fix --unsafe-fixes .
 Jenkinsfile:8:34: fixed: script-injection: CHANGE_BRANCH is the name of the pull request's branch, and Groovy interpolates it into the sh script: ...
 Jenkinsfile:12:41: high: secret-interpolation: TOKEN is a secret, and Groovy interpolates it into the sh script: ...
   help: https://jenkinsci.github.io/jenkins-lint/audit/secret-interpolation/
@@ -129,7 +128,7 @@ with `[*]`, and the last lines say how many each mode would fix:
 
 ```text
 [*] 1 fixable with --fix.
-2 more fixable with --fix=all (unsafe, review the changes).
+2 more fixable with --fix --unsafe-fixes (they can change what the pipeline does, review them).
 ```
 
 The JSON report gives each finding's `fix`, with its `disposition` and
@@ -140,13 +139,15 @@ edits, and the SARIF report carries the fixes for code scanning to suggest.
 - `--format text` (default): one line per finding, and a link to the rule.
 - `--format json`: the engine's report, one object per file.
 - `--format sarif`: SARIF 2.1.0, for GitHub code scanning and other tools.
+  Errors that make Jenkins reject a file are results of the rule
+  `invalid-pipeline`.
   It exits with `0` even when there are findings, so that the report can be
   uploaded.
 
 In GitHub Actions:
 
 ```yaml
-- run: pipx run jenkins-lint --audit --format sarif Jenkinsfile > audit.sarif
+- run: pipx run jenkins-lint --format sarif Jenkinsfile > audit.sarif
 - uses: github/codeql-action/upload-sarif@v3
   with:
     sarif_file: audit.sarif
@@ -155,7 +156,7 @@ In GitHub Actions:
 In Jenkins, with the Warnings Next Generation plugin:
 
 ```groovy
-sh 'jenkins-lint --audit --format sarif Jenkinsfile > audit.sarif'
+sh 'jenkins-lint --format sarif Jenkinsfile > audit.sarif'
 recordIssues tool: sarif(pattern: 'audit.sarif')
 ```
 
@@ -163,6 +164,6 @@ recordIssues tool: sarif(pattern: 'audit.sarif')
 
 | Code | Meaning |
 |---|---|
-| `0` | No findings shown, or `--format sarif`. With `--fix`, every finding was fixed; with `--diff`, no change |
-| `1` | A finding was shown, or a file could not be read or parsed. With `--fix`, a finding is left; with `--diff`, a change |
+| `0` | No error and no finding shown, or `--format sarif`. With `--fix`, every finding was fixed; with `--diff`, no change |
+| `1` | An error or a finding was shown, or a file could not be read. With `--fix`, a finding is left; with `--diff`, a change |
 | `2` | Wrong command-line options |

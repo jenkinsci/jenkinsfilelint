@@ -460,23 +460,37 @@ fn run_audit(options: &Options, filter: &Filter) -> ExitCode {
             }
             continue;
         }
-        let (fixed, outcome) = match result {
+        let (fixed, outcome, text) = match result {
             Ok(f) if options.fix.is_some() && f.src != src => match std::fs::write(os_path, &f.src) {
-                Ok(()) => (f.fixed, Ok(f.remaining)),
+                Ok(()) => (f.fixed, Ok(f.remaining), f.src),
                 Err(e) => {
                     eprintln!("{path}: {e}");
                     unreadable = true;
-                    (Vec::new(), Ok(f.findings))
+                    (Vec::new(), Ok(f.findings), src)
                 }
             },
-            Ok(f) => (Vec::new(), Ok(f.findings)),
-            Err(d) => (Vec::new(), Err(d)),
+            Ok(f) => (Vec::new(), Ok(f.findings), src),
+            Err(d) => (Vec::new(), Err(d), src),
         };
-        flagged |= !matches!(&outcome, Ok(f) if f.is_empty());
+        // What Jenkins would say about the file as it is now: its syntax
+        // error, if it has one, and the Declarative structure.
+        let report = lint(&text);
+        flagged |= report.diagnostics.iter().any(|d| d.severity == Severity::Error);
+        flagged |= matches!(&outcome, Ok(f) if !f.is_empty());
+        let findings = outcome.unwrap_or_default();
         match format {
-            Format::Text => print!("{}{}", fixed_text(&path, &fixed), audit_text(&path, &outcome, mode)),
-            Format::Json => items.push(audit_json(&path, &outcome, &fixed)),
-            Format::Sarif => audited.push((path, outcome)),
+            Format::Text => print!(
+                "{}{}{}",
+                diagnostics_text(&path, &report),
+                fixed_text(&path, &fixed),
+                audit_text(&path, &findings, mode)
+            ),
+            Format::Json => items.push(audit_json(&path, &report, &findings, &fixed)),
+            Format::Sarif => audited.push(audit::sarif::Checked {
+                path,
+                findings,
+                diagnostics: report.diagnostics,
+            }),
         }
     }
     match format {
@@ -509,49 +523,44 @@ fn fixed_text(path: &str, fixed: &[Finding]) -> String {
         .collect()
 }
 
-/// The findings, one line each. Those that `mode` fixes start with `[*]`.
-fn audit_text(path: &str, outcome: &Result<Vec<Finding>, Diagnostic>, mode: Mode) -> String {
-    match outcome {
-        Ok(findings) => findings
-            .iter()
-            .map(|f| {
-                let rule = audit::RULES
-                    .iter()
-                    .find(|r| r.id == f.rule)
-                    .map(|r| r.help_url())
-                    .unwrap_or_default();
-                let fixable = if f.fix.as_ref().is_some_and(|x| mode.applies(x.disposition)) {
-                    "[*] "
-                } else {
-                    ""
-                };
-                format!(
-                    "{path}:{}:{}: {}: {}: {fixable}{}\n  help: {rule}\n",
-                    f.span.start.line, f.span.start.col, f.severity, f.rule, f.message
-                )
-            })
-            .collect(),
-        Err(d) => format!("{path}:{}:{}: error: {}\n", d.pos.line, d.pos.col, d.message),
-    }
+/// The errors and warnings of checking the file, one line each.
+fn diagnostics_text(path: &str, report: &Report) -> String {
+    report
+        .diagnostics
+        .iter()
+        .map(|d| format!("{path}:{}:{}: {}: {}\n", d.pos.line, d.pos.col, d.severity, d.message))
+        .collect()
 }
 
-fn audit_json(path: &str, outcome: &Result<Vec<Finding>, Diagnostic>, fixed: &[Finding]) -> String {
-    let (findings, diagnostics) = match outcome {
-        Ok(findings) => (findings.iter().map(finding_json).collect::<Vec<_>>(), String::new()),
-        Err(d) => (
-            Vec::new(),
+/// The findings, one line each. Those that `mode` fixes start with `[*]`.
+fn audit_text(path: &str, findings: &[Finding], mode: Mode) -> String {
+    findings
+        .iter()
+        .map(|f| {
+            let rule = audit::RULES
+                .iter()
+                .find(|r| r.id == f.rule)
+                .map(|r| r.help_url())
+                .unwrap_or_default();
+            let fixable = if f.fix.as_ref().is_some_and(|x| mode.applies(x.disposition)) {
+                "[*] "
+            } else {
+                ""
+            };
             format!(
-                "{{\"line\":{},\"column\":{},\"severity\":\"error\",\"message\":\"{}\"}}",
-                d.pos.line,
-                d.pos.col,
-                json_escape(&d.message)
-            ),
-        ),
-    };
+                "{path}:{}:{}: {}: {}: {fixable}{}\n  help: {rule}\n",
+                f.span.start.line, f.span.start.col, f.severity, f.rule, f.message
+            )
+        })
+        .collect()
+}
+
+fn audit_json(path: &str, report: &Report, findings: &[Finding], fixed: &[Finding]) -> String {
+    let report = json_report(path, report);
     format!(
-        "{{\"file\":\"{}\",\"findings\":[{}],\"diagnostics\":[{diagnostics}],\"fixed\":[{}]}}",
-        json_escape(path),
-        findings.join(","),
+        "{},\"findings\":[{}],\"fixed\":[{}]}}",
+        &report[..report.len() - 1],
+        findings.iter().map(finding_json).collect::<Vec<_>>().join(","),
         fixed.iter().map(finding_json).collect::<Vec<_>>().join(",")
     )
 }
@@ -885,21 +894,24 @@ mod tests {
         let safe = super::fix_source(src, &filter, Mode::Safe).unwrap();
         assert_eq!((safe.src.as_str(), safe.fixed.len()), (src, 0));
         assert!(safe.remaining[0].fix.is_some());
-        let outcome = Ok(all.findings.clone());
-        let marked = super::audit_text("J", &outcome, Mode::All);
+        let marked = super::audit_text("J", &all.findings, Mode::All);
         assert!(
             marked.starts_with("J:2:16: high: secret-interpolation: [*] T is a secret"),
             "{marked}"
         );
-        assert!(!super::audit_text("J", &outcome, Mode::Safe).contains("[*]"));
-        let json = super::audit_json("J", &Ok(all.remaining), &all.fixed);
+        assert!(!super::audit_text("J", &all.findings, Mode::Safe).contains("[*]"));
+        let json = super::audit_json("J", &super::lint(&all.src), &all.remaining, &all.fixed);
         assert!(json.contains("\"fix\":null"), "{json}");
         assert!(
             json.contains("\"fixed\":[{\"rule\":\"secret-interpolation\"") && json.contains("\"fix\":{\"disposition\":\"unsafe\",\"edits\":[{\"line\":2,\"column\":8,\"end_line\":2,\"end_column\":21,\"text\":\"'deploy \\\"$T\\\"'\"}]}"),
             "{json}"
         );
         assert!(super::fixed_text("J", &all.fixed).starts_with("J:2:16: fixed: secret-interpolation: T is a secret"));
-        let sarif = crate::audit::sarif::sarif(&[("J".to_string(), outcome)]);
+        let sarif = crate::audit::sarif::sarif(&[crate::audit::sarif::Checked {
+            path: "J".to_string(),
+            findings: all.findings.clone(),
+            diagnostics: Vec::new(),
+        }]);
         assert!(
             sarif.contains("\"deletedRegion\":{\"startLine\":2,\"startColumn\":8,\"endLine\":2,\"endColumn\":21},\"insertedContent\":{\"text\":\"'deploy \\\"$T\\\"'\"}}]}],\"properties\":{\"disposition\":\"unsafe\"}}]"),
             "{sarif}"
@@ -985,20 +997,37 @@ mod tests {
 
     #[test]
     fn audit_output() {
+        use crate::audit::sarif::{sarif, Checked};
         let src = "withCredentials([string(credentialsId: 'c', variable: 'TOKEN')]) {\n    sh \"deploy ${TOKEN}\"\n}\n";
-        let outcome = super::audit_source(src, &super::Filter::default());
-        let text = super::audit_text("J", &outcome, super::Mode::Safe);
+        let findings = super::audit_source(src, &super::Filter::default()).unwrap();
+        let text = super::audit_text("J", &findings, super::Mode::Safe);
         assert!(text.starts_with("J:2:16: high: secret-interpolation: TOKEN is a secret"), "{text}");
         assert!(text.ends_with("\n  help: https://jenkinsci.github.io/jenkins-lint/audit/secret-interpolation/\n"));
-        let json = super::audit_json("J", &outcome, &[]);
+        let json = super::audit_json("J", &super::lint(src), &findings, &[]);
         assert!(json.contains("\"line\":2,\"column\":16,\"end_line\":2,\"end_column\":24"), "{json}");
-        let sarif = crate::audit::sarif::sarif(&[("dir\\J".to_string(), outcome)]);
-        assert!(sarif.contains("\"uri\":\"dir/J\""), "{sarif}");
-        assert!(sarif.contains("\"region\":{\"startLine\":2,\"startColumn\":16,\"endLine\":2,\"endColumn\":24}"));
-        let broken = super::audit_source("sh \"${a +}\"", &super::Filter::default());
-        assert!(super::audit_text("J", &broken, super::Mode::Safe).starts_with("J:1:10: error: "));
-        assert!(super::audit_json("J", &broken, &[]).contains("\"findings\":[],\"diagnostics\":[{\"line\":1"));
-        let sarif = crate::audit::sarif::sarif(&[("J".to_string(), broken)]);
-        assert!(sarif.contains("\"ruleId\":\"syntax-error\""), "{sarif}");
+        assert!(
+            json.starts_with("{\"file\":\"J\",\"declarative\":false,\"diagnostics\":[],\"findings\":["),
+            "{json}"
+        );
+        let checked = |path: &str, src: &str| Checked {
+            path: path.to_string(),
+            findings: super::audit_source(src, &super::Filter::default()).unwrap_or_default(),
+            diagnostics: super::lint(src).diagnostics,
+        };
+        let out = sarif(&[checked("dir\\J", src)]);
+        assert!(out.contains("\"uri\":\"dir/J\""), "{out}");
+        assert!(out.contains("\"region\":{\"startLine\":2,\"startColumn\":16,\"endLine\":2,\"endColumn\":24}"));
+        // A syntax error: no findings, and the error as Jenkins words it.
+        let broken = "sh \"${a +}\"";
+        assert!(super::audit_source(broken, &super::Filter::default()).is_err());
+        let report = super::lint(broken);
+        assert!(super::diagnostics_text("J", &report).starts_with("J:1:10: error: "));
+        assert!(super::audit_json("J", &report, &[], &[]).contains("\"diagnostics\":[{\"line\":1"));
+        assert!(sarif(&[checked("J", broken)]).contains("\"ruleId\":\"invalid-pipeline\""));
+        // A Declarative error in Groovy that parses: reported with the findings.
+        let invalid = "pipeline {\n    agent\n    stages { stage('A') { steps { echo 'x' } } }\n}\n";
+        let report = super::lint(invalid);
+        assert!(super::diagnostics_text("J", &report).starts_with("J:2:5: error: Not a valid section definition"));
+        assert!(sarif(&[checked("J", invalid)]).contains("\"ruleId\":\"invalid-pipeline\",\"ruleIndex\":6,\"level\":\"error\""));
     }
 }

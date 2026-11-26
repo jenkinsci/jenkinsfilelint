@@ -287,14 +287,13 @@ class TestMain:
         assert os.path.join("vars", "deploy.groovy") in out
         assert "other.groovy" not in out
 
-    def test_syntax_check_leaves_the_shared_library(
-        self, tmp_path, monkeypatch, capsys
-    ):
+    def test_check_reads_the_shared_library(self, tmp_path, monkeypatch, capsys):
+        """Jenkins compiles vars/ and src/ too, so their syntax errors count."""
         write(tmp_path, "Jenkinsfile")
         write(tmp_path, "vars/broken.groovy", text="def x = {\n")
         monkeypatch.chdir(tmp_path)
-        assert run(".") == 0
-        assert "broken.groovy" not in capsys.readouterr().out
+        assert run(".") == 1
+        assert "broken.groovy:" in capsys.readouterr().err
 
     def test_empty_audit_report_stays_valid(self, tmp_path, capsys):
         assert run("--audit", "--format", "sarif", "--verbose", str(tmp_path)) == 0

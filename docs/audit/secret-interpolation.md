@@ -94,7 +94,7 @@ sh "curl -u \"\$USER:\$PASS\" ${env.NEXUS_URL}"
 
 ## How `--fix` fixes it
 
-`jenkins-lint --audit --fix=all` makes this change for you. Like the
+`jenkins-lint --fix --unsafe-fixes` makes this change for you. Like the
 fix for script-injection, it is unsafe, so review it, with `--diff` first:
 
 ```groovy

@@ -15,7 +15,6 @@ from .offline import (
     audit_files,
     audit_report,
     find_engine,
-    lint_files,
 )
 from . import __version__
 
@@ -333,48 +332,6 @@ def _report(
     return is_valid
 
 
-def _run_remote_validation(args: argparse.Namespace, url: str) -> None:
-    """Check files offline, then validate the ones that pass with Jenkins.
-
-    Jenkins only sees files the engine accepts: a file with a syntax error
-    is reported offline, without a request. Where the engine is not
-    installed, every file goes to Jenkins.
-    """
-    selected = [f for f in args.jenkinsfile if _skip_reason(f, args) is None]
-    results = {}
-    try:
-        engine = find_engine() if selected else None
-        if engine and args.verbose:
-            print(f"✓ Offline engine: {engine}")
-        results = lint_files(selected, engine) if selected else {}
-    except OfflineEngineError as exc:
-        if args.verbose:
-            print(f"ℹ {exc}", file=sys.stderr)
-
-    offline_ok = True
-    send = []
-    for jenkinsfile in selected:
-        result = results.get(jenkinsfile)
-        if result is None:
-            send.append(jenkinsfile)
-        elif not result.is_valid:
-            offline_ok = False
-            sys.stdout.flush()
-            for line in result.lines:
-                print(line, file=sys.stderr)
-        elif result.declarative:
-            send.append(jenkinsfile)
-        elif args.verbose or args.searched or len(args.jenkinsfile) > 1:
-            print(f"⊘ {jenkinsfile}: Skipped (not a Declarative Pipeline)")
-
-    linter = JenkinsfileLinter(
-        jenkins_url=url,
-        username=args.username,
-        token=args.token,
-    )
-    _validate_files(linter, args, offline_ok, set(send))
-
-
 # Printed with --verbose when files are checked offline only.
 OFFLINE_NOTE = (
     "ℹ Checking offline: step names, step parameters and other "
@@ -400,48 +357,6 @@ def _remote_url(args: argparse.Namespace) -> Optional[str]:
     return args.remote or os.environ.get("JENKINS_URL") or ""
 
 
-def _run_offline_validation(args: argparse.Namespace) -> None:
-    """Validate files with the offline engine, without a Jenkins server."""
-    selected = [f for f in args.jenkinsfile if _skip_reason(f, args) is None]
-    try:
-        engine = find_engine() if selected else None
-        if engine and args.verbose:
-            print(OFFLINE_NOTE)
-            print(f"✓ Offline engine: {engine}")
-        results = lint_files(selected, engine) if selected else {}
-    except OfflineEngineError as exc:
-        print(f"✗ {exc}", file=sys.stderr)
-        sys.exit(1)
-
-    all_valid = True
-    printed_messages: Set[str] = set()
-    for jenkinsfile in args.jenkinsfile:
-        reason = _skip_reason(jenkinsfile, args)
-        if reason:
-            if args.verbose:
-                print(f"⊘ {jenkinsfile}: Skipped ({reason})")
-            continue
-
-        if args.verbose:
-            print(f"Validating {jenkinsfile}...")
-
-        result = results[jenkinsfile]
-        if result.lines:
-            sys.stdout.flush()  # keep the output in file order when piped
-        for line in result.lines:
-            print(line, file=sys.stderr)
-
-        if not result.is_valid:
-            all_valid = False
-        else:
-            # Valid, or skipped when there is no Declarative syntax to check:
-            # reported the same way as in the other modes.
-            message = "" if result.declarative else NOT_DECLARATIVE_MESSAGE
-            _report(jenkinsfile, True, message, args, printed_messages)
-
-    sys.exit(0 if all_valid else 1)
-
-
 SEVERITIES = ("high", "medium", "low")
 
 # The dispositions of the fixes that each --fix mode makes.
@@ -458,17 +373,28 @@ def _audit_options(args: argparse.Namespace) -> dict:
     }
 
 
-def _run_audit(args: argparse.Namespace) -> None:
-    """Run the security checks with the offline engine: findings on stdout,
-    or the engine's JSON or SARIF report as is."""
+def _in_library(path: str) -> bool:
+    return any(part in LIBRARY_DIRS for part in Path(path).parent.parts)
+
+
+def _run_check(args: argparse.Namespace, url: Optional[str]) -> None:
+    """Check files offline: what Jenkins would reject, and security
+    findings. With *url*, the files that pass are then sent to Jenkins.
+
+    Errors go to stderr, findings to stdout. A JSON or SARIF report, or the
+    diff of --diff, is the engine's own, printed as is.
+    """
     selected = [f for f in args.jenkinsfile if _skip_reason(f, args) is None]
     text = args.format == "text"
+    results = {}
+    engine = None
     try:
         engine = find_engine() if selected or not text else None
         if engine and args.verbose:
-            print(
-                f"✓ Offline engine: {engine}", file=sys.stdout if text else sys.stderr
-            )
+            out = sys.stdout if text else sys.stderr
+            if not url:
+                print(OFFLINE_NOTE, file=out)
+            print(f"✓ Offline engine: {engine}", file=out)
         if not text or args.diff:
             output, errors, code = audit_report(
                 selected, args.format, engine, diff=args.diff, **_audit_options(args)
@@ -476,41 +402,59 @@ def _run_audit(args: argparse.Namespace) -> None:
             sys.stderr.write(errors)
             print(output, end="")
             sys.exit(code)
-        results = (
-            audit_files(selected, engine, **_audit_options(args)) if selected else {}
-        )
+        if selected:
+            results = audit_files(selected, engine, **_audit_options(args))
     except OfflineEngineError as exc:
-        print(f"✗ {exc}", file=sys.stderr)
-        sys.exit(1)
+        if not url:
+            print(f"✗ {exc}", file=sys.stderr)
+            sys.exit(1)
+        # No engine on this platform: Jenkins checks every file.
+        if args.verbose:
+            print(f"ℹ {exc}", file=sys.stderr)
 
+    show = args.verbose or args.searched or len(args.jenkinsfile) > 1
     counts = {severity: 0 for severity in SEVERITIES}
     fixed = 0
     fixable = {"safe": 0, "unsafe": 0}
     # What --fix made, and what a finding's [*] says it would make.
     applied = FIX_MODES[args.fix] if args.fix else ()
     marked = FIX_MODES[args.fix or "safe"]
-    failed = False
+    passed = True
+    send: Set[str] = set()
     for jenkinsfile in args.jenkinsfile:
         reason = _skip_reason(jenkinsfile, args)
         if reason:
-            if args.verbose:
+            # With --remote, said in file order with the files Jenkins checks.
+            if args.verbose and not url:
                 print(f"⊘ {jenkinsfile}: Skipped ({reason})")
             continue
-        result = results[jenkinsfile]
+        result = results.get(jenkinsfile)
+        if result is None:
+            send.add(jenkinsfile)
+            continue
         for finding in result.fixed:
             print(finding.render_fixed(jenkinsfile))
             fixed += 1
-        for line in result.errors:
+        if result.errors:
             sys.stdout.flush()  # keep the output in file order when piped
+        for line in result.errors:
             print(line, file=sys.stderr)
-            failed = True
         for finding in result.findings:
             print(finding.render(jenkinsfile, finding.fix in marked))
             counts[finding.severity] = counts.get(finding.severity, 0) + 1
             if finding.fix:
                 fixable[finding.fix] += 1
-        if args.verbose and not result.findings and not result.errors:
-            print(f"✓ {jenkinsfile}: No findings")
+        passed = passed and result.valid and not result.findings
+        if not result.valid:
+            continue
+        if result.declarative and url:
+            send.add(jenkinsfile)
+        elif result.declarative:
+            if show and not result.findings:
+                print(f"✓ {jenkinsfile}: Valid")
+        elif args.verbose or (show and not _in_library(jenkinsfile)):
+            # Shared library files are never pipelines: named only with -v.
+            print(f"⊘ {jenkinsfile}: Skipped (not a Declarative Pipeline)")
 
     total = sum(counts.values())
     if args.fix:
@@ -529,8 +473,17 @@ def _run_audit(args: argparse.Namespace) -> None:
         print(f"[*] {safe} fixable with --fix.")
     if unsafe:
         more = " more" if safe else ""
-        print(f"{unsafe}{more} fixable with --fix=all (unsafe, review the changes).")
-    sys.exit(1 if total or failed else 0)
+        print(
+            f"{unsafe}{more} fixable with --fix --unsafe-fixes "
+            "(they can change what the pipeline does, review them)."
+        )
+
+    if url:
+        linter = JenkinsfileLinter(
+            jenkins_url=url, username=args.username, token=args.token
+        )
+        _validate_files(linter, args, passed, send)
+    sys.exit(0 if passed else 1)
 
 
 def main():
@@ -604,14 +557,9 @@ def main():
     # Before 2.0: --offline is what happens anyway, --local is gone.
     parser.add_argument("--offline", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--local", action="store_true", help=argparse.SUPPRESS)
-    mode.add_argument(
-        "--audit",
-        action="store_true",
-        help="Run security checks instead of validating, offline: find secrets "
-        "interpolated into shell steps and other ways a pipeline can be attacked. "
-        "Each finding links to its documentation.",
-    )
-    audit = parser.add_argument_group("audit options (with --audit)")
+    # Before 2.0, --audit ran the security checks alone. Every check runs them.
+    parser.add_argument("--audit", action="store_true", help=argparse.SUPPRESS)
+    audit = parser.add_argument_group("security checks")
     audit.add_argument(
         "--persona",
         choices=("regular", "pedantic", "auditor"),
@@ -641,11 +589,14 @@ def main():
         "--fix",
         action="store_const",
         const="safe",
-        metavar="MODE",
-        help="Rewrite the files with the fixes that --fix=MODE allows, then report "
-        "the findings that remain: safe (the default), unsafe-only or all. An "
-        "unsafe fix can change what a pipeline does, so review it. Today's fixes, "
-        "for script-injection and secret-interpolation, are unsafe.",
+        help="Rewrite the files with the safe fixes, then report what is left.",
+    )
+    audit.add_argument(
+        "--unsafe-fixes",
+        action="store_true",
+        help="With --fix or --diff, also make the fixes that can change what a "
+        "pipeline does. Review them. Today's fixes, for script-injection and "
+        "secret-interpolation, are all unsafe.",
     )
     audit.add_argument(
         "--diff",
@@ -653,7 +604,7 @@ def main():
         help="Print what --fix would change as a diff, and change nothing. Exits "
         "with 1 when there is a change.",
     )
-    audit.add_argument(
+    parser.add_argument(
         "--format",
         choices=("text", "json", "sarif"),
         default="text",
@@ -704,8 +655,12 @@ def main():
         "Example: --include 'Jenkinsfile*' --include 'pipelines/*.groovy'",
     )
 
-    # --fix takes its mode only as --fix=MODE, like zizmor's, so that
-    # `--fix Jenkinsfile` does not read the file name as a mode.
+    # `jenkins-lint check FILE` and `jenkins-lint FILE` are the same, and so
+    # is `audit`, the command of the security checks before 2.0.
+    if len(sys.argv) > 1 and sys.argv[1] in ("check", "audit"):
+        sys.argv = [sys.argv[0], *sys.argv[2:]]
+
+    # --fix=MODE is the form from before 2.0: safe, unsafe-only or all.
     # A bare --remote takes JENKINS_URL. pre-commit puts the file names right
     # after the hook's args, so --remote only takes the next argument as its
     # URL when it is one: `--remote Jenkinsfile` checks Jenkinsfile.
@@ -730,20 +685,12 @@ def main():
             )
         args.fix = modes[-1]
 
-    if not args.audit:
-        for option in (
-            "persona",
-            "min_severity",
-            "min_confidence",
-            "ignore",
-            "fix",
-            "diff",
-        ):
-            if getattr(args, option):
-                flag = "--" + option.replace("_", "-")
-                parser.error(f"argument {flag}: requires --audit")
-        if args.format != "text":
-            parser.error("argument --format: requires --audit")
+    if args.unsafe_fixes:
+        if not (args.fix or args.diff):
+            parser.error("argument --unsafe-fixes: requires --fix or --diff")
+        args.fix = "all"
+    elif args.diff and not args.fix:
+        args.fix = "safe"
     if args.diff and args.format != "text":
         parser.error("argument --diff: not allowed with argument --format")
     if args.local:
@@ -757,10 +704,13 @@ def main():
         for option in ("username", "token"):
             if getattr(args, option):
                 parser.error(f"argument --{option}: requires --remote")
+    if url is not None and (args.format != "text" or args.diff):
+        flag = "--diff" if args.diff else "--format"
+        parser.error(f"argument {flag}: not allowed with argument --remote")
 
     args.searched = any(os.path.isdir(path) for path in args.jenkinsfile)
-    args.jenkinsfile, empty = expand_paths(args.jenkinsfile, args.audit)
-    report = args.audit and args.format != "text"
+    args.jenkinsfile, empty = expand_paths(args.jenkinsfile, audit=True)
+    report = args.format != "text"
     if args.verbose:
         for directory in empty:
             print(
@@ -772,12 +722,7 @@ def main():
     if not args.jenkinsfile and not report:
         sys.exit(0)
 
-    if args.audit:
-        _run_audit(args)
-    elif url:
-        _run_remote_validation(args, url)
-    else:
-        _run_offline_validation(args)
+    _run_check(args, url)
 
 
 if __name__ == "__main__":

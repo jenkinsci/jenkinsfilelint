@@ -70,13 +70,17 @@ class Finding:
 
 @dataclass
 class AuditResult:
-    """The findings in one file, or why it could not be audited."""
+    """What checking one file found: Jenkins's errors and the findings."""
 
     findings: List[Finding]
-    # Syntax errors and read errors, as ``file:line:col: error: message``.
+    # Errors and warnings, as ``file:line:col: severity: message``.
     errors: List[str]
     # What ``--fix`` fixed, where it was before.
     fixed: List[Finding] = field(default_factory=list)
+    # Jenkins would accept the file: no syntax or Declarative error.
+    valid: bool = True
+    # A pipeline block was found and checked.
+    declarative: bool = False
 
 
 def find_engine() -> str:
@@ -204,7 +208,8 @@ def audit_files(
     ignore: Optional[List[str]] = None,
     fix: Optional[str] = None,
 ) -> Dict[str, AuditResult]:
-    """Run the security checks on files with one run of the engine. With
+    """Check files with one run of the engine: Jenkins's errors and the
+    security findings. With
     *fix*, ``safe``, ``unsafe-only`` or ``all``, the engine first rewrites
     the files with the fixes of that disposition.
 
@@ -282,7 +287,9 @@ def _audit_result(path: str, report: dict) -> AuditResult:
         the engine documents it.
     """
     if "error" in report:
-        return AuditResult([], [f"Error reading file {path}: {report['error']}"])
+        return AuditResult(
+            [], [f"Error reading file {path}: {report['error']}"], valid=False
+        )
 
     def finding(f: dict) -> Finding:
         return Finding(
@@ -296,12 +303,14 @@ def _audit_result(path: str, report: dict) -> AuditResult:
             fix=(f.get("fix") or {}).get("disposition"),
         )
 
-    errors = [
-        f"{path}:{d['line']}:{d['column']}: error: {d['message']}"
-        for d in report["diagnostics"]
-    ]
+    diagnostics = report["diagnostics"]
     return AuditResult(
         [finding(f) for f in report["findings"]],
-        errors,
+        [
+            f"{path}:{d['line']}:{d['column']}: {d['severity']}: {d['message']}"
+            for d in diagnostics
+        ],
         [finding(f) for f in report.get("fixed", [])],
+        valid=not any(d["severity"] == "error" for d in diagnostics),
+        declarative=bool(report.get("declarative", False)),
     )

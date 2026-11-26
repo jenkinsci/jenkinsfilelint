@@ -5,7 +5,9 @@ use crate::diag::{Diagnostic, Pos};
 use crate::json_escape;
 
 /// For a file that does not parse, which cannot be audited.
-const SYNTAX_ERROR: &str = "syntax-error";
+/// The rule of the errors that make Jenkins reject a file: Groovy syntax
+/// and Declarative structure.
+const INVALID: &str = "invalid-pipeline";
 
 fn level(s: Severity) -> &'static str {
     match s {
@@ -65,7 +67,15 @@ fn result(rule: &str, index: usize, level: &str, message: &str, path: &str, regi
 
 /// One run with every rule, and the findings or the syntax error of each
 /// file.
-pub fn sarif(files: &[(String, Result<Vec<Finding>, Diagnostic>)]) -> String {
+/// A file's findings, and the errors and warnings of checking it. A file
+/// that does not parse has no findings, and its syntax error is among them.
+pub struct Checked {
+    pub path: String,
+    pub findings: Vec<Finding>,
+    pub diagnostics: Vec<Diagnostic>,
+}
+
+pub fn sarif(files: &[Checked]) -> String {
     let mut rules: Vec<String> = RULES
         .iter()
         .map(|r| {
@@ -84,57 +94,50 @@ pub fn sarif(files: &[(String, Result<Vec<Finding>, Diagnostic>)]) -> String {
         })
         .collect();
     rules.push(format!(
-        "{{\"id\":\"{SYNTAX_ERROR}\",\"name\":\"{SYNTAX_ERROR}\",\"shortDescription\":{{\"text\":\"The file is not \
-         valid Groovy, so it cannot be audited\"}},\"defaultConfiguration\":{{\"level\":\"error\"}}}}"
+        "{{\"id\":\"{INVALID}\",\"name\":\"{INVALID}\",\"shortDescription\":{{\"text\":\"Jenkins would reject \
+         the file: Groovy syntax or Declarative Pipeline structure\"}},\"defaultConfiguration\":{{\"level\":\"error\"}}}}"
     ));
     let mut results = Vec::new();
-    for (path, outcome) in files {
-        match outcome {
-            Ok(findings) => {
-                for f in findings {
-                    let index = RULES.iter().position(|r| r.id == f.rule).unwrap_or(0);
-                    let mut extra = format!(
-                        ",\"properties\":{{\"severity\":\"{}\",\"confidence\":\"{}\"}}",
-                        f.severity, f.confidence
-                    );
-                    if let Some(fix) = &f.fix {
-                        extra.push_str(&format!(
-                            ",\"fixes\":[{{\"description\":{{\"text\":\"Let the shell read the value from the environment\"}},\
-                             \"artifactChanges\":[{{\"artifactLocation\":{{\"uri\":\"{}\"}},\"replacements\":[{{\
-                             \"deletedRegion\":{},\"insertedContent\":{{\"text\":\"{}\"}}}}]}}],\
-                             \"properties\":{{\"disposition\":\"{}\"}}}}]",
-                            json_escape(&uri(path)),
-                            region(fix.span.start, fix.span.end),
-                            json_escape(&fix.text),
-                            fix.disposition.name()
-                        ));
-                    }
-                    results.push(result(
-                        f.rule,
-                        index,
-                        level(f.severity),
-                        &f.message,
-                        path,
-                        &region(f.span.start, f.span.end),
-                        &extra,
-                    ));
-                }
-            }
-            Err(d) => {
-                let end = Pos {
-                    col: d.pos.col + 1,
-                    ..d.pos
-                };
-                results.push(result(
-                    SYNTAX_ERROR,
-                    RULES.len(),
-                    "error",
-                    &d.message,
-                    path,
-                    &region(d.pos, end),
-                    "",
+    for file in files {
+        let path = &file.path;
+        for d in &file.diagnostics {
+            let end = Pos {
+                col: d.pos.col + 1,
+                ..d.pos
+            };
+            let level = match d.severity {
+                crate::diag::Severity::Error => "error",
+                crate::diag::Severity::Warning => "warning",
+            };
+            results.push(result(INVALID, RULES.len(), level, &d.message, path, &region(d.pos, end), ""));
+        }
+        for f in &file.findings {
+            let index = RULES.iter().position(|r| r.id == f.rule).unwrap_or(0);
+            let mut extra = format!(
+                ",\"properties\":{{\"severity\":\"{}\",\"confidence\":\"{}\"}}",
+                f.severity, f.confidence
+            );
+            if let Some(fix) = &f.fix {
+                extra.push_str(&format!(
+                    ",\"fixes\":[{{\"description\":{{\"text\":\"Let the shell read the value from the environment\"}},\
+                     \"artifactChanges\":[{{\"artifactLocation\":{{\"uri\":\"{}\"}},\"replacements\":[{{\
+                     \"deletedRegion\":{},\"insertedContent\":{{\"text\":\"{}\"}}}}]}}],\
+                     \"properties\":{{\"disposition\":\"{}\"}}}}]",
+                    json_escape(&uri(path)),
+                    region(fix.span.start, fix.span.end),
+                    json_escape(&fix.text),
+                    fix.disposition.name()
                 ));
             }
+            results.push(result(
+                f.rule,
+                index,
+                level(f.severity),
+                &f.message,
+                path,
+                &region(f.span.start, f.span.end),
+                &extra,
+            ));
         }
     }
     format!(

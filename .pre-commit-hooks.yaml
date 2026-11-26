@@ -16,8 +16,8 @@
   require_serial: true
 - id: jenkins-lint-audit
   name: jenkins-lint (audit)
-  description: Find security problems in Jenkinsfiles and Groovy files offline, such as secrets interpolated into shell steps.
-  entry: jenkins-lint --audit
+  description: Same as the jenkins-lint hook, which runs the security checks too since 2.0.
+  entry: jenkins-lint
   language: python
   types: [file]
   files: ^.*(Jenkinsfile.*|.*\.groovy)$
@@ -43,7 +43,7 @@
 - id: jenkinsfilelint-audit
   name: jenkins-lint (audit)
   description: Old id of the jenkins-lint-audit hook.
-  entry: jenkins-lint --audit
+  entry: jenkins-lint
   language: python
   types: [file]
   files: ^.*(Jenkinsfile.*|.*\.groovy)$

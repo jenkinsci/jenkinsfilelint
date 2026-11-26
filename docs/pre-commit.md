@@ -86,6 +86,7 @@ WorkflowScript: 17: Expected a step @ line 17, column 11.
 
 Fix the error and re-commit.
 
-## Security audit
+## Security checks
 
-The `jenkins-lint-audit` hook runs the [security audit](usage.md#security-audit).
+The `jenkins-lint` hook runs the [security checks](usage.md#security-checks)
+too. `jenkins-lint-audit`, its own hook before 2.0, does the same.

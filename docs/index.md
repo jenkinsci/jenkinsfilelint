@@ -19,9 +19,8 @@ hook, but also works as a standalone CLI tool.
 
 ```bash
 pip install jenkins-lint
-jenkins-lint Jenkinsfile
-jenkins-lint .          # every Jenkinsfile in this directory
-jenkins-lint --audit .  # and look for security problems
+jenkins-lint Jenkinsfile  # syntax, Declarative structure and security
+jenkins-lint .            # every Jenkinsfile and shared library file here
 ```
 
 That works as is: files are checked offline, and `--remote` also checks them
