@@ -215,7 +215,8 @@ impl Walker {
                     self.bind(name, Binding::Holds(held.clone(), false));
                 }
             }
-            Stmt::MethodDef { body, .. } => self.block(body),
+            // Its parameters hide the variables of the same name outside.
+            Stmt::MethodDef { params, body, .. } => self.scoped(locals(params), body),
             Stmt::Control { bodies, .. } => {
                 for b in bodies {
                     self.block(b);
@@ -280,7 +281,7 @@ impl Walker {
                     self.expr(arg_value(a), line);
                 }
             }
-            Expr::Closure { body, .. } => self.block(body),
+            Expr::Closure { params, body, .. } => self.scoped(locals(params), body),
             Expr::Assign { op, target, value, .. } => {
                 self.expr(value, line);
                 let mut held = self.uses(value, true);
@@ -302,7 +303,7 @@ impl Walker {
                     }
                     // `env.X = ...` sets X for the rest of the build.
                     target => {
-                        if let Some(name) = name_of(target).and_then(|(n, _)| n.strip_prefix("env.").map(String::from)) {
+                        if let Some(name) = self.name_of(target).and_then(|(n, _)| n.strip_prefix("env.").map(String::from)) {
                             self.scopes[0].insert(name, Binding::Holds(held, true));
                         }
                     }
@@ -391,7 +392,7 @@ impl Walker {
     /// read it by: `X` for `env.X`, `env['X']` and `params.X`, and for `X`
     /// when it is an environment variable here.
     fn environment_name(&self, e: &Expr) -> Option<String> {
-        let (name, _) = name_of(e)?;
+        let (name, _) = self.name_of(e)?;
         let binding = |var: &str| self.scopes.iter().rev().find_map(|s| s.get(var));
         let var = if let Some(var) = name.strip_prefix("env.") {
             var
@@ -487,6 +488,19 @@ impl Walker {
         }
     }
 
+    /// `name_of`, unless `env` or `params` in `env.X` or `params.X` is a
+    /// variable of the file, as in `def call(Map params)`: then it is not
+    /// the build's.
+    fn name_of(&self, e: &Expr) -> Option<(String, Span)> {
+        let found = name_of(e)?;
+        if let Some((qualifier, _)) = found.0.split_once('.') {
+            if self.scopes.iter().any(|s| s.contains_key(qualifier)) {
+                return None;
+            }
+        }
+        Some(found)
+    }
+
     fn lookup_held(&self, name: &str) -> Vec<Use> {
         match self.scopes.iter().rev().find_map(|s| s.get(name)) {
             Some(Binding::Holds(held, _)) => held.clone(),
@@ -506,7 +520,7 @@ impl Walker {
     /// `at` is the placeholder that `e` is in, where its values enter the
     /// string; outside one, they are where their names are.
     fn collect(&self, e: &Expr, at: Option<Span>, how: How, deep: bool, out: &mut Vec<Use>) {
-        if let Some((name, span)) = name_of(e) {
+        if let Some((name, span)) = self.name_of(e) {
             if self.lookup(&name, at.unwrap_or(span), how, out) {
                 return;
             }
@@ -745,6 +759,11 @@ fn escapes(callee: &Expr, args: &[Arg]) -> bool {
         },
         _ => false,
     }
+}
+
+/// Parameters of a method or closure: variables that hold nothing known.
+fn locals(names: &[String]) -> HashMap<String, Binding> {
+    names.iter().map(|n| (n.clone(), Binding::Holds(Vec::new(), false))).collect()
 }
 
 fn arg_value(a: &Arg) -> &Expr {

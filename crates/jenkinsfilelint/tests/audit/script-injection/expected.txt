@@ -29,6 +29,9 @@ none
 [tn09_conditions]
 none
 
+[tn10_shadowed_names]
+none
+
 [tp01_pull_request]
 6:35 high high regular CHANGE_TITLE
 7:34 high high regular CHANGE_BRANCH
