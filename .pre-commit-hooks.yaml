@@ -1,6 +1,6 @@
 - id: jenkins-lint
   name: jenkins-lint
-  description: Check Jenkinsfiles and shared library files offline: Groovy syntax, Declarative structure and security. Add --remote to also check with your Jenkins.
+  description: "Check Jenkinsfiles and shared library files offline: Groovy syntax, Declarative structure and security. Add --remote to also check with your Jenkins."
   entry: jenkins-lint
   language: python
   types: [file]
