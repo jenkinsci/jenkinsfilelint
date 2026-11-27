@@ -12,6 +12,9 @@ name: Wheels
 # runs build and test without publishing. A manual run with
 # "publish: testpypi" goes through the same jobs against TestPyPI, as a dry
 # run of a release.
+#
+# The binary of each wheel is also packaged as an archive and attached to
+# the GitHub release, for those who want jenkins-lint without Python.
 
 on:
   release:
@@ -198,6 +201,63 @@ jobs:
         -v "$PWD:/work" -w /work -e PIP_ROOT_USER_ACTION=ignore
         -e PIP_NO_INDEX=1 "$IMAGE"
         sh smoke-test.sh
+
+  archives:
+    # The binary of each tested wheel, packaged for the GitHub release: the
+    # same files as on PyPI, not a second build.
+    name: Release archives
+    needs: [wheels]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+      with:
+        pattern: wheel-*
+        path: wheels
+    - name: Package the binaries
+      run: python3 crates/jenkins-lint/scripts/package_binaries.py wheels archives
+    - name: Run the binaries this runner can run
+      run: |
+        set -eux
+        cd archives
+        sha256sum -c ./*.sha256
+        for target in x86_64-unknown-linux-gnu x86_64-unknown-linux-musl i686-unknown-linux-musl; do
+          tar xzf "jenkins-lint-$target.tar.gz"
+          bin="jenkins-lint-$target/jenkins-lint"
+          "$bin" --version
+          "$bin" --verbose ../tests/Jenkinsfile
+          if "$bin" ../tests/Jenkinsfile.fail; then
+            echo "tests/Jenkinsfile.fail should fail"
+            exit 1
+          fi
+          rm -r "jenkins-lint-$target"
+        done
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+      with:
+        name: archives
+        path: archives/
+        if-no-files-found: error
+
+  release-assets:
+    name: Attach the archives to the release
+    needs: [version, test, archives]
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # to upload release assets
+    steps:
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+      with:
+        name: archives
+        path: archives
+    - name: Upload
+      env:
+        GH_TOKEN: ${{ github.token }}
+        TAG: ${{ github.event.release.tag_name }}
+      # --clobber: a re-run of the job replaces what it uploaded before.
+      run: gh release upload "$TAG" archives/* --clobber --repo "$GITHUB_REPOSITORY"
 
   # The publish job serves both a release (PyPI) and a dry run (TestPyPI).
   publish:
