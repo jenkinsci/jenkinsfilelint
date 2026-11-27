@@ -23,9 +23,6 @@ const DEFAULT_JOBS: usize = 8;
 pub const OFFLINE_NOTE: &str = "ℹ Checking offline: step names, step parameters and other plugin-dependent \
      checks are skipped. Pass --remote to also check with your Jenkins.";
 
-pub const REMOVED_LOCAL: &str = "--local was removed in jenkins-lint 2.0: files are checked offline by \
-     default, and --remote URL checks them with your own Jenkins.";
-
 const HELP: &str = "Check Jenkinsfiles offline: Groovy syntax, Declarative Pipeline structure and
 security. With --remote, the files that pass are also validated by your Jenkins.
 
@@ -50,11 +47,13 @@ Options:
   --min-severity S       Leave out findings below low, medium or high
   --min-confidence C     Leave out findings below low, medium or high
   --ignore RULE[,RULE]   Turn off a rule in every file, such as unpinned-library
-  --fix                  Rewrite the files with the safe fixes, then report
-                         what is left
-  --unsafe-fixes         With --fix or --diff, also make the fixes that can
-                         change what a pipeline does. Review them.
-  --diff                 Print what --fix would change, and change nothing
+  --fix                  Rewrite the files with the fixes, then report what
+                         is left. Use --no-fix to disable.
+  --unsafe-fixes         Include the fixes that can change what a pipeline
+                         does: review them. Use --no-unsafe-fixes to disable.
+  --show-fixes           Name each fix that --fix made. Use --no-show-fixes
+                         to disable.
+  --diff                 Print what the fixes would change, and change nothing
   --format F             text (default), json or sarif. sarif exits with 0
                          when there are findings, so that it can be uploaded.
   --skip PATTERN         Skip files that match this glob, such as 'vars/*.groovy'
@@ -63,7 +62,7 @@ Options:
   -h, --help             Print this help
   -V, --version          Print the version
 
-`jenkins-lint check` and `jenkins-lint audit` are the same command.
+`jenkins-lint check PATH` is the same as `jenkins-lint PATH`.
 Documentation: https://jenkinsci.github.io/jenkins-lint/";
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -82,8 +81,12 @@ pub struct Options {
     pub token: Option<String>,
     pub jobs: usize,
     pub filter: Filter,
-    /// --fix: rewrite the files with these fixes.
-    pub fix: Option<Mode>,
+    /// --fix: rewrite the files with the fixes.
+    pub fix: bool,
+    /// --unsafe-fixes: the fixes include those that can change behaviour.
+    pub unsafe_fixes: bool,
+    /// --show-fixes: name each fix made.
+    pub show_fixes: bool,
     /// --diff: print what the fixes would change instead.
     pub diff: bool,
     pub format: Format,
@@ -104,15 +107,8 @@ fn usage_error(message: impl AsRef<str>) -> ExitCode {
 /// lookup. Err is the exit code after --help, --version or a usage error.
 pub fn parse_args(args: impl IntoIterator<Item = OsString>, env: impl Fn(&str) -> Option<String>) -> Result<Options, ExitCode> {
     let mut args: Vec<OsString> = args.into_iter().collect();
-    match args.first().and_then(|a| a.to_str()) {
-        Some("check") | Some("audit") => {
-            args.remove(0);
-        }
-        Some("server") => {
-            eprintln!("✗ {REMOVED_LOCAL}");
-            return Err(ExitCode::from(2));
-        }
-        _ => {}
+    if args.first().and_then(|a| a.to_str()) == Some("check") {
+        args.remove(0);
     }
     let mut o = Options {
         paths: Vec::new(),
@@ -121,15 +117,15 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>, env: impl Fn(&str) -
         token: None,
         jobs: DEFAULT_JOBS,
         filter: Filter::default(),
-        fix: None,
+        fix: false,
+        unsafe_fixes: false,
+        show_fixes: false,
         diff: false,
         format: Format::Text,
         skip: Vec::new(),
         include: Vec::new(),
         verbose: false,
     };
-    let mut offline = false;
-    let mut unsafe_fixes = false;
     let mut remote_flag: Option<String> = None;
     let mut i = 0;
     while i < args.len() {
@@ -180,11 +176,6 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>, env: impl Fn(&str) -
                 return Err(ExitCode::SUCCESS);
             }
             "-v" | "--verbose" => o.verbose = true,
-            // Before 2.0: --offline is what happens anyway, --audit runs with
-            // every check, --local is gone.
-            "--offline" => offline = true,
-            "--audit" => {}
-            "--local" => return Err(usage_error(REMOVED_LOCAL)),
             "--remote" => {
                 // pre-commit puts the file names right after the hook's args,
                 // so --remote only takes the next argument as its URL when it
@@ -201,7 +192,6 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>, env: impl Fn(&str) -
                 };
                 remote_flag = Some(v);
             }
-            "--jenkins-url" => remote_flag = Some(value("--jenkins-url")?),
             "--username" => o.username = Some(value("--username")?),
             "--token" => o.token = Some(value("--token")?),
             "-j" | "--jobs" => {
@@ -242,21 +232,16 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>, env: impl Fn(&str) -
                     }
                 }
             }
-            "--fix" => {
-                // --fix=MODE is the form from before 2.0.
-                o.fix = Some(match inline.as_deref() {
-                    None => Mode::Safe,
-                    Some(m) => match Mode::parse(m) {
-                        Some(mode) => mode,
-                        None => {
-                            return Err(usage_error(format!(
-                                "argument --fix: invalid choice: '{m}' (choose from safe, unsafe-only, all)"
-                            )))
-                        }
-                    },
-                });
+            // Named and working as in ruff check.
+            "--fix" | "--no-fix" | "--unsafe-fixes" | "--no-unsafe-fixes" | "--show-fixes" | "--no-show-fixes" if inline.is_some() => {
+                return Err(usage_error(format!("argument {flag}: ignored explicit argument")))
             }
-            "--unsafe-fixes" => unsafe_fixes = true,
+            "--fix" => o.fix = true,
+            "--no-fix" => o.fix = false,
+            "--unsafe-fixes" => o.unsafe_fixes = true,
+            "--no-unsafe-fixes" => o.unsafe_fixes = false,
+            "--show-fixes" => o.show_fixes = true,
+            "--no-show-fixes" => o.show_fixes = false,
             "--diff" => o.diff = true,
             "--format" => {
                 let v = value("--format")?;
@@ -275,19 +260,8 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>, env: impl Fn(&str) -
     if o.paths.is_empty() {
         return Err(usage_error("the following arguments are required: PATH"));
     }
-    if unsafe_fixes {
-        if o.fix.is_none() && !o.diff {
-            return Err(usage_error("argument --unsafe-fixes: requires --fix or --diff"));
-        }
-        o.fix = Some(Mode::All);
-    } else if o.diff && o.fix.is_none() {
-        o.fix = Some(Mode::Safe);
-    }
     if o.diff && o.format != Format::Text {
         return Err(usage_error("argument --diff: not allowed with argument --format"));
-    }
-    if offline && remote_flag.is_some() {
-        return Err(usage_error("argument --offline: not allowed with argument --remote"));
     }
     if let Some(v) = remote_flag {
         let url = if v.is_empty() { env("JENKINS_URL").unwrap_or_default() } else { v };
@@ -309,6 +283,17 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>, env: impl Fn(&str) -
         }
     }
     Ok(o)
+}
+
+impl Options {
+    /// The fixes that --fix makes, --diff shows and `[*]` marks.
+    fn mode(&self) -> Mode {
+        if self.unsafe_fixes {
+            Mode::All
+        } else {
+            Mode::Safe
+        }
+    }
 }
 
 fn skip_reason(path: &Path, o: &Options) -> Option<&'static str> {
@@ -346,7 +331,7 @@ impl Checked {
 
 /// Check one file, and with --fix rewrite it with the fixes made.
 fn check_file(path: &Path, o: &Options) -> Checked {
-    let mode = o.fix.unwrap_or(Mode::Safe);
+    let mode = o.mode();
     let src = match std::fs::read_to_string(path) {
         Ok(s) => s,
         Err(e) => {
@@ -359,7 +344,7 @@ fn check_file(path: &Path, o: &Options) -> Checked {
         }
     };
     let (fixed, findings, text, unreadable) = match fix_source(&src, &o.filter, mode) {
-        Ok(f) if o.fix.is_some() && f.src != src => match std::fs::write(path, &f.src) {
+        Ok(f) if o.fix && f.src != src => match std::fs::write(path, &f.src) {
             Ok(()) => (f.fixed, f.remaining, f.src, None),
             Err(e) => (Vec::new(), f.findings, src, Some(e.to_string())),
         },
@@ -402,7 +387,7 @@ pub fn run(o: Options) -> ExitCode {
         return write_report(&selected, &o);
     }
 
-    let mode = o.fix.unwrap_or(Mode::Safe);
+    let mode = o.mode();
     let show = o.verbose || searched || files.len() > 1;
     let mut counts = [0usize; 3]; // high, medium, low
     let mut fixed = 0;
@@ -421,7 +406,9 @@ pub fn run(o: Options) -> ExitCode {
         }
         let name = path.to_string_lossy();
         let c = check_file(path, &o);
-        let _ = write!(out, "{}", fixed_text(&name, &c.fixed));
+        if o.show_fixes {
+            let _ = write!(out, "{}", fixed_text(&name, &c.fixed));
+        }
         fixed += c.fixed.len();
         let errors = match &c.unreadable {
             Some(e) => format!("Error reading file {name}: {e}\n"),
@@ -460,7 +447,7 @@ pub fn run(o: Options) -> ExitCode {
 
     let total: usize = counts.iter().sum();
     let plural = |n: usize| if n == 1 { "" } else { "s" };
-    if o.fix.is_some() {
+    if o.fix {
         let found = fixed + total;
         let _ = writeln!(out, "Found {found} finding{} ({fixed} fixed, {total} remaining).", plural(found));
     } else if total > 0 {
@@ -472,19 +459,26 @@ pub fn run(o: Options) -> ExitCode {
             .collect();
         let _ = writeln!(out, "{total} finding{} ({})", plural(total), parts.join(", "));
     }
-    // Like ruff: say what the fixes not made would fix.
-    let applied = |d| o.fix.is_some_and(|m| m.applies(d));
-    let safe = if applied(Disposition::Safe) { 0 } else { fixable[0] };
-    let unsafe_ = if applied(Disposition::Unsafe) { 0 } else { fixable[1] };
-    if safe > 0 {
-        let _ = writeln!(out, "[*] {safe} fixable with --fix.");
-    }
-    if unsafe_ > 0 {
-        let more = if safe > 0 { " more" } else { "" };
-        let _ = writeln!(
-            out,
-            "{unsafe_}{more} fixable with --fix --unsafe-fixes (they can change what the pipeline does, review them)."
-        );
+    // As ruff check says it: what --fix would fix, and the unsafe fixes
+    // that --unsafe-fixes would add.
+    let (applicable, hidden) = if o.unsafe_fixes {
+        (fixable[0] + fixable[1], 0)
+    } else {
+        (fixable[0], fixable[1])
+    };
+    let hidden_note = |n: usize| {
+        let fixes = if n == 1 { "fix" } else { "fixes" };
+        format!("{n} hidden {fixes} can be enabled with the `--unsafe-fixes` option")
+    };
+    if applicable > 0 {
+        let more = if hidden > 0 {
+            format!(" ({})", hidden_note(hidden))
+        } else {
+            String::new()
+        };
+        let _ = writeln!(out, "[*] {applicable} fixable with the `--fix` option{more}.");
+    } else if hidden > 0 {
+        let _ = writeln!(out, "No fixes available ({}).", hidden_note(hidden));
     }
     drop(out);
 
@@ -585,7 +579,7 @@ fn validate_remote(jenkins: &Jenkins, files: &[PathBuf], send: &HashSet<&Path>, 
 
 /// --format json or sarif, or --diff: the report of every file.
 fn write_report(files: &[&PathBuf], o: &Options) -> ExitCode {
-    let mode = o.fix.unwrap_or(Mode::Safe);
+    let mode = o.mode();
     let mut unreadable = false;
     let mut flagged = false;
     let mut changed = false;

@@ -260,7 +260,7 @@ mod tests {
         let when = format!("{CREDS}\n when {{ environment name: 'X', value: \"a $P\" }}\n}}");
         assert!(messages(&when, pedantic).is_empty());
         // An ignore comment for another rule does not hide this one.
-        let other = format!("{CREDS}\n // jenkinsfilelint: ignore[script-injection]\n sh \"$P\"\n}}");
+        let other = format!("{CREDS}\n // jenkins-lint: ignore[script-injection]\n sh \"$P\"\n}}");
         assert_eq!(messages(&other, Filter::default()).len(), 1);
         // --ignore turns the rule off everywhere; ignoring another rule does not.
         let off = Filter {

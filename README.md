@@ -6,9 +6,8 @@
 Catch Jenkinsfile syntax errors before they break your CI.
 
 > [!NOTE]
-> This project was called `jenkinsfilelint` until version 1.7. The PyPI package,
-> the command and the pre-commit hooks are now named `jenkins-lint`. The old
-> hook ids and environment variable names still work.
+> This project was called `jenkinsfilelint` until 1.7.2, which stays its
+> last release.
 
 `jenkins-lint` checks your Declarative Pipeline syntax offline, with no
 Jenkins at all, or with your Jenkins's own validator

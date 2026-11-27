@@ -94,8 +94,7 @@ Jenkinsfile:12:41: high: secret-interpolation: PASS is a secret, and Groovy inte
 2 findings (2 high)
 ```
 
-`jenkins-lint check` is the same command, and so is `jenkins-lint audit`, the
-name from before 2.0.
+`jenkins-lint check` is the same command.
 
 [script-injection](audit/script-injection.md) finds pull request
 titles, branch names, webhook payloads and build parameters that Groovy

@@ -5,8 +5,7 @@
 //! `regular` shows what is worth fixing, `pedantic` adds lower-confidence
 //! findings and hardening advice, `auditor` shows everything. A finding is
 //! turned off with `// jenkins-lint: ignore[rule-id]` on its line or on
-//! the line above the statement it is in. `jenkinsfilelint:`, the name from
-//! before the project was renamed, works too.
+//! the line above the statement it is in.
 
 mod controller_execution;
 pub mod fix;
@@ -235,15 +234,11 @@ pub fn annotations(tokens: &[Token]) -> Vec<Annotation> {
     out
 }
 
-/// The prefixes of an ignore directive: the tool's name, and its name from
-/// before the project was renamed.
-const DIRECTIVES: [&str; 2] = ["jenkins-lint:", "jenkinsfilelint:"];
-
 /// The rules that `jenkins-lint: ignore[a, b] why` turns off. The
 /// directive may follow other text in the comment.
 fn ignored_rules(comment: &str) -> Option<Vec<&str>> {
-    let (at, prefix) = DIRECTIVES.iter().filter_map(|p| comment.find(p).map(|at| (at, p))).min()?;
-    let rest = &comment[at + prefix.len()..];
+    const DIRECTIVE: &str = "jenkins-lint:";
+    let rest = &comment[comment.find(DIRECTIVE)? + DIRECTIVE.len()..];
     let list = rest.trim_start().strip_prefix("ignore[")?;
     let list = &list[..list.find(']')?];
     Some(list.split(',').map(str::trim).filter(|r| !r.is_empty()).collect())
@@ -256,18 +251,6 @@ mod tests {
     #[test]
     fn ignore_directives() {
         assert_eq!(
-            ignored_rules(" jenkinsfilelint: ignore[secret-interpolation]"),
-            Some(vec!["secret-interpolation"])
-        );
-        assert_eq!(
-            ignored_rules(" TODO; jenkinsfilelint: ignore[a, b] the token is fake"),
-            Some(vec!["a", "b"])
-        );
-        assert_eq!(ignored_rules("jenkinsfilelint:ignore[]"), Some(vec![]));
-        assert_eq!(ignored_rules(" jenkinsfilelint: ignore secret-interpolation"), None);
-        assert_eq!(ignored_rules(" jenkinsfilelint: ignore[unclosed"), None);
-        assert_eq!(ignored_rules(" just a comment"), None);
-        assert_eq!(
             ignored_rules(" jenkins-lint: ignore[secret-interpolation]"),
             Some(vec!["secret-interpolation"])
         );
@@ -275,7 +258,12 @@ mod tests {
             ignored_rules(" TODO; jenkins-lint: ignore[a, b] the token is fake"),
             Some(vec!["a", "b"])
         );
+        assert_eq!(ignored_rules("jenkins-lint:ignore[]"), Some(vec![]));
+        assert_eq!(ignored_rules(" jenkins-lint: ignore secret-interpolation"), None);
         assert_eq!(ignored_rules(" jenkins-lint: ignore[unclosed"), None);
+        assert_eq!(ignored_rules(" just a comment"), None);
+        // The name from before 2.0 is not a directive.
+        assert_eq!(ignored_rules(" jenkinsfilelint: ignore[secret-interpolation]"), None);
     }
 
     #[test]

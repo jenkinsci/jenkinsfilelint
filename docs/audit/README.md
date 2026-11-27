@@ -65,8 +65,6 @@ sh "deploy --token ${TOKEN}"
 
 Several rules go in one comment, separated by commas:
 `ignore[secret-interpolation, script-injection]`. Text after the `]` is free.
-Comments that start with `jenkinsfilelint:`, the name from before the
-rename, still work.
 
 ## Turning off a rule
 
@@ -89,9 +87,11 @@ typo does not go unnoticed. With pre-commit:
 ## Fixing findings
 
 `--fix` rewrites the files to fix what it can, then reports what is left.
-Like [ruff](https://docs.astral.sh/ruff/linter/#fix-safety) and
-[zizmor](https://docs.zizmor.sh/usage/#auto-fixing-results), each fix is
-safe or unsafe:
+The fix options are named and work as in
+[ruff](https://docs.astral.sh/ruff/linter/#fix-safety): `--fix`,
+`--unsafe-fixes`, `--show-fixes`, `--diff`, and `--no-fix`,
+`--no-unsafe-fixes` and `--no-show-fixes` to turn one off. Each fix is safe
+or unsafe:
 
 - A **safe** fix keeps what the pipeline does. `--fix` makes the safe fixes.
 - An **unsafe** fix can change what it does, so review it before you commit
@@ -116,20 +116,22 @@ $ jenkins-lint --diff --unsafe-fixes Jenkinsfile
              }
          }
      }
-$ jenkins-lint --fix --unsafe-fixes .
+$ jenkins-lint --fix --unsafe-fixes --show-fixes .
 Jenkinsfile:8:34: fixed: script-injection: CHANGE_BRANCH is the name of the pull request's branch, and Groovy interpolates it into the sh script: ...
 Jenkinsfile:12:41: high: secret-interpolation: TOKEN is a secret, and Groovy interpolates it into the sh script: ...
   help: https://jenkinsci.github.io/jenkins-lint/audit/secret-interpolation/
 Found 2 findings (1 fixed, 1 remaining).
 ```
 
-Without `--fix`, nothing changes. A finding that `--fix` would fix starts
-with `[*]`, and the last lines say how many each mode would fix:
+Without `--show-fixes`, `--fix` prints only the findings left and the
+summary. Without `--fix`, nothing changes. A finding that `--fix` would fix
+starts with `[*]`, and the last line says how many, as ruff does:
 
 ```text
-[*] 1 fixable with --fix.
-2 more fixable with --fix --unsafe-fixes (they can change what the pipeline does, review them).
+[*] 1 fixable with the `--fix` option (2 hidden fixes can be enabled with the `--unsafe-fixes` option).
 ```
+
+With `--unsafe-fixes`, the unsafe fixes are marked and counted too.
 
 The JSON report gives each finding's `fix`, with its `disposition` and
 edits, and the SARIF report carries the fixes for code scanning to suggest.

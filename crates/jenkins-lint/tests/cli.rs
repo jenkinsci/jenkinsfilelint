@@ -143,7 +143,7 @@ fn a_valid_file_passes_quietly() {
 fn errors_and_findings_in_one_run() {
     let dir = tempfile::tempdir().unwrap();
     write(dir.path(), "Jenkinsfile", &INJECTION.replace("agent any", "agent"));
-    for command in [&[][..], &["check"], &["audit"], &["--audit"]] {
+    for command in [&[][..], &["check"]] {
         let r = run(dir.path(), &[command, &["Jenkinsfile"]].concat());
         assert_eq!(r.code, 1);
         assert!(
@@ -161,7 +161,7 @@ fn errors_and_findings_in_one_run() {
             .contains("\n  help: https://jenkinsci.github.io/jenkins-lint/audit/script-injection/\n"));
         assert!(r
             .out
-            .ends_with("1 finding (1 high)\n1 fixable with --fix --unsafe-fixes (they can change what the pipeline does, review them).\n"));
+            .ends_with("1 finding (1 high)\nNo fixes available (1 hidden fix can be enabled with the `--unsafe-fixes` option).\n"));
     }
 }
 
@@ -268,15 +268,21 @@ fn security_options() {
 }
 
 #[test]
-fn fixes() {
+fn fixes_work_as_in_ruff() {
     let dir = tempfile::tempdir().unwrap();
     let f = write(dir.path(), "Jenkinsfile", LEAK);
-    // --fix alone makes only safe fixes, and this one is unsafe.
+    // --fix makes only safe fixes, and this one is unsafe.
     let r = run(dir.path(), &["--fix", "Jenkinsfile"]);
     assert_eq!(r.code, 1);
     assert!(r.out.ends_with(
-        "Found 1 finding (0 fixed, 1 remaining).\n1 fixable with --fix --unsafe-fixes (they can change what the pipeline does, review them).\n"
+        "Found 1 finding (0 fixed, 1 remaining).\nNo fixes available (1 hidden fix can be enabled with the `--unsafe-fixes` option).\n"
     ));
+    assert_eq!(std::fs::read_to_string(&f).unwrap(), LEAK);
+    // --unsafe-fixes alone fixes nothing, but marks the fix as available.
+    let r = run(dir.path(), &["--unsafe-fixes", "Jenkinsfile"]);
+    assert_eq!(r.code, 1);
+    assert!(r.out.contains(": [*] TOKEN is a secret"), "{}", r.out);
+    assert!(r.out.ends_with("[*] 1 fixable with the `--fix` option.\n"), "{}", r.out);
     assert_eq!(std::fs::read_to_string(&f).unwrap(), LEAK);
     let r = run(dir.path(), &["--diff", "--unsafe-fixes", "Jenkinsfile"]);
     assert_eq!(r.code, 1);
@@ -287,33 +293,24 @@ fn fixes() {
         r.out
     );
     assert_eq!(std::fs::read_to_string(&f).unwrap(), LEAK);
-    for flags in [&["--fix", "--unsafe-fixes"][..], &["--fix=all"]] {
-        std::fs::write(&f, LEAK).unwrap();
-        let r = run(dir.path(), &[flags, &["Jenkinsfile"]].concat());
-        assert_eq!(r.code, 0, "{}", r.out);
-        assert!(r.out.starts_with("Jenkinsfile:2:24: fixed: secret-interpolation: TOKEN"));
-        assert!(r.out.ends_with("Found 1 finding (1 fixed, 0 remaining).\n"));
-        assert!(std::fs::read_to_string(&f).unwrap().contains("sh 'deploy --token \"$TOKEN\"'"));
-    }
-}
-
-#[test]
-fn reports() {
-    let dir = tempfile::tempdir().unwrap();
-    write(dir.path(), "Jenkinsfile", &INJECTION.replace("agent any", "agent"));
-    let r = run(dir.path(), &["--format", "json", "Jenkinsfile"]);
+    let r = run(dir.path(), &["--diff", "Jenkinsfile"]);
+    assert_eq!((r.code, r.out.as_str()), (0, ""));
+    // --no-fix and --no-unsafe-fixes undo the flag before them.
+    let r = run(dir.path(), &["--fix", "--unsafe-fixes", "--no-fix", "Jenkinsfile"]);
     assert_eq!(r.code, 1);
-    assert!(
-        r.out
-            .starts_with("[{\"file\":\"Jenkinsfile\",\"declarative\":true,\"diagnostics\":[{\"line\":2"),
-        "{}",
-        r.out
-    );
-    assert!(r.out.contains("\"findings\":[{\"rule\":\"script-injection\""), "{}", r.out);
-    let r = run(dir.path(), &["--format", "sarif", "Jenkinsfile"]);
-    assert_eq!(r.code, 0);
-    assert!(r.out.contains("\"ruleId\":\"invalid-pipeline\""));
-    assert!(r.out.contains("\"ruleId\":\"script-injection\""));
+    assert_eq!(std::fs::read_to_string(&f).unwrap(), LEAK);
+    let r = run(dir.path(), &["--fix", "--unsafe-fixes", "--no-unsafe-fixes", "Jenkinsfile"]);
+    assert_eq!(r.code, 1);
+    assert_eq!(std::fs::read_to_string(&f).unwrap(), LEAK);
+    // Fixed: only the summary, and each fix with --show-fixes.
+    let r = run(dir.path(), &["--fix", "--unsafe-fixes", "Jenkinsfile"]);
+    assert_eq!((r.code, r.out.as_str()), (0, "Found 1 finding (1 fixed, 0 remaining).\n"));
+    assert!(std::fs::read_to_string(&f).unwrap().contains("sh 'deploy --token \"$TOKEN\"'"));
+    std::fs::write(&f, LEAK).unwrap();
+    let r = run(dir.path(), &["--fix", "--unsafe-fixes", "--show-fixes", "Jenkinsfile"]);
+    assert_eq!(r.code, 0, "{}", r.out);
+    assert!(r.out.starts_with("Jenkinsfile:2:24: fixed: secret-interpolation: TOKEN"));
+    assert!(r.out.ends_with("Found 1 finding (1 fixed, 0 remaining).\n"));
 }
 
 #[test]
@@ -326,10 +323,6 @@ fn usage_errors() {
         (&["--token", "t", "J"], "argument --token: requires --remote"),
         (&["--remote", "J"], "argument --remote: no URL given and JENKINS_URL is not set"),
         (
-            &["--offline", "--remote", "http://j", "J"],
-            "argument --offline: not allowed with argument --remote",
-        ),
-        (
             &["--format", "sarif", "--remote", "http://j", "J"],
             "argument --format: not allowed with argument --remote",
         ),
@@ -341,8 +334,7 @@ fn usage_errors() {
             &["--diff", "--format", "json", "J"],
             "argument --diff: not allowed with argument --format",
         ),
-        (&["--unsafe-fixes", "J"], "argument --unsafe-fixes: requires --fix or --diff"),
-        (&["--fix=some", "J"], "argument --fix: invalid choice: 'some'"),
+        (&["--fix=all", "J"], "argument --fix: ignored explicit argument"),
         (&["--persona", "everyone", "J"], "argument --persona: invalid choice: 'everyone'"),
         (
             &["--ignore", "no-such-rule", "J"],
@@ -350,15 +342,16 @@ fn usage_errors() {
         ),
         (&["-j", "0", "J"], "argument -j/--jobs: must be at least 1"),
         (&["--jobs", "x", "J"], "argument -j/--jobs: invalid int value: 'x'"),
-        (&["--local", "J"], "--local was removed in jenkins-lint 2.0"),
+        // The options from before 2.0 are gone.
+        (&["--local", "J"], "unrecognized arguments: --local"),
+        (&["--offline", "J"], "unrecognized arguments: --offline"),
+        (&["--audit", "J"], "unrecognized arguments: --audit"),
+        (&["--jenkins-url", "http://j", "J"], "unrecognized arguments: --jenkins-url"),
     ] {
         let r = run(dir.path(), args);
         assert_eq!(r.code, 2, "{args:?}");
         assert!(r.err.contains(message), "{args:?}: {}", r.err);
     }
-    let r = run(dir.path(), &["server", "stop"]);
-    assert_eq!(r.code, 2);
-    assert!(r.err.contains("--local was removed"));
 }
 
 #[test]
