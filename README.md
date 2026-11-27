@@ -16,7 +16,7 @@ command line.
 > [!NOTE]
 > Formerly `jenkinsfilelint`: see [Migrating to 2.0](https://jenkinsci.github.io/jenkins-lint/migrating/).
 
-![demo](docs/assets/demo.gif)
+![demo](https://raw.githubusercontent.com/jenkinsci/jenkins-lint/main/docs/assets/demo.gif)
 
 ## Quick Start
 

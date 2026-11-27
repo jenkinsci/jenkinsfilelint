@@ -6,6 +6,8 @@ syntax, Declarative Pipeline structure and security, and reports errors with
 the same wording as Jenkins's own validator. `--remote` also validates the
 files with your Jenkins, which knows its plugins.
 
+![demo](https://raw.githubusercontent.com/jenkinsci/jenkins-lint/main/docs/assets/demo.gif)
+
 ```console
 $ jenkins-lint Jenkinsfile
 Jenkinsfile:2:5: error: Not a valid section definition: "agent". Some extra configuration is required.
