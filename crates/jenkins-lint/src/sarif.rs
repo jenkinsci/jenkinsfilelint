@@ -113,6 +113,24 @@ pub fn sarif(files: &[Checked]) -> String {
             let index = RULES.iter().position(|r| r.id == f.rule).unwrap_or(0);
             let mut r = result(f.rule, index, level(f.severity), &f.message, path, region(f.span.start, f.span.end));
             r["properties"] = json!({"severity": f.severity.name(), "confidence": f.confidence.name()});
+            if !f.related.is_empty() {
+                let related: Vec<Value> = f
+                    .related
+                    .iter()
+                    .enumerate()
+                    .map(|(id, rel)| {
+                        json!({
+                            "id": id,
+                            "message": {"text": rel.label},
+                            "physicalLocation": {
+                                "artifactLocation": {"uri": uri(path)},
+                                "region": region(rel.span.start, rel.span.end),
+                            },
+                        })
+                    })
+                    .collect();
+                r["relatedLocations"] = Value::Array(related);
+            }
             if let Some(fix) = &f.fix {
                 r["fixes"] = json!([{
                     "description": {"text": "Let the shell read the value from the environment"},

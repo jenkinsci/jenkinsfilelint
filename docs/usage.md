@@ -87,10 +87,24 @@ problems, in the same pass:
 
 ```console
 $ jenkins-lint Jenkinsfile
-Jenkinsfile:8:36: high: script-injection: CHANGE_BRANCH is the name of the pull request's branch, and Groovy interpolates it into the sh script: ...
-  help: https://jenkinsci.github.io/jenkins-lint/rules/script-injection/
-Jenkinsfile:12:41: high: secret-interpolation: PASS is a secret, and Groovy interpolates it into the sh script: ...
-  help: https://jenkinsci.github.io/jenkins-lint/rules/secret-interpolation/
+high[script-injection]: CHANGE_BRANCH is the name of the pull request's branch, and Groovy puts it into branch and interpolates that into the sh script: ...
+ --> Jenkinsfile:8:58
+  |
+7 |                     def branch = "${env.CHANGE_BRANCH}"
+  |                                   -------------------- CHANGE_BRANCH is read here, into branch
+8 |                     sh "git fetch origin && git checkout ${branch}"
+  |                                                          ^^^^^^^^^
+  |
+  = help: https://jenkinsci.github.io/jenkins-lint/rules/script-injection/
+
+high[secret-interpolation]: PASS is a secret, and Groovy interpolates it into the sh script: ...
+  --> Jenkinsfile:12:40
+   |
+12 |                     sh "curl -u deploy:${PASS} https://example.com"
+   |                                        ^^^^^^^
+   |
+   = help: https://jenkinsci.github.io/jenkins-lint/rules/secret-interpolation/
+
 2 findings (2 high)
 ```
 

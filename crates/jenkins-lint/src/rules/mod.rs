@@ -114,6 +114,28 @@ pub struct Finding {
     pub stmt_line: usize,
     /// The rewrite of the script it is in that `--fix` makes.
     pub fix: Option<fix::Fix>,
+    /// Other places that explain it, such as where the value was read.
+    pub related: Vec<Related>,
+}
+
+/// A place in the file that explains a finding, and what happens there.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Related {
+    pub span: Span,
+    pub label: String,
+}
+
+impl Related {
+    /// Where a value that went through a variable was read.
+    pub fn origin(u: &taint::Use) -> Vec<Related> {
+        match (u.origin, &u.via) {
+            (Some(span), Some(var)) if span != u.span => vec![Related {
+                span,
+                label: format!("{} is read here, into {var}", u.name),
+            }],
+            _ => Vec::new(),
+        }
+    }
 }
 
 /// Which findings to show.

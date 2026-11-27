@@ -1,10 +1,115 @@
 //! What jenkins-lint prints for a file: text lines, or a JSON report.
 
+use std::ops::Range;
+
+use annotate_snippets::{AnnotationKind, Level, Renderer, Snippet};
 use serde::Serialize;
 
-use crate::diag::{Diagnostic, Report};
+use crate::diag::{Diagnostic, Pos, Report, Span};
 use crate::rules::fix::{Fix, Mode};
 use crate::rules::{Finding, Severity, RULES};
+
+/// A file's text, to find the bytes of positions in, which the lexer counts
+/// in characters.
+pub struct Text<'a> {
+    src: &'a str,
+    /// The byte where each line starts.
+    lines: Vec<usize>,
+}
+
+impl<'a> Text<'a> {
+    pub fn new(src: &'a str) -> Self {
+        let mut lines = vec![0];
+        lines.extend(src.match_indices('\n').map(|(i, _)| i + 1));
+        Text { src, lines }
+    }
+
+    /// The byte at `p`, or the end of its line or of the file when `p` is
+    /// past it.
+    fn byte(&self, p: Pos) -> usize {
+        let Some(&start) = self.lines.get(p.line.saturating_sub(1)) else {
+            return self.src.len();
+        };
+        let line = &self.src[start..];
+        let line = &line[..line.find('\n').unwrap_or(line.len())];
+        start + line.char_indices().nth(p.col.saturating_sub(1)).map_or(line.len(), |(i, _)| i)
+    }
+
+    /// The bytes of `span`, at least one character, so that a caret shows.
+    fn range(&self, span: Span) -> Range<usize> {
+        let start = self.byte(span.start);
+        let end = self.byte(span.end).max(start);
+        if end > start {
+            return start..end;
+        }
+        let next = self.src[start..].chars().next().map_or(0, char::len_utf8);
+        start..start + next
+    }
+}
+
+/// How --output-format full looks: in color on a terminal, unless NO_COLOR
+/// is set, or always with FORCE_COLOR.
+pub fn renderer(terminal: bool) -> Renderer {
+    let set = |name: &str| std::env::var_os(name).is_some_and(|v| !v.is_empty());
+    if set("FORCE_COLOR") || (terminal && !set("NO_COLOR")) {
+        Renderer::styled()
+    } else {
+        Renderer::plain()
+    }
+}
+
+fn level(s: Severity) -> Level<'static> {
+    match s {
+        Severity::High => Level::ERROR.with_name("high"),
+        Severity::Medium => Level::WARNING.with_name("medium"),
+        Severity::Low => Level::NOTE.with_name("low"),
+    }
+}
+
+/// The errors and warnings of checking the file, each with the code it is
+/// about.
+pub fn diagnostics_full(path: &str, src: &str, report: &Report, r: &Renderer) -> String {
+    let text = Text::new(src);
+    report
+        .diagnostics
+        .iter()
+        .map(|d| {
+            let level = match d.severity {
+                crate::diag::Severity::Error => Level::ERROR,
+                crate::diag::Severity::Warning => Level::WARNING,
+            };
+            let at = text.range(Span { start: d.pos, end: d.pos });
+            let report = [level
+                .primary_title(&d.message)
+                .element(Snippet::source(src).path(path).annotation(AnnotationKind::Primary.span(at)))];
+            r.render(&report) + "\n\n"
+        })
+        .collect()
+}
+
+/// The findings, each with the code it is about, the places that explain
+/// it and a link to the rule. Those that `mode` fixes say so.
+pub fn findings_full(path: &str, src: &str, findings: &[Finding], mode: Mode, r: &Renderer) -> String {
+    let text = Text::new(src);
+    findings
+        .iter()
+        .map(|f| {
+            let mut snippet = Snippet::source(src)
+                .path(path)
+                .annotation(AnnotationKind::Primary.span(text.range(f.span)));
+            for rel in &f.related {
+                snippet = snippet.annotation(AnnotationKind::Context.span(text.range(rel.span)).label(&rel.label));
+            }
+            let mut group = level(f.severity).primary_title(&f.message).id(f.rule).element(snippet);
+            if f.fix.as_ref().is_some_and(|x| mode.applies(x.disposition)) {
+                group = group.element(Level::HELP.message("[*] fixable with the `--fix` option"));
+            }
+            let help = help_url(f.rule);
+            let report = [group.element(Level::NOTE.with_name("help").message(help))];
+            r.render(&report) + "\n\n"
+        })
+        .collect()
+}
 
 /// The errors and warnings of checking the file, one line each.
 pub fn diagnostics_text(path: &str, report: &Report) -> String {
@@ -134,6 +239,16 @@ struct FindingJson<'a> {
     end_column: usize,
     help: String,
     fix: Option<FixJson<'a>>,
+    related: Vec<RelatedJson<'a>>,
+}
+
+#[derive(Serialize)]
+struct RelatedJson<'a> {
+    line: usize,
+    column: usize,
+    end_line: usize,
+    end_column: usize,
+    message: &'a str,
 }
 
 /// One file in the JSON report.
@@ -188,6 +303,17 @@ fn finding_json(f: &Finding) -> FindingJson<'_> {
         end_column: f.span.end.col,
         help: help_url(f.rule),
         fix: f.fix.as_ref().map(fix_json),
+        related: f
+            .related
+            .iter()
+            .map(|r| RelatedJson {
+                line: r.span.start.line,
+                column: r.span.start.col,
+                end_line: r.span.end.line,
+                end_column: r.span.end.col,
+                message: &r.label,
+            })
+            .collect(),
     }
 }
 

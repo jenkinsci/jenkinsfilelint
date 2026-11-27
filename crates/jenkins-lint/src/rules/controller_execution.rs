@@ -107,6 +107,7 @@ fn report(label: &Expr, stmt_line: usize, block: &str, findings: &mut Vec<Findin
         },
         stmt_line,
         fix: None,
+        related: Vec::new(),
     });
 }
 

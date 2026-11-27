@@ -11,7 +11,7 @@ use std::collections::HashMap;
 
 use super::fix::{Disposition, Fix};
 use super::taint::{self, Flow, How, Label, Sink, Use};
-use super::{Confidence, Finding, Persona, Rule, Severity};
+use super::{Confidence, Finding, Persona, Related, Rule, Severity};
 use crate::ast::{Arg, Expr};
 
 pub static RULE: Rule = Rule {
@@ -70,6 +70,7 @@ pub fn check(flows: &[Flow], fixes: &[Option<Fix>]) -> Vec<Finding> {
             span: f.value.span,
             stmt_line: f.stmt_line,
             fix: fix(f, fixes),
+            related: Related::origin(&f.value),
         });
     }
     findings

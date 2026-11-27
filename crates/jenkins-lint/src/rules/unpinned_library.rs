@@ -148,6 +148,7 @@ fn finding(r: &Request) -> Option<Finding> {
         },
         stmt_line: r.stmt_line,
         fix: None,
+        related: Vec::new(),
     })
 }
 

@@ -61,6 +61,7 @@ pub fn check(stmts: &[Stmt]) -> Vec<Finding> {
             },
             stmt_line: section.pos.line,
             fix: None,
+            related: Vec::new(),
         });
     });
     findings

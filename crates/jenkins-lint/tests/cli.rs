@@ -24,7 +24,7 @@ struct Run {
 fn command(dir: &Path) -> Command {
     let mut c = Command::new(env!("CARGO_BIN_EXE_jenkins-lint"));
     c.current_dir(dir);
-    for name in ["JENKINS_URL", "JENKINS_USER", "JENKINS_TOKEN"] {
+    for name in ["JENKINS_URL", "JENKINS_USER", "JENKINS_TOKEN", "NO_COLOR", "FORCE_COLOR"] {
         c.env_remove(name);
     }
     c
@@ -146,6 +146,28 @@ fn errors_and_findings_in_one_run() {
     for command in [&[][..], &["check"]] {
         let r = run(dir.path(), &[command, &["Jenkinsfile"]].concat());
         assert_eq!(r.code, 1);
+        assert!(r.err.starts_with("error: Not a valid section definition: \"agent\"."), "{}", r.err);
+        assert!(r.err.contains("\n --> Jenkinsfile:2:3\n"), "{}", r.err);
+        assert!(
+            r.out.starts_with("high[script-injection]: CHANGE_TITLE is the pull request title"),
+            "{}",
+            r.out
+        );
+        assert!(r.out.contains("\n --> Jenkinsfile:4:14\n"), "{}", r.out);
+        assert!(
+            r.out
+                .contains("4 |     sh \"echo ${env.CHANGE_TITLE}\"\n  |              ^^^^^^^^^^^^^^^^^^^\n"),
+            "{}",
+            r.out
+        );
+        assert!(r
+            .out
+            .contains("\n  = help: https://jenkinsci.github.io/jenkins-lint/rules/script-injection/\n"));
+        assert!(r
+            .out
+            .ends_with("1 finding (1 high)\nNo fixes available (1 hidden fix can be enabled with the `--unsafe-fixes` option).\n"));
+        let r = run(dir.path(), &[command, &["--output-format", "concise", "Jenkinsfile"]].concat());
+        assert_eq!(r.code, 1);
         assert!(
             r.err.starts_with("Jenkinsfile:2:3: error: Not a valid section definition"),
             "{}",
@@ -166,12 +188,45 @@ fn errors_and_findings_in_one_run() {
 }
 
 #[test]
+fn full_output_shows_where_a_value_was_read() {
+    let dir = tempfile::tempdir().unwrap();
+    let text = "pipeline {\n  agent any\n  stages { stage('a') { steps { script {\n    def t = \"${env.CHANGE_TITLE}\"\n    echo 'next'\n    sh \"echo ${t}\"\n  } } } }\n}\n";
+    write(dir.path(), "Jenkinsfile", text);
+    let r = run(dir.path(), &["Jenkinsfile"]);
+    assert_eq!(r.code, 1);
+    assert!(
+        r.out
+            .contains("4 |     def t = \"${env.CHANGE_TITLE}\"\n  |              ------------------- CHANGE_TITLE is read here, into t\n"),
+        "{}",
+        r.out
+    );
+    assert!(r.out.contains("6 |     sh \"echo ${t}\"\n  |              ^^^^\n"), "{}", r.out);
+    assert!(!r.out.contains('\x1b'), "no color when piped: {}", r.out);
+    // The JSON and SARIF reports carry the same place.
+    let r = run(dir.path(), &["--output-format", "json", "Jenkinsfile"]);
+    assert!(
+        r.out
+            .contains(r#""related":[{"line":4,"column":14,"end_line":4,"end_column":33,"message":"CHANGE_TITLE is read here, into t"}]"#),
+        "{}",
+        r.out
+    );
+    let r = run(dir.path(), &["--output-format", "sarif", "Jenkinsfile"]);
+    assert!(r.out.contains("relatedLocations"), "{}", r.out);
+    // Color on request, and never with NO_COLOR alone off a terminal.
+    let r = done(command(dir.path()).env("FORCE_COLOR", "1").arg("Jenkinsfile").output().unwrap());
+    assert!(r.out.contains('\x1b'), "{}", r.out);
+}
+
+#[test]
 fn several_files_are_named() {
     let dir = tempfile::tempdir().unwrap();
     write(dir.path(), "Jenkinsfile", VALID);
     write(dir.path(), "Jenkinsfile.fail", INVALID);
     write(dir.path(), "scripted.groovy", SCRIPTED);
-    let r = run(dir.path(), &["Jenkinsfile", "Jenkinsfile.fail", "scripted.groovy"]);
+    let r = run(
+        dir.path(),
+        &["--output-format", "concise", "Jenkinsfile", "Jenkinsfile.fail", "scripted.groovy"],
+    );
     assert_eq!(r.code, 1);
     assert_eq!(
         r.out,
@@ -204,7 +259,7 @@ fn shared_library_files_are_checked() {
     write(dir.path(), "vars/deploy.groovy", LEAK);
     write(dir.path(), "vars/broken.groovy", "def x = {\n");
     write(dir.path(), "vars/fine.groovy", HELPER);
-    let r = run(dir.path(), &["."]);
+    let r = run(dir.path(), &["--output-format", "concise", "."]);
     assert_eq!(r.code, 1);
     let broken = Path::new("vars").join("broken.groovy");
     let deploy = Path::new("vars").join("deploy.groovy");
@@ -280,6 +335,10 @@ fn fixes_work_as_in_ruff() {
     assert_eq!(std::fs::read_to_string(&f).unwrap(), LEAK);
     // --unsafe-fixes alone fixes nothing, but marks the fix as available.
     let r = run(dir.path(), &["--unsafe-fixes", "Jenkinsfile"]);
+    assert_eq!(r.code, 1);
+    assert!(r.out.contains("\n  = help: [*] fixable with the `--fix` option\n"), "{}", r.out);
+    assert!(r.out.ends_with("[*] 1 fixable with the `--fix` option.\n"), "{}", r.out);
+    let r = run(dir.path(), &["--output-format", "concise", "--unsafe-fixes", "Jenkinsfile"]);
     assert_eq!(r.code, 1);
     assert!(r.out.contains(": [*] TOKEN is a secret"), "{}", r.out);
     assert!(r.out.ends_with("[*] 1 fixable with the `--fix` option.\n"), "{}", r.out);
@@ -428,7 +487,16 @@ fn remote_sends_what_passes_offline() {
     write(dir.path(), "scripted.groovy", SCRIPTED);
     let r = run(
         dir.path(),
-        &["--remote", &jenkins.url, "-v", "Jenkinsfile", "Jenkinsfile.fail", "scripted.groovy"],
+        &[
+            "--remote",
+            &jenkins.url,
+            "--output-format",
+            "concise",
+            "-v",
+            "Jenkinsfile",
+            "Jenkinsfile.fail",
+            "scripted.groovy",
+        ],
     );
     assert_eq!(r.code, 1);
     assert!(r.err.starts_with("Jenkinsfile.fail:2:3: error: "), "{}", r.err);
