@@ -38,6 +38,7 @@ nav:
   - Configuration: configuration.md
   - Security: security.md
   - How it works: how-it-works.md
+  - Migrating to 2.0: migrating.md
   - Security audit:
       - audit/README.md
       - script-injection: audit/script-injection.md

@@ -4,7 +4,7 @@ Catch Jenkinsfile syntax errors before they break your CI.
 
 > [!NOTE]
 > This project was called `jenkinsfilelint` until 1.7.2, which stays its
-> last release.
+> last release. See [Migrating to 2.0](migrating.md).
 
 `jenkins-lint` checks your Declarative Pipeline syntax offline, with no
 Jenkins at all, or with your Jenkins's own validator
