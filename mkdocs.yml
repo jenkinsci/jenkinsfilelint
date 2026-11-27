@@ -8,11 +8,13 @@ docs_dir: docs
 copyright: >-
   Jenkins logo from the <a href="https://www.jenkins.io/artwork/">Jenkins artwork</a>,
   <a href="https://creativecommons.org/licenses/by-sa/3.0/">CC BY-SA 3.0</a>.
-exclude_docs: requirements.txt
+exclude_docs: |
+  requirements.txt
+  theme/
 
 theme:
   name: sumi
-  custom_dir: docs-theme
+  custom_dir: docs/theme
   logo: assets/jenkins.svg
   favicon: assets/jenkins.svg
   navigation_tabs: false
@@ -23,7 +25,7 @@ extra_css:
   - assets/site.css
 
 hooks:
-  - docs-theme/hooks.py
+  - docs/theme/hooks.py
 
 plugins:
   - search
