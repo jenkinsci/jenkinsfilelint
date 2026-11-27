@@ -1,6 +1,6 @@
 """Render docs/assets/demo.gif: a terminal window with real jenkins-lint output.
 
-Usage: python3 scripts/demo/render.py FONT_DIR docs/assets/demo.gif
+Usage: python3 docs/assets/demo/render.py FONT_DIR docs/assets/demo.gif
 jenkins-lint must be on PATH; FONT_DIR holds JetBrainsMono-Regular.ttf and -Bold.ttf.
 Use a Pillow with raqm (features.check("raqm")), as Homebrew's, for the same text layout.
 """
@@ -19,7 +19,7 @@ FONTS = Path(sys.argv[1])
 OUT = Path(sys.argv[2])
 APP = Path(tempfile.mkdtemp()) / "demo"
 
-W, H = 1388, 690
+W, H = 1388, 1186  # 36 rows: the whole --fix scene
 PAD_X, TOP = 34, 70
 SIZE, LINE = 21, 31
 COLS = 104

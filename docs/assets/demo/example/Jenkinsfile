@@ -5,7 +5,10 @@ pipeline {
     stages {
         stage('Build') {
             steps {
-                sh "git checkout ${env.CHANGE_BRANCH}"
+                script {
+                    def branch = "${env.CHANGE_BRANCH}"
+                    sh "git checkout ${branch}"
+                }
                 withCredentials([string(credentialsId: 'npm', variable: 'TOKEN')]) {
                     sh "npm publish --token ${TOKEN}"
                 }
