@@ -82,7 +82,7 @@ pub struct Rule {
 
 impl Rule {
     pub fn help_url(&self) -> String {
-        format!("https://jenkinsci.github.io/jenkins-lint/audit/{}/", self.id)
+        format!("https://jenkinsci.github.io/jenkins-lint/rules/{}/", self.id)
     }
 }
 
@@ -262,8 +262,6 @@ mod tests {
         assert_eq!(ignored_rules(" jenkins-lint: ignore secret-interpolation"), None);
         assert_eq!(ignored_rules(" jenkins-lint: ignore[unclosed"), None);
         assert_eq!(ignored_rules(" just a comment"), None);
-        // The name from before 2.0 is not a directive.
-        assert_eq!(ignored_rules(" jenkinsfilelint: ignore[secret-interpolation]"), None);
     }
 
     #[test]

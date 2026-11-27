@@ -630,7 +630,7 @@ mod tests {
         let findings = super::audit_source(src, &super::Filter::default()).unwrap();
         let text = super::audit_text("J", &findings, super::Mode::Safe);
         assert!(text.starts_with("J:2:16: high: secret-interpolation: TOKEN is a secret"), "{text}");
-        assert!(text.ends_with("\n  help: https://jenkinsci.github.io/jenkins-lint/audit/secret-interpolation/\n"));
+        assert!(text.ends_with("\n  help: https://jenkinsci.github.io/jenkins-lint/rules/secret-interpolation/\n"));
         let json = super::audit_json("J", &super::lint(src), &findings, &[]);
         assert!(json.contains("\"line\":2,\"column\":16,\"end_line\":2,\"end_column\":24"), "{json}");
         assert!(

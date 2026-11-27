@@ -92,9 +92,7 @@ LOOK_AT = ("false-error", "missed", "other-message")
 
 
 def default_engine():
-    env = os.environ.get("JENKINS_LINT_ENGINE") or os.environ.get(
-        "JENKINSFILELINT_ENGINE"
-    )
+    env = os.environ.get("JENKINS_LINT_ENGINE")
     if env:
         return env
     built = REPO / "crates/jenkins-lint/target/release/jenkins-lint"

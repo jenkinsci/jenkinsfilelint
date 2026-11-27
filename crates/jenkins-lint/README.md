@@ -11,7 +11,7 @@ $ jenkins-lint Jenkinsfile
 Jenkinsfile:2:5: error: Not a valid section definition: "agent". Some extra configuration is required.
 Jenkinsfile:9:9: error: Expected one of "steps", "stages", or "parallel" for stage "Test"
 Jenkinsfile:14:36: high: script-injection: CHANGE_BRANCH is the name of the pull request's branch, and Groovy interpolates it into the sh script: ...
-  help: https://jenkinsci.github.io/jenkins-lint/audit/script-injection/
+  help: https://jenkinsci.github.io/jenkins-lint/rules/script-injection/
 1 finding (1 high)
 ```
 

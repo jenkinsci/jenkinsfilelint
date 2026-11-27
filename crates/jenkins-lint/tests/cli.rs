@@ -158,7 +158,7 @@ fn errors_and_findings_in_one_run() {
         );
         assert!(r
             .out
-            .contains("\n  help: https://jenkinsci.github.io/jenkins-lint/audit/script-injection/\n"));
+            .contains("\n  help: https://jenkinsci.github.io/jenkins-lint/rules/script-injection/\n"));
         assert!(r
             .out
             .ends_with("1 finding (1 high)\nNo fixes available (1 hidden fix can be enabled with the `--unsafe-fixes` option).\n"));
@@ -342,7 +342,6 @@ fn usage_errors() {
         ),
         (&["-j", "0", "J"], "argument -j/--jobs: must be at least 1"),
         (&["--jobs", "x", "J"], "argument -j/--jobs: invalid int value: 'x'"),
-        // The options from before 2.0 are gone.
         (&["--local", "J"], "unrecognized arguments: --local"),
         (&["--offline", "J"], "unrecognized arguments: --offline"),
         (&["--audit", "J"], "unrecognized arguments: --audit"),

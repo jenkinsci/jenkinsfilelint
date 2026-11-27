@@ -42,9 +42,6 @@ HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
 CRATE = "crates/jenkins-lint"
 ENGINE = "jenkins-lint"
-# Where the crate and its binary were before 2.0, for older base commits.
-OLD_CRATE = "crates/jenkinsfilelint"
-OLD_ENGINE = "jenkinsfilelint-engine"
 sys.path[:0] = [str(HERE), str(REPO)]
 
 from compare import ask_jenkins, category, normalize  # noqa: E402
@@ -84,8 +81,7 @@ def cargo_build(crate_dir):
     r = subprocess.run(cmd, cwd=crate_dir, capture_output=True, text=True, check=False)
     if r.returncode != 0:
         sys.exit(f"cargo build failed in {crate_dir}:\n{r.stderr}")
-    built = crate_dir / "target" / "release" / ENGINE
-    return built if built.exists() else crate_dir / "target" / "release" / OLD_ENGINE
+    return crate_dir / "target" / "release" / ENGINE
 
 
 def base_engine(ref, cache):
@@ -98,15 +94,8 @@ def base_engine(ref, cache):
     if built.exists():
         return commit, built
     print(f"building the engine of {commit[:12]}", file=sys.stderr)
-    crate = CRATE
-    if subprocess.run(
-        ["git", "-C", str(REPO), "cat-file", "-e", f"{commit}:{CRATE}"],
-        capture_output=True,
-        check=False,
-    ).returncode:
-        crate = OLD_CRATE
     archive = subprocess.run(
-        ["git", "-C", str(REPO), "archive", "--format=tar", commit, crate],
+        ["git", "-C", str(REPO), "archive", "--format=tar", commit, CRATE],
         capture_output=True,
         check=True,
     ).stdout
@@ -116,7 +105,7 @@ def base_engine(ref, cache):
     with tempfile.TemporaryDirectory() as tmp:
         with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
             tar.extractall(tmp, filter="data")
-        engine = cargo_build(Path(tmp) / crate)
+        engine = cargo_build(Path(tmp) / CRATE)
         built.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(engine, built)
     return commit, built

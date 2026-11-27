@@ -2,8 +2,8 @@
 #
 # Every case was also sent to Jenkins's own validator
 # (POST /pipeline-model-converter/validate on Jenkins 2.580.1 with
-# pipeline-model-definition 2.2293.v6e7193cec599, the plugin set of the
-# ghcr.io/jenkinsci/jenkinsfilelint-server image). Unless a comment says
+# pipeline-model-definition 2.2293.v6e7193cec599, the plugin set of
+# docker/). Unless a comment says
 # otherwise, the expectation below is what Jenkins answered.
 #
 # Under each [case]:

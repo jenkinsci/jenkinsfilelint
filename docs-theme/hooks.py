@@ -1,6 +1,6 @@
 """Build-time markup that makes the documentation site look like Jenkins.
 
-The Markdown in docs/audit stays plain, so it reads the same on GitHub. On the
+The Markdown in docs/rules stays plain, so it reads the same on GitHub. On the
 site, the rules become a Jenkins job list with build status icons, and the
 side panel gets the symbols of Jenkins tasks.
 """
@@ -20,7 +20,7 @@ TASKS = {
     "Configuration": "settings",
     "Security": "lock-closed",
     "How it works": "help-circle",
-    "Security audit": "shield-warning",
+    "Security rules": "shield-warning",
 }
 # Sumi wraps each table in a scrolling frame, which is kept for the new table.
 TABLE = re.compile(
@@ -69,12 +69,12 @@ def words(cell: str) -> str:
 
 
 def meta(docs_dir: str, rule: str) -> tuple:
-    text = (Path(docs_dir) / "audit" / f"{rule}.md").read_text(encoding="utf-8")
+    text = (Path(docs_dir) / "rules" / f"{rule}.md").read_text(encoding="utf-8")
     return META_ROW.search(text).groups()
 
 
 def rule_table(docs_dir: str, prefix: str) -> str:
-    index = (Path(docs_dir) / "audit" / "README.md").read_text(encoding="utf-8")
+    index = (Path(docs_dir) / "rules" / "README.md").read_text(encoding="utf-8")
     rows = []
     for rule, finds, fix in INDEX_ROW.findall(index):
         severity, confidence, persona = meta(docs_dir, rule)
@@ -114,12 +114,10 @@ def properties(docs_dir: str, rule: str) -> str:
 def on_page_content(html, page, config, files):
     path = page.file.src_uri
     if path == "index.md":
-        return html.replace(
-            "<!-- audit-rules -->", rule_table(config.docs_dir, "audit/")
-        )
-    if path == "audit/README.md":
+        return html.replace("<!-- rules -->", rule_table(config.docs_dir, "rules/"))
+    if path == "rules/README.md":
         return TABLE.sub(lambda m: rule_table(config.docs_dir, ""), html, count=1)
-    if path.startswith("audit/"):
+    if path.startswith("rules/"):
         rule = Path(path).stem
         worst = levels(meta(config.docs_dir, rule)[0])[0][0]
         html = TABLE.sub(lambda m: properties(config.docs_dir, rule), html, count=1)
@@ -133,7 +131,7 @@ def on_post_page(output, page, config):
         name = TASKS.get(text.strip())
         if (
             not name
-            and (Path(config.docs_dir) / "audit" / f"{text.strip()}.md").exists()
+            and (Path(config.docs_dir) / "rules" / f"{text.strip()}.md").exists()
         ):
             name = STATUS[levels(meta(config.docs_dir, text.strip())[0])[0][0]]
         if not name:

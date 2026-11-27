@@ -38,28 +38,17 @@ impl Disposition {
     }
 }
 
-/// Which fixes `--fix=MODE` makes.
+/// Which fixes are made: the safe ones, or with --unsafe-fixes all of them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
     Safe,
-    UnsafeOnly,
     All,
 }
 
 impl Mode {
-    pub fn parse(s: &str) -> Option<Self> {
-        match s {
-            "safe" => Some(Mode::Safe),
-            "unsafe-only" => Some(Mode::UnsafeOnly),
-            "all" => Some(Mode::All),
-            _ => None,
-        }
-    }
-
     pub fn applies(self, d: Disposition) -> bool {
         match self {
             Mode::Safe => d == Disposition::Safe,
-            Mode::UnsafeOnly => d == Disposition::Unsafe,
             Mode::All => true,
         }
     }
@@ -351,9 +340,9 @@ mod tests {
             "--- J\n+++ J\n@@ -1,5 +1,5 @@\n a\n-b\n+B\n c\n d\n e\n@@ -9,4 +9,4 @@\n i\n j\n k\n-l\n\\ No newline at end of file\n+L\n\\ No newline at end of file\n"
         );
         assert_eq!(diff("J", old, old), "");
-        assert_eq!(Mode::parse("all").map(|m| m.applies(Disposition::Safe)), Some(true));
-        assert!(!Mode::UnsafeOnly.applies(Disposition::Safe) && Mode::Safe.applies(Disposition::Safe));
-        assert_eq!((Mode::parse("some"), Disposition::Unsafe.name()), (None, "unsafe"));
+        assert!(Mode::All.applies(Disposition::Safe) && Mode::All.applies(Disposition::Unsafe));
+        assert!(Mode::Safe.applies(Disposition::Safe) && !Mode::Safe.applies(Disposition::Unsafe));
+        assert_eq!(Disposition::Unsafe.name(), "unsafe");
     }
 
     #[test]

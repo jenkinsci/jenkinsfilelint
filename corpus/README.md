@@ -108,7 +108,7 @@ rule's findings rather than only its new ones.
 
 ## Results
 
-On 2026-11-19, against the Jenkins of `ghcr.io/jenkinsci/jenkinsfilelint-server`,
+On 2026-11-19, against the Jenkins of `docker/`,
 the 17,373 files of the manifest compared as follows:
 
 | Category | Files |

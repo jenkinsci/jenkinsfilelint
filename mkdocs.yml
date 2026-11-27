@@ -1,5 +1,5 @@
-site_name: Jenkinsfile Lint
-site_description: Catch Jenkinsfile syntax errors before they break your CI.
+site_name: jenkins-lint
+site_description: Catch Jenkinsfile mistakes and security problems before they reach your CI.
 site_url: https://jenkinsci.github.io/jenkins-lint/
 repo_url: https://github.com/jenkinsci/jenkins-lint
 repo_name: jenkinsci/jenkins-lint
@@ -39,11 +39,11 @@ nav:
   - Security: security.md
   - How it works: how-it-works.md
   - Migrating to 2.0: migrating.md
-  - Security audit:
-      - audit/README.md
-      - script-injection: audit/script-injection.md
-      - secret-interpolation: audit/secret-interpolation.md
-      - controller-execution: audit/controller-execution.md
-      - unpinned-library: audit/unpinned-library.md
-      - unpinned-image: audit/unpinned-image.md
-      - unrestricted-input: audit/unrestricted-input.md
+  - Security rules:
+      - rules/README.md
+      - script-injection: rules/script-injection.md
+      - secret-interpolation: rules/secret-interpolation.md
+      - controller-execution: rules/controller-execution.md
+      - unpinned-library: rules/unpinned-library.md
+      - unpinned-image: rules/unpinned-image.md
+      - unrestricted-input: rules/unrestricted-input.md

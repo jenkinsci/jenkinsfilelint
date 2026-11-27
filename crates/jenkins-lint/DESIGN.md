@@ -1,11 +1,10 @@
-# Offline mode: design notes
+# Design notes
 
 ## Problem
 
-`jenkins-lint` began by sending a Jenkinsfile to a Jenkins controller,
-either an existing one or, before 2.0, a container started with `--local`.
-Both are accurate, but both need a controller: credentials or Docker, a
-JVM, and seconds to minutes of start-up. That keeps the hook out of many
+Jenkins's own validator, `/pipeline-model-converter/validate`, is accurate,
+but it needs a controller: a server and credentials, or Docker and a JVM,
+and seconds to minutes of start-up. That keeps the hook out of many
 pre-commit setups and most editors.
 
 GitHub Actions has `actionlint`, a single binary that catches workflow

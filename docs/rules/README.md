@@ -1,4 +1,4 @@
-# Security audit
+# Security rules
 
 Every `jenkins-lint` run also looks for ways a pipeline can be attacked or
 can leak secrets. It runs offline, without Jenkins, with the same parser as
@@ -7,9 +7,9 @@ the syntax check, in the same run.
 ```console
 $ jenkins-lint Jenkinsfile
 Jenkinsfile:8:36: high: script-injection: CHANGE_BRANCH is the name of the pull request's branch, and Groovy interpolates it into the sh script: ...
-  help: https://jenkinsci.github.io/jenkins-lint/audit/script-injection/
+  help: https://jenkinsci.github.io/jenkins-lint/rules/script-injection/
 Jenkinsfile:12:41: high: secret-interpolation: PASS is a secret, and Groovy interpolates it into the sh script: ...
-  help: https://jenkinsci.github.io/jenkins-lint/audit/secret-interpolation/
+  help: https://jenkinsci.github.io/jenkins-lint/rules/secret-interpolation/
 2 findings (2 high)
 ```
 
@@ -119,7 +119,7 @@ $ jenkins-lint --diff --unsafe-fixes Jenkinsfile
 $ jenkins-lint --fix --unsafe-fixes --show-fixes .
 Jenkinsfile:8:34: fixed: script-injection: CHANGE_BRANCH is the name of the pull request's branch, and Groovy interpolates it into the sh script: ...
 Jenkinsfile:12:41: high: secret-interpolation: TOKEN is a secret, and Groovy interpolates it into the sh script: ...
-  help: https://jenkinsci.github.io/jenkins-lint/audit/secret-interpolation/
+  help: https://jenkinsci.github.io/jenkins-lint/rules/secret-interpolation/
 Found 2 findings (1 fixed, 1 remaining).
 ```
 
@@ -149,17 +149,17 @@ edits, and the SARIF report carries the fixes for code scanning to suggest.
 In GitHub Actions:
 
 ```yaml
-- run: pipx run jenkins-lint --format sarif Jenkinsfile > audit.sarif
+- run: pipx run jenkins-lint --format sarif Jenkinsfile > jenkins-lint.sarif
 - uses: github/codeql-action/upload-sarif@v3
   with:
-    sarif_file: audit.sarif
+    sarif_file: jenkins-lint.sarif
 ```
 
 In Jenkins, with the Warnings Next Generation plugin:
 
 ```groovy
-sh 'jenkins-lint --format sarif Jenkinsfile > audit.sarif'
-recordIssues tool: sarif(pattern: 'audit.sarif')
+sh 'jenkins-lint --format sarif Jenkinsfile > jenkins-lint.sarif'
+recordIssues tool: sarif(pattern: 'jenkins-lint.sarif')
 ```
 
 ## Exit codes

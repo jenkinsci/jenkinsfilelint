@@ -21,6 +21,7 @@ updated.
 | `--audit`, a run of its own | every run checks security too: remove the option |
 | `// jenkinsfilelint: ignore[rule]` | `// jenkins-lint: ignore[rule]` |
 | `JENKINSFILELINT_ENGINE`, `JENKINSFILELINT_SERVER_IMAGE` | removed |
+| help links `…/jenkinsfilelint/audit/<rule>/` | `…/jenkins-lint/rules/<rule>/` |
 | SARIF rule `syntax-error` | `invalid-pipeline`, for every error Jenkins would report |
 | a Python package and `jenkinsfilelint-engine` | one binary wheel, which runs without Python |
 
@@ -55,7 +56,7 @@ relied on `JENKINS_URL` to pick remote checking adds `--remote`: Jenkins sets
 **Security findings now fail a plain check.** Before 2.0 only `--audit`
 reported them. If a run starts failing on a finding you accept, turn it off
 with a `// jenkins-lint: ignore[rule] why` comment, or for every file with
-`--ignore RULE`. See [Security audit](audit/README.md).
+`--ignore RULE`. See [Security rules](rules/README.md).
 
 **Shared library files.** A directory search now checks `vars/*.groovy` and
 `src/**/*.groovy` too, as `--audit` did, so a syntax error there fails the
