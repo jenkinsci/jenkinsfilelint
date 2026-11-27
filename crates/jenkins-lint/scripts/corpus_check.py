@@ -104,7 +104,7 @@ def expected_errors(test: Path, messages: dict) -> dict:
 def lint(binary: str, path: Path) -> list:
     """Diagnostics for one file."""
     r = subprocess.run(
-        [binary, "--format", "json", "--", str(path)],
+        [binary, "--output-format", "json", "--", str(path)],
         capture_output=True,
         text=True,
         encoding="utf-8",

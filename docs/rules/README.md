@@ -138,18 +138,27 @@ edits, and the SARIF report carries the fixes for code scanning to suggest.
 
 ## Output
 
-- `--format text` (default): one line per finding, and a link to the rule.
-- `--format json`: the engine's report, one object per file.
-- `--format sarif`: SARIF 2.1.0, for GitHub code scanning and other tools.
+- `--output-format text` (default): one line per finding, and a link to the rule.
+- `--output-format json`: the engine's report, one object per file.
+- `--output-format sarif`: SARIF 2.1.0, for GitHub code scanning and other tools.
   Errors that make Jenkins reject a file are results of the rule
   `invalid-pipeline`.
   It exits with `0` even when there are findings, so that the report can be
   uploaded.
+- `--output-format github`: GitHub Actions annotations, which show each error
+  and finding on its line of the pull request. Errors and high findings are
+  errors, warnings and medium findings warnings, and low findings notices.
 
-In GitHub Actions:
+In GitHub Actions, annotations on the pull request:
 
 ```yaml
-- run: pipx run jenkins-lint --format sarif Jenkinsfile > jenkins-lint.sarif
+- run: pipx run jenkins-lint --output-format github .
+```
+
+Or the SARIF report, for code scanning:
+
+```yaml
+- run: pipx run jenkins-lint --output-format sarif Jenkinsfile > jenkins-lint.sarif
 - uses: github/codeql-action/upload-sarif@v3
   with:
     sarif_file: jenkins-lint.sarif
@@ -158,7 +167,7 @@ In GitHub Actions:
 In Jenkins, with the Warnings Next Generation plugin:
 
 ```groovy
-sh 'jenkins-lint --format sarif Jenkinsfile > jenkins-lint.sarif'
+sh 'jenkins-lint --output-format sarif Jenkinsfile > jenkins-lint.sarif'
 recordIssues tool: sarif(pattern: 'jenkins-lint.sarif')
 ```
 
@@ -166,6 +175,6 @@ recordIssues tool: sarif(pattern: 'jenkins-lint.sarif')
 
 | Code | Meaning |
 |---|---|
-| `0` | No error and no finding shown, or `--format sarif`. With `--fix`, every finding was fixed; with `--diff`, no change |
+| `0` | No error and no finding shown, or `--output-format sarif`. With `--fix`, every finding was fixed; with `--diff`, no change |
 | `1` | An error or a finding was shown, or a file could not be read. With `--fix`, a finding is left; with `--diff`, a change |
 | `2` | Wrong command-line options |

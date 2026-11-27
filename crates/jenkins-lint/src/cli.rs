@@ -15,7 +15,7 @@ use clap::{CommandFactory, Parser, ValueEnum};
 use crate::check::{fix, lint};
 use crate::diag::{Report, Severity};
 use crate::discover::{expand_paths, path_match, LIBRARY_DIRS};
-use crate::output::{diagnostics_text, file_json, findings_text, fixed_text, UnreadableJson};
+use crate::output::{diagnostics_text, file_json, findings_text, fixed_text, github_annotations, UnreadableJson};
 use crate::remote::{Jenkins, Verdict};
 use crate::rules::fix::{Disposition, Mode};
 use crate::rules::{self, Confidence, Filter, Finding, Persona};
@@ -29,9 +29,14 @@ pub const OFFLINE_NOTE: &str = "ℹ Checking offline: step names, step parameter
 
 #[derive(Debug, Clone, Copy, PartialEq, ValueEnum)]
 pub enum Format {
+    /// One line per error and finding, with a summary
     Text,
+    /// One object per file
     Json,
+    /// SARIF 2.1.0, for code scanning
     Sarif,
+    /// GitHub Actions annotations, shown on the lines of a pull request
+    Github,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -124,8 +129,8 @@ struct Args {
 
     /// Output format. sarif exits with 0 when there are findings, so that the
     /// report can be uploaded
-    #[arg(long, value_enum, default_value_t = Format::Text)]
-    format: Format,
+    #[arg(long, value_enum, value_name = "FORMAT", default_value_t = Format::Text)]
+    output_format: Format,
     /// Say what is checked, skipped and found
     #[arg(short, long)]
     verbose: bool,
@@ -208,10 +213,10 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>, env: impl Fn(&str) -
     };
     let a = Args::try_parse_from(argv).map_err(fail)?;
     let error = |kind: ErrorKind, message: &str| fail(Args::command().error(kind, message));
-    if a.diff && a.format != Format::Text {
+    if a.diff && a.output_format != Format::Text {
         return Err(error(
             ErrorKind::ArgumentConflict,
-            "--diff cannot be used with --format json or sarif",
+            "--diff cannot be used with --output-format json, sarif or github",
         ));
     }
     let remote = match a.remote {
@@ -228,10 +233,10 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>, env: impl Fn(&str) -
                     "--remote needs a URL: pass --remote=URL or set JENKINS_URL",
                 ));
             }
-            if a.format != Format::Text {
+            if a.output_format != Format::Text {
                 return Err(error(
                     ErrorKind::ArgumentConflict,
-                    "--format json or sarif cannot be used with --remote",
+                    "--output-format json, sarif or github cannot be used with --remote",
                 ));
             }
             Some(url)
@@ -263,7 +268,7 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>, env: impl Fn(&str) -
         unsafe_fixes: a.unsafe_fixes,
         show_fixes: a.show_fixes,
         diff: a.diff,
-        format: a.format,
+        format: a.output_format,
         skip: a.skip,
         include: a.include,
         verbose: a.verbose,
@@ -562,7 +567,8 @@ fn validate_remote(jenkins: &Jenkins, files: &[PathBuf], send: &HashSet<&Path>, 
     all_valid
 }
 
-/// --format json or sarif, or --diff: the report of every file.
+/// --output-format json, sarif or github, or --diff: the report of every
+/// file.
 fn write_report(files: &[&PathBuf], o: &Options) -> ExitCode {
     let mode = o.mode();
     let mut unreadable = false;
@@ -607,6 +613,7 @@ fn write_report(files: &[&PathBuf], o: &Options) -> ExitCode {
         flagged |= !c.valid() || !c.findings.is_empty();
         match o.format {
             Format::Json => items.push(serde_json::to_value(file_json(&name, &c.report, &c.findings, &c.fixed)).unwrap_or_default()),
+            Format::Github => print!("{}", github_annotations(&name, &c.report, &c.findings)),
             _ => checked.push(SarifFile {
                 path: name,
                 findings: c.findings,
@@ -617,7 +624,7 @@ fn write_report(files: &[&PathBuf], o: &Options) -> ExitCode {
     match o.format {
         Format::Json => println!("{}", serde_json::Value::Array(items)),
         Format::Sarif => println!("{}", sarif(&checked)),
-        Format::Text => {}
+        Format::Text | Format::Github => {}
     }
     let failed = if o.diff { changed } else { flagged && o.format != Format::Sarif };
     if unreadable || failed {
