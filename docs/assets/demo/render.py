@@ -19,7 +19,7 @@ FONTS = Path(sys.argv[1])
 OUT = Path(sys.argv[2])
 APP = Path(tempfile.mkdtemp()) / "demo"
 
-W, H = 1388, 876  # 26 rows
+W, H = 1388, 752  # 22 rows
 PAD_X, TOP = 34, 70
 SIZE, LINE = 21, 31
 COLS = 104
