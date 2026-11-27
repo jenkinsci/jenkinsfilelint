@@ -374,6 +374,7 @@ mod tests {
         let report = sarif(&[Checked {
             path: "J".to_string(),
             findings: all.findings.clone(),
+            baselined: Vec::new(),
             diagnostics: Vec::new(),
         }]);
         assert!(
@@ -417,6 +418,7 @@ mod tests {
         let checked = |path: &str, src: &str| Checked {
             path: path.to_string(),
             findings: find(src, &Filter::default()).unwrap_or_default(),
+            baselined: Vec::new(),
             diagnostics: lint(src).diagnostics,
         };
         let out = sarif(&[checked("dir\\J", src)]);

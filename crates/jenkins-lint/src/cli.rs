@@ -12,6 +12,7 @@ use std::sync::mpsc;
 use clap::error::ErrorKind;
 use clap::{CommandFactory, Parser, ValueEnum};
 
+use crate::baseline::{self, Baseline};
 use crate::check::{fix, lint};
 use crate::diag::{Report, Severity};
 use crate::discover::{expand_paths, path_match, LIBRARY_DIRS};
@@ -139,6 +140,19 @@ struct Args {
     #[arg(long, value_name = "PATTERN", help_heading = "Files")]
     include: Vec<String>,
 
+    /// Findings in this file do not fail the run [default: .jenkins-lint-baseline.json, up to the Git root]
+    #[arg(long, value_name = "FILE", help_heading = "Baseline")]
+    baseline: Option<PathBuf>,
+    /// Write the findings to the baseline file, so that only new ones fail
+    #[arg(long, conflicts_with_all = ["fix", "diff", "no_baseline"], help_heading = "Baseline")]
+    write_baseline: bool,
+    /// Remove the fixed findings from the baseline file, and add none
+    #[arg(long, conflicts_with_all = ["fix", "diff", "no_baseline", "write_baseline"], help_heading = "Baseline")]
+    prune_baseline: bool,
+    /// Report the findings in the baseline too
+    #[arg(long, conflicts_with = "baseline", help_heading = "Baseline")]
+    no_baseline: bool,
+
     /// Output format. sarif exits with 0 when there are findings, so that the
     /// report can be uploaded
     #[arg(long, value_enum, value_name = "FORMAT", default_value_t = Format::Full)]
@@ -184,6 +198,10 @@ pub struct Options {
     pub skip: Vec<String>,
     pub include: Vec<String>,
     pub verbose: bool,
+    /// The baseline file to read, and with --write-baseline to write.
+    pub baseline: Option<PathBuf>,
+    pub write_baseline: bool,
+    pub prune_baseline: bool,
 }
 
 /// The options, read from the command line and the environment: an `env`
@@ -258,6 +276,29 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>, env: impl Fn(&str) -
         Some(_) => (a.username.or_else(|| env("JENKINS_USER")), a.token.or_else(|| env("JENKINS_TOKEN"))),
         None => (None, None),
     };
+    if (a.write_baseline || a.prune_baseline) && !a.output_format.is_text() {
+        return Err(error(
+            ErrorKind::ArgumentConflict,
+            "--write-baseline and --prune-baseline cannot be used with --output-format json, sarif or github",
+        ));
+    }
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let baseline = match a.baseline {
+        _ if a.no_baseline => None,
+        Some(path) => {
+            if !a.write_baseline && !path.is_file() {
+                return Err(error(
+                    ErrorKind::ValueValidation,
+                    &format!("baseline file not found: {}", path.display()),
+                ));
+            }
+            Some(path)
+        }
+        None => baseline::find(&cwd).or_else(|| a.write_baseline.then(|| baseline::default_path(&cwd))),
+    };
+    if a.prune_baseline && baseline.as_ref().is_none_or(|p| !p.is_file()) {
+        return Err(error(ErrorKind::ValueValidation, "--prune-baseline needs a baseline file"));
+    }
     let mut ignore = a.ignore;
     ignore.dedup();
     Ok(Options {
@@ -284,6 +325,9 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>, env: impl Fn(&str) -
         skip: a.skip,
         include: a.include,
         verbose: a.verbose,
+        baseline,
+        write_baseline: a.write_baseline,
+        prune_baseline: a.prune_baseline,
     })
 }
 
@@ -326,6 +370,10 @@ struct Checked {
     text: String,
     findings: Vec<Finding>,
     fixed: Vec<Finding>,
+    /// How many findings the baseline holds.
+    known: usize,
+    /// It was read and parsed, so its findings are complete.
+    analyzed: bool,
 }
 
 impl Checked {
@@ -346,10 +394,14 @@ fn check_file(path: &Path, o: &Options) -> Checked {
                 text: String::new(),
                 findings: Vec::new(),
                 fixed: Vec::new(),
+                known: 0,
+                analyzed: false,
             }
         }
     };
-    let (fixed, findings, text, unreadable) = match fix(&src, &o.filter, mode) {
+    let parsed = fix(&src, &o.filter, mode);
+    let analyzed = parsed.is_ok();
+    let (fixed, findings, text, unreadable) = match parsed {
         Ok(f) if o.fix && f.src != src => match std::fs::write(path, &f.src) {
             Ok(()) => (f.fixed, f.remaining, f.src, None),
             Err(e) => (Vec::new(), f.findings, src, Some(e.to_string())),
@@ -359,12 +411,48 @@ fn check_file(path: &Path, o: &Options) -> Checked {
         Err(_) => (Vec::new(), Vec::new(), src, None),
     };
     Checked {
+        analyzed: analyzed && unreadable.is_none(),
         unreadable,
         report: lint(&text),
         text,
         findings,
         fixed,
+        known: 0,
     }
+}
+
+fn load_baseline(o: &Options) -> Result<Option<Baseline>, ExitCode> {
+    match &o.baseline {
+        None => Ok(None),
+        Some(path) => Baseline::load(path).map(Some).map_err(|e| {
+            eprintln!("Error reading the baseline {e}");
+            ExitCode::from(2)
+        }),
+    }
+}
+
+/// The findings that are new, and how many are in the baseline.
+fn split(baseline: &mut Option<Baseline>, path: &Path, c: &mut Checked, write: bool) -> Vec<Finding> {
+    let all = std::mem::take(&mut c.findings);
+    match baseline {
+        // A file that does not parse keeps its entries.
+        Some(b) if c.analyzed => {
+            let (new, known) = b.split(path, &c.text, all);
+            c.known = known.len() + if write { new.len() } else { 0 };
+            if write {
+                Vec::new()
+            } else {
+                new
+            }
+        }
+        _ => all,
+    }
+}
+
+fn fixed_note(baseline: &Option<Baseline>) -> Option<String> {
+    let n = baseline.as_ref().map_or(0, Baseline::fixed);
+    let (findings, occur) = if n == 1 { ("finding", "occurs") } else { ("findings", "occur") };
+    (n > 0).then(|| format!("ℹ {n} {findings} in the baseline no longer {occur}: run with --prune-baseline to remove them"))
 }
 
 pub fn run(o: Options) -> ExitCode {
@@ -390,8 +478,12 @@ pub fn run(o: Options) -> ExitCode {
     if o.verbose && o.remote.is_none() && !report && !o.diff {
         println!("{OFFLINE_NOTE}");
     }
+    let mut baseline = match load_baseline(&o) {
+        Ok(b) => b,
+        Err(code) => return code,
+    };
     if report || o.diff {
-        return write_report(&selected, &o);
+        return write_report(&selected, &o, &mut baseline);
     }
 
     let mode = o.mode();
@@ -400,6 +492,7 @@ pub fn run(o: Options) -> ExitCode {
     let mut fixed = 0;
     let mut fixable = [0usize; 2]; // safe, unsafe
     let mut passed = true;
+    let mut known = 0;
     let mut send: HashSet<&Path> = HashSet::new();
     let stdout = std::io::stdout();
     let full = o.format == Format::Full;
@@ -415,7 +508,9 @@ pub fn run(o: Options) -> ExitCode {
             continue;
         }
         let name = path.to_string_lossy();
-        let c = check_file(path, &o);
+        let mut c = check_file(path, &o);
+        c.findings = split(&mut baseline, path, &mut c, o.write_baseline);
+        known += c.known;
         if o.show_fixes {
             let _ = write!(out, "{}", fixed_text(&name, &c.fixed));
         }
@@ -473,7 +568,39 @@ pub fn run(o: Options) -> ExitCode {
             .filter(|(_, n)| *n > 0)
             .map(|(s, n)| format!("{n} {s}"))
             .collect();
-        let _ = writeln!(out, "{total} finding{} ({})", plural(total), parts.join(", "));
+        let more = if known > 0 {
+            format!(", {known} in the baseline")
+        } else {
+            String::new()
+        };
+        let _ = writeln!(out, "{total} finding{} ({}){more}", plural(total), parts.join(", "));
+    } else if known > 0 && !o.write_baseline {
+        let _ = writeln!(out, "No new findings, {known} in the baseline");
+    }
+    if let Some(b) = &baseline {
+        if o.write_baseline {
+            match b.write() {
+                Ok(n) => {
+                    let _ = writeln!(out, "Wrote {n} finding{} to {}", plural(n), b.path.display());
+                }
+                Err(e) => {
+                    eprintln!("Error writing the baseline {e}");
+                    passed = false;
+                }
+            }
+        } else if o.prune_baseline {
+            match b.prune() {
+                Ok(n) => {
+                    let _ = writeln!(out, "Removed {n} fixed finding{} from {}", plural(n), b.path.display());
+                }
+                Err(e) => {
+                    eprintln!("Error writing the baseline {e}");
+                    passed = false;
+                }
+            }
+        } else if let Some(note) = fixed_note(&baseline) {
+            let _ = writeln!(out, "{note}");
+        }
     }
     // As ruff check says it: what --fix would fix, and the unsafe fixes
     // that --unsafe-fixes would add.
@@ -595,7 +722,7 @@ fn validate_remote(jenkins: &Jenkins, files: &[PathBuf], send: &HashSet<&Path>, 
 
 /// --output-format json, sarif or github, or --diff: the report of every
 /// file.
-fn write_report(files: &[&PathBuf], o: &Options) -> ExitCode {
+fn write_report(files: &[&PathBuf], o: &Options, baseline: &mut Option<Baseline>) -> ExitCode {
     let mode = o.mode();
     let mut unreadable = false;
     let mut flagged = false;
@@ -626,7 +753,13 @@ fn write_report(files: &[&PathBuf], o: &Options) -> ExitCode {
             }
             continue;
         }
-        let c = check_file(path, o);
+        let mut c = check_file(path, o);
+        let all = std::mem::take(&mut c.findings);
+        let (new, known) = match baseline {
+            Some(b) if c.analyzed => b.split(path, &c.text, all),
+            _ => (all, Vec::new()),
+        };
+        c.findings = new;
         if let Some(e) = &c.unreadable {
             unreadable = true;
             if o.format == Format::Json {
@@ -643,6 +776,7 @@ fn write_report(files: &[&PathBuf], o: &Options) -> ExitCode {
             _ => checked.push(SarifFile {
                 path: name,
                 findings: c.findings,
+                baselined: known,
                 diagnostics: c.report.diagnostics,
             }),
         }
@@ -651,6 +785,9 @@ fn write_report(files: &[&PathBuf], o: &Options) -> ExitCode {
         Format::Json => println!("{}", serde_json::Value::Array(items)),
         Format::Sarif => println!("{}", sarif(&checked)),
         Format::Full | Format::Concise | Format::Github => {}
+    }
+    if let Some(note) = fixed_note(baseline) {
+        eprintln!("{note}");
     }
     let failed = if o.diff { changed } else { flagged && o.format != Format::Sarif };
     if unreadable || failed {

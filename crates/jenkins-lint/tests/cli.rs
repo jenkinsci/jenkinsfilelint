@@ -580,3 +580,181 @@ fn cannot_reach_jenkins() {
     assert_eq!(r.code, 1);
     assert!(r.err.starts_with("✗ Jenkinsfile: Error connecting to Jenkins: "), "{}", r.err);
 }
+
+const TWO: &str = "pipeline {\n  agent any\n  stages { stage('a') { steps {\n    sh \"echo ${env.CHANGE_TITLE}\"\n    sh \"git checkout ${env.CHANGE_BRANCH}\"\n  } } }\n}\n";
+
+/// A repository whose two findings are in the baseline.
+fn baselined() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir(dir.path().join(".git")).unwrap();
+    write(dir.path(), "Jenkinsfile", TWO);
+    let r = run(dir.path(), &["--write-baseline", "."]);
+    assert_eq!(r.code, 0, "{}{}", r.out, r.err);
+    assert!(
+        r.out.ends_with(
+            "Wrote 2 findings to {}\n"
+                .replace(
+                    "{}",
+                    &dir.path()
+                        .canonicalize()
+                        .unwrap()
+                        .join(".jenkins-lint-baseline.json")
+                        .display()
+                        .to_string()
+                )
+                .as_str()
+        ),
+        "{}",
+        r.out
+    );
+    dir
+}
+
+#[test]
+fn the_baseline_hides_the_findings_it_holds() {
+    let dir = baselined();
+    let text = std::fs::read_to_string(dir.path().join(".jenkins-lint-baseline.json")).unwrap();
+    assert_eq!(
+        text,
+        "{\"version\": 1, \"findings\": [\n  \
+         {\"file\":\"Jenkinsfile\",\"rule\":\"script-injection\",\"code\":\"${env.CHANGE_BRANCH}\",\"count\":1},\n  \
+         {\"file\":\"Jenkinsfile\",\"rule\":\"script-injection\",\"code\":\"${env.CHANGE_TITLE}\",\"count\":1}\n]}\n"
+    );
+    let r = run(dir.path(), &["."]);
+    assert_eq!(
+        (r.code, r.out.as_str()),
+        (0, "✓ Jenkinsfile: Valid\nNo new findings, 2 in the baseline\n")
+    );
+    let r = run(dir.path(), &["--no-baseline", "--output-format", "concise", "."]);
+    assert_eq!(r.code, 1);
+    assert!(r.out.contains("2 findings (2 high)\n"), "{}", r.out);
+}
+
+#[test]
+fn a_new_finding_fails() {
+    let dir = baselined();
+    let more = TWO.replace("  } } }", "    sh \"echo ${env.CHANGE_AUTHOR_DISPLAY_NAME}\"\n  } } }");
+    write(dir.path(), "Jenkinsfile", &more);
+    let r = run(dir.path(), &["--output-format", "concise", "Jenkinsfile"]);
+    assert_eq!(r.code, 1);
+    assert!(
+        r.out
+            .starts_with("Jenkinsfile:6:14: high: script-injection: CHANGE_AUTHOR_DISPLAY_NAME"),
+        "{}",
+        r.out
+    );
+    assert!(r.out.contains("1 finding (1 high), 2 in the baseline\n"), "{}", r.out);
+}
+
+#[test]
+fn moved_code_still_matches() {
+    let dir = baselined();
+    write(
+        dir.path(),
+        "Jenkinsfile",
+        &format!("// one\n// two\n{}", TWO.replace("    sh \"echo", "      sh \"echo")),
+    );
+    let r = run(dir.path(), &["Jenkinsfile"]);
+    assert_eq!((r.code, r.out.as_str()), (0, "No new findings, 2 in the baseline\n"));
+}
+
+#[test]
+fn a_fixed_finding_gives_a_hint() {
+    let dir = baselined();
+    write(
+        dir.path(),
+        "Jenkinsfile",
+        &TWO.replace("${env.CHANGE_TITLE}", "$CHANGE_TITLE")
+            .replace("sh \"echo", "sh 'echo")
+            .replace("TITLE\"", "TITLE'"),
+    );
+    let r = run(dir.path(), &["Jenkinsfile"]);
+    assert_eq!(r.code, 0, "{}{}", r.out, r.err);
+    assert_eq!(
+        r.out,
+        "No new findings, 1 in the baseline\n\
+         ℹ 1 finding in the baseline no longer occurs: run with --prune-baseline to remove them\n"
+    );
+}
+
+#[test]
+fn another_finding_in_the_same_file_fails() {
+    let dir = baselined();
+    // One fixed and one added: the count is the same, the code is not.
+    let swapped = TWO.replace("${env.CHANGE_TITLE}", "${env.CHANGE_AUTHOR_DISPLAY_NAME}");
+    write(dir.path(), "Jenkinsfile", &swapped);
+    let r = run(dir.path(), &["--output-format", "concise", "Jenkinsfile"]);
+    assert_eq!(r.code, 1);
+    assert!(r.out.contains("CHANGE_AUTHOR"), "{}", r.out);
+    assert!(!r.out.contains("CHANGE_BRANCH"), "{}", r.out);
+}
+
+#[test]
+fn errors_are_never_in_the_baseline() {
+    let dir = baselined();
+    write(dir.path(), "Jenkinsfile", &TWO.replace("agent any", "agent"));
+    let r = run(dir.path(), &["Jenkinsfile"]);
+    assert_eq!(r.code, 1);
+    assert!(r.err.starts_with("error: Not a valid section definition"), "{}", r.err);
+}
+
+#[test]
+fn sarif_marks_the_baseline_as_suppressed() {
+    let dir = baselined();
+    let r = run(dir.path(), &["--output-format", "sarif", "Jenkinsfile"]);
+    assert_eq!(r.code, 0, "{}", r.err);
+    let v: serde_json::Value = serde_json::from_str(&r.out).unwrap();
+    let results = v["runs"][0]["results"].as_array().unwrap();
+    assert_eq!(results.len(), 2);
+    for result in results {
+        assert_eq!(result["suppressions"][0]["kind"], "external");
+    }
+    let r = run(dir.path(), &["--output-format", "github", "Jenkinsfile"]);
+    assert_eq!((r.code, r.out.as_str()), (0, ""));
+}
+
+#[test]
+fn a_missing_baseline_file_is_an_error() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "Jenkinsfile", VALID);
+    let r = run(dir.path(), &["--baseline", "nope.json", "Jenkinsfile"]);
+    assert_eq!(r.code, 2);
+    assert!(r.err.contains("baseline file not found: nope.json"), "{}", r.err);
+}
+
+#[test]
+fn prune_removes_fixed_findings_and_adds_none() {
+    let dir = baselined();
+    // CHANGE_TITLE fixed, CHANGE_AUTHOR_DISPLAY_NAME added.
+    write(
+        dir.path(),
+        "Jenkinsfile",
+        &TWO.replace("${env.CHANGE_TITLE}", "${env.CHANGE_AUTHOR_DISPLAY_NAME}"),
+    );
+    let r = run(dir.path(), &["--prune-baseline", "--output-format", "concise", "."]);
+    assert_eq!(r.code, 1);
+    assert!(r.out.contains("CHANGE_AUTHOR_DISPLAY_NAME"), "{}", r.out);
+    assert!(r.out.contains("Removed 1 fixed finding from "), "{}", r.out);
+    let text = std::fs::read_to_string(dir.path().join(".jenkins-lint-baseline.json")).unwrap();
+    assert!(
+        text.contains("CHANGE_BRANCH") && !text.contains("CHANGE_TITLE") && !text.contains("CHANGE_AUTHOR"),
+        "{text}"
+    );
+    let r = run(dir.path(), &["--output-format", "concise", "."]);
+    assert_eq!(r.code, 1, "the new finding still fails: {}", r.out);
+}
+
+#[test]
+fn a_file_that_does_not_parse_keeps_its_entries() {
+    let dir = baselined();
+    let before = std::fs::read_to_string(dir.path().join(".jenkins-lint-baseline.json")).unwrap();
+    write(dir.path(), "Jenkinsfile", &TWO.replace("stages {", "stages {{"));
+    for args in [&["."][..], &["--prune-baseline", "."]] {
+        let r = run(dir.path(), args);
+        assert_eq!(r.code, 1);
+        assert!(r.err.contains("error: "), "{}", r.err);
+        assert!(!r.out.contains("no longer occur"), "{}", r.out);
+    }
+    let after = std::fs::read_to_string(dir.path().join(".jenkins-lint-baseline.json")).unwrap();
+    assert_eq!(after, before);
+}

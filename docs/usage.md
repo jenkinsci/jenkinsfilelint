@@ -131,6 +131,35 @@ without a `submitter`, which any user may approve, with `--persona pedantic`. `-
 `--output-format sarif` writes a report for GitHub code scanning. See
 [Security rules](rules/README.md) for all of it.
 
+## Adopting on an existing repository
+
+A repository with many findings can start with a baseline: the findings it
+has today are written to `.jenkins-lint-baseline.json`, and only new ones fail.
+
+```bash
+jenkins-lint --write-baseline .
+git add .jenkins-lint-baseline.json
+```
+
+```console
+$ jenkins-lint .
+1 finding (1 high), 278 in the baseline
+```
+
+- A finding is known by its file, its rule and the code it is about, such as
+  `${env.CHANGE_BRANCH}`, so it still matches when code moves. A new finding
+  in a file of the baseline fails, unless it is the same code again.
+- Errors are never in the baseline: a file Jenkins would reject always fails.
+- When findings are fixed, jenkins-lint says so. `--prune-baseline` removes
+  them and adds nothing, so new findings still fail: use it from then on, and
+  `--write-baseline` only to start. Both keep the entries of the files they
+  did not check.
+- jenkins-lint reads `.jenkins-lint-baseline.json` from the current
+  directory or a parent, up to the root of the Git repository.
+  `--baseline FILE` reads another file, and `--no-baseline` shows every finding.
+- In SARIF, findings in the baseline are marked as suppressed. The JSON and
+  `github` outputs leave them out.
+
 ## Filtering files
 
 Use `--include` (whitelist) and `--skip` (blacklist) to control which files are validated:
