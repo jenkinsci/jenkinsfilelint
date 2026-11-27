@@ -1,9 +1,9 @@
 ci:
   skip: [jenkins-lint]
 
-# Test Jenkinsfiles of the offline linter: kept byte for byte, and many are
-# invalid on purpose.
-exclude: ^crates/jenkins-lint/tests/
+# Test Jenkinsfiles of the offline linter and the demo's example: kept byte
+# for byte, and many are invalid on purpose.
+exclude: ^(crates/jenkins-lint/tests/|docs/assets/demo/example/)
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks

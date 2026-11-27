@@ -11,6 +11,7 @@ copyright: >-
 exclude_docs: |
   requirements.txt
   theme/
+  assets/demo/
 
 theme:
   name: sumi

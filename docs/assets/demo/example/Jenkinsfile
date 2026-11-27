@@ -1,0 +1,18 @@
+@Library('shared@main') _
+
+pipeline {
+    agent
+    stages {
+        stage('Build') {
+            steps {
+                script {
+                    def branch = "${env.CHANGE_BRANCH}"
+                    sh "git checkout ${branch}"
+                }
+                withCredentials([string(credentialsId: 'npm', variable: 'TOKEN')]) {
+                    sh "npm publish --token ${TOKEN}"
+                }
+            }
+        }
+    }
+}
