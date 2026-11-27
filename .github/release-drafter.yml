@@ -56,6 +56,8 @@ version-resolver:
   minor:
     labels:
       - minor
+      - feature
+      - enhancement
   patch:
     labels:
       - patch
