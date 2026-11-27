@@ -31,4 +31,4 @@ using the [CLI](usage.md#cli).
 
 ## Demo
 
-![demo](https://raw.githubusercontent.com/jenkinsci/jenkins-lint/main/demo.gif)
+![demo](assets/demo.gif)
