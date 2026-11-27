@@ -19,7 +19,7 @@ FONTS = Path(sys.argv[1])
 OUT = Path(sys.argv[2])
 APP = Path(tempfile.mkdtemp()) / "demo"
 
-W, H = 1388, 1186  # 36 rows: the whole --fix scene
+W, H = 1388, 876  # 26 rows
 PAD_X, TOP = 34, 70
 SIZE, LINE = 21, 31
 COLS = 104
@@ -185,8 +185,14 @@ for comment, command in SCENES:
         rows[-1] = PROMPT + [(command[:i], FG, True)]
         add(frame(rows, cursor=True), 45)
     add(frame(rows, cursor=True), 500)
+    # Output longer than the window pauses on its first screen, then scrolls.
+    first = True
     for line in output_of(command):
-        rows += wrap(spans(line))
+        more = wrap(spans(line))
+        if first and len(rows) + len(more) > (H - TOP) // LINE:
+            add(frame(rows), 1800)
+            first = False
+        rows += more
     rows.append(list(PROMPT))
     add(frame(rows, cursor=True), 4200)
     scene_ends.append(frames[-1])
