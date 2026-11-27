@@ -148,7 +148,7 @@ pub struct Comment {
 }
 
 /// Tokenize a whole file, and keep its `//` comments, which can turn off
-/// an audit finding.
+/// a finding.
 pub fn tokenize_with_comments(src: &str) -> Result<(Vec<Token>, Vec<Comment>), Diagnostic> {
     let mut lexer = Lexer::new(src);
     lexer.lex()?;

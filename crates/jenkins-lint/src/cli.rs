@@ -9,67 +9,141 @@ use std::process::ExitCode;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
 
-use crate::audit::fix::{Disposition, Mode};
-use crate::audit::{self, Confidence, Filter, Finding, Persona};
+use clap::error::ErrorKind;
+use clap::{CommandFactory, Parser, ValueEnum};
+
+use crate::check::{fix, lint};
 use crate::diag::{Report, Severity};
 use crate::discover::{expand_paths, path_match, LIBRARY_DIRS};
+use crate::output::{diagnostics_text, file_json, findings_text, fixed_text, UnreadableJson};
 use crate::remote::{Jenkins, Verdict};
-use crate::{audit_json, audit_text, diagnostics_text, fix_source, fixed_text, json_escape, lint};
+use crate::rules::fix::{Disposition, Mode};
+use crate::rules::{self, Confidence, Filter, Finding, Persona};
+use crate::sarif::{sarif, Checked as SarifFile};
 
 const NAME: &str = "jenkins-lint";
-const DEFAULT_JOBS: usize = 8;
 
 /// Printed with --verbose when files are checked offline only.
 pub const OFFLINE_NOTE: &str = "ℹ Checking offline: step names, step parameters and other plugin-dependent \
      checks are skipped. Pass --remote to also check with your Jenkins.";
 
-const HELP: &str = "Check Jenkinsfiles offline: Groovy syntax, Declarative Pipeline structure and
-security. With --remote, the files that pass are also validated by your Jenkins.
-
-Usage: jenkins-lint [check] [OPTIONS] <PATH>...
-
-Arguments:
-  <PATH>...  Jenkinsfiles and shared library files, or directories to search.
-             In a directory, picks Jenkinsfile and *.jenkinsfile, Jenkinsfile*
-             and *.groovy files that contain a pipeline, and every *.groovy
-             under vars/ and src/.
-
-Options:
-  --remote [URL]         After checking offline, also validate the files with
-                         this Jenkins, which knows its own plugins: step names
-                         and parameters, agent and tool types. Without a URL,
-                         uses JENKINS_URL. JENKINS_URL alone never turns this on.
-  --username USER        Jenkins username (or JENKINS_USER), with --remote
-  --token TOKEN          Jenkins API token (or JENKINS_TOKEN), with --remote
-  -j, --jobs N           Files to send to Jenkins at the same time (default: 8)
-  --persona P            How many security findings to show: regular (default),
-                         pedantic (adds hardening advice) or auditor (all)
-  --min-severity S       Leave out findings below low, medium or high
-  --min-confidence C     Leave out findings below low, medium or high
-  --ignore RULE[,RULE]   Turn off a rule in every file, such as unpinned-library
-  --fix                  Rewrite the files with the fixes, then report what
-                         is left. Use --no-fix to disable.
-  --unsafe-fixes         Include the fixes that can change what a pipeline
-                         does: review them. Use --no-unsafe-fixes to disable.
-  --show-fixes           Name each fix that --fix made. Use --no-show-fixes
-                         to disable.
-  --diff                 Print what the fixes would change, and change nothing
-  --format F             text (default), json or sarif. sarif exits with 0
-                         when there are findings, so that it can be uploaded.
-  --skip PATTERN         Skip files that match this glob, such as 'vars/*.groovy'
-  --include PATTERN      Check only files that match one of these globs
-  -v, --verbose          Say what is checked, skipped and found
-  -h, --help             Print this help
-  -V, --version          Print the version
-
-`jenkins-lint check PATH` is the same as `jenkins-lint PATH`.
-Documentation: https://jenkinsci.github.io/jenkins-lint/";
-
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, ValueEnum)]
 pub enum Format {
     Text,
     Json,
     Sarif,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum Level {
+    Low,
+    Medium,
+    High,
+}
+
+#[derive(Debug, Clone, Copy, ValueEnum)]
+enum PersonaArg {
+    /// What is worth fixing
+    Regular,
+    /// Adds lower-confidence findings and hardening advice
+    Pedantic,
+    /// Everything, for a security review
+    Auditor,
+}
+
+/// Check Jenkinsfiles offline: Groovy syntax, Declarative Pipeline structure
+/// and security. With --remote, the files that pass are also validated by
+/// your Jenkins.
+#[derive(Debug, Parser)]
+#[command(
+    name = "jenkins-lint",
+    version,
+    override_usage = "jenkins-lint [check] [OPTIONS] <PATH>...",
+    after_help = "Documentation: https://jenkinsci.github.io/jenkins-lint/"
+)]
+struct Args {
+    /// Jenkinsfiles and shared library files, or directories to search. In a
+    /// directory: Jenkinsfile and *.jenkinsfile, Jenkinsfile* and *.groovy
+    /// files that contain a pipeline, and every *.groovy under vars/ and src/
+    #[arg(required = true, value_name = "PATH")]
+    paths: Vec<PathBuf>,
+
+    /// Also validate the files that pass offline with this Jenkins, which
+    /// knows its own plugins. Without a URL, uses JENKINS_URL, which never
+    /// turns this on by itself
+    #[arg(long, value_name = "URL", num_args = 0..=1, require_equals = true, default_missing_value = "", help_heading = "Jenkins")]
+    remote: Option<String>,
+    /// Jenkins username, with --remote [env: JENKINS_USER]
+    #[arg(long, value_name = "USER", requires = "remote", help_heading = "Jenkins")]
+    username: Option<String>,
+    /// Jenkins API token, with --remote [env: JENKINS_TOKEN]
+    #[arg(long, value_name = "TOKEN", requires = "remote", help_heading = "Jenkins")]
+    token: Option<String>,
+    /// Files to send to Jenkins at the same time
+    #[arg(short, long, value_name = "N", default_value_t = 8, value_parser = clap::value_parser!(u16).range(1..), help_heading = "Jenkins")]
+    jobs: u16,
+
+    /// Apply fixes to the files
+    #[arg(long, overrides_with = "no_fix", help_heading = "Fixes")]
+    fix: bool,
+    #[arg(long, overrides_with = "fix", hide = true)]
+    no_fix: bool,
+    /// Include the fixes that can change what a pipeline does: review them
+    #[arg(long, overrides_with = "no_unsafe_fixes", help_heading = "Fixes")]
+    unsafe_fixes: bool,
+    #[arg(long, overrides_with = "unsafe_fixes", hide = true)]
+    no_unsafe_fixes: bool,
+    /// Name each fix that --fix made
+    #[arg(long, overrides_with = "no_show_fixes", help_heading = "Fixes")]
+    show_fixes: bool,
+    #[arg(long, overrides_with = "show_fixes", hide = true)]
+    no_show_fixes: bool,
+    /// Print what the fixes would change, and change nothing
+    #[arg(long, conflicts_with = "remote", help_heading = "Fixes")]
+    diff: bool,
+
+    /// How many security findings to show
+    #[arg(long, value_enum, default_value_t = PersonaArg::Regular, help_heading = "Rules")]
+    persona: PersonaArg,
+    /// Leave out findings below this severity
+    #[arg(long, value_enum, value_name = "LEVEL", default_value_t = Level::Low, help_heading = "Rules")]
+    min_severity: Level,
+    /// Leave out findings below this confidence
+    #[arg(long, value_enum, value_name = "LEVEL", default_value_t = Level::Low, help_heading = "Rules")]
+    min_confidence: Level,
+    /// Turn off rules in every file, such as unpinned-library
+    #[arg(long, value_name = "RULE", value_delimiter = ',', value_parser = rule_id, help_heading = "Rules")]
+    ignore: Vec<&'static str>,
+
+    /// Skip the files that match this glob, such as 'vars/*.groovy'
+    #[arg(long, value_name = "PATTERN", help_heading = "Files")]
+    skip: Vec<String>,
+    /// Check only the files that match one of these globs
+    #[arg(long, value_name = "PATTERN", help_heading = "Files")]
+    include: Vec<String>,
+
+    /// Output format. sarif exits with 0 when there are findings, so that the
+    /// report can be uploaded
+    #[arg(long, value_enum, default_value_t = Format::Text)]
+    format: Format,
+    /// Say what is checked, skipped and found
+    #[arg(short, long)]
+    verbose: bool,
+}
+
+fn rule_id(name: &str) -> Result<&'static str, String> {
+    rules::rule_id(name.trim()).ok_or_else(|| {
+        let ids: Vec<&str> = rules::RULES.iter().map(|r| r.id).collect();
+        format!("unknown rule; the rules are {}", ids.join(", "))
+    })
+}
+
+fn level(l: Level) -> (rules::Severity, Confidence) {
+    match l {
+        Level::Low => (rules::Severity::Low, Confidence::Low),
+        Level::Medium => (rules::Severity::Medium, Confidence::Medium),
+        Level::High => (rules::Severity::High, Confidence::High),
+    }
 }
 
 #[derive(Debug)]
@@ -95,194 +169,105 @@ pub struct Options {
     pub verbose: bool,
 }
 
-/// A usage error: the message, printed with the name of the command.
-fn usage_error(message: impl AsRef<str>) -> ExitCode {
-    eprintln!("Usage: {NAME} [check] [OPTIONS] <PATH>...");
-    eprintln!("{NAME}: error: {}", message.as_ref());
-    eprintln!("Try '{NAME} --help' for more information.");
-    ExitCode::from(2)
-}
-
 /// The options, read from the command line and the environment: an `env`
 /// lookup. Err is the exit code after --help, --version or a usage error.
 pub fn parse_args(args: impl IntoIterator<Item = OsString>, env: impl Fn(&str) -> Option<String>) -> Result<Options, ExitCode> {
     let mut args: Vec<OsString> = args.into_iter().collect();
+    // `jenkins-lint check PATH` is `jenkins-lint PATH`, as in `ruff check`.
     if args.first().and_then(|a| a.to_str()) == Some("check") {
         args.remove(0);
     }
-    let mut o = Options {
-        paths: Vec::new(),
-        remote: None,
-        username: None,
-        token: None,
-        jobs: DEFAULT_JOBS,
-        filter: Filter::default(),
-        fix: false,
-        unsafe_fixes: false,
-        show_fixes: false,
-        diff: false,
-        format: Format::Text,
-        skip: Vec::new(),
-        include: Vec::new(),
-        verbose: false,
-    };
-    let mut remote_flag: Option<String> = None;
-    let mut i = 0;
-    while i < args.len() {
-        let arg = args[i].to_string_lossy().into_owned();
-        i += 1;
+    // pre-commit puts the file names right after a hook's args, so --remote
+    // only takes the next argument as its URL when it is one:
+    // `--remote Jenkinsfile` checks Jenkinsfile with JENKINS_URL.
+    let mut argv = vec![OsString::from(NAME)];
+    let mut rest = args.into_iter().peekable();
+    while let Some(arg) = rest.next() {
         if arg == "--" {
-            o.paths.extend(args[i..].iter().map(PathBuf::from));
+            argv.push(arg);
+            argv.extend(rest.by_ref());
             break;
         }
-        if !arg.starts_with('-') || arg == "-" {
-            o.paths.push(PathBuf::from(&args[i - 1]));
+        if arg == "--remote" {
+            match rest.peek().and_then(|a| a.to_str()) {
+                Some(next) if next.contains("://") => {
+                    let url = rest.next().unwrap_or_default();
+                    let mut joined = OsString::from("--remote=");
+                    joined.push(url);
+                    argv.push(joined);
+                }
+                _ => argv.push(OsString::from("--remote=")),
+            }
             continue;
         }
-        let (flag, inline) = match arg.split_once('=') {
-            Some((f, v)) if f.starts_with("--") => (f.to_string(), Some(v.to_string())),
-            _ if arg.starts_with("-j") && arg.len() > 2 && !arg.starts_with("--") => ("-j".to_string(), Some(arg[2..].to_string())),
-            _ => (arg.clone(), None),
-        };
-        // The value of an option: after `=`, or the next argument.
-        let mut value = |what: &str| -> Result<String, ExitCode> {
-            if let Some(v) = inline.clone() {
-                return Ok(v);
-            }
-            if i < args.len() {
-                i += 1;
-                return Ok(args[i - 1].to_string_lossy().into_owned());
-            }
-            Err(usage_error(format!("argument {what}: expected one argument")))
-        };
-        let choice = |flag: &str, v: &str, choices: &[&str]| -> Result<(), ExitCode> {
-            if choices.contains(&v) {
-                Ok(())
+        argv.push(arg);
+    }
+    let fail = |e: clap::Error| {
+        let _ = e.print();
+        ExitCode::from(e.exit_code() as u8)
+    };
+    let a = Args::try_parse_from(argv).map_err(fail)?;
+    let error = |kind: ErrorKind, message: &str| fail(Args::command().error(kind, message));
+    if a.diff && a.format != Format::Text {
+        return Err(error(
+            ErrorKind::ArgumentConflict,
+            "--diff cannot be used with --format json or sarif",
+        ));
+    }
+    let remote = match a.remote {
+        None => None,
+        Some(url) => {
+            let url = if url.is_empty() {
+                env("JENKINS_URL").unwrap_or_default()
             } else {
-                let list: Vec<String> = choices.iter().map(|c| format!("'{c}'")).collect();
-                Err(usage_error(format!(
-                    "argument {flag}: invalid choice: '{v}' (choose from {})",
-                    list.join(", ")
-                )))
+                url
+            };
+            if url.is_empty() {
+                return Err(error(
+                    ErrorKind::MissingRequiredArgument,
+                    "--remote needs a URL: pass --remote=URL or set JENKINS_URL",
+                ));
             }
-        };
-        match flag.as_str() {
-            "-h" | "--help" => {
-                println!("{HELP}");
-                return Err(ExitCode::SUCCESS);
+            if a.format != Format::Text {
+                return Err(error(
+                    ErrorKind::ArgumentConflict,
+                    "--format json or sarif cannot be used with --remote",
+                ));
             }
-            "-V" | "--version" => {
-                println!("{NAME} {}", env!("CARGO_PKG_VERSION"));
-                return Err(ExitCode::SUCCESS);
-            }
-            "-v" | "--verbose" => o.verbose = true,
-            "--remote" => {
-                // pre-commit puts the file names right after the hook's args,
-                // so --remote only takes the next argument as its URL when it
-                // is one: `--remote Jenkinsfile` checks Jenkinsfile.
-                let v = match inline.clone() {
-                    Some(v) => v,
-                    None => match args.get(i).map(|a| a.to_string_lossy().into_owned()) {
-                        Some(next) if next.contains("://") => {
-                            i += 1;
-                            next
-                        }
-                        _ => String::new(),
-                    },
-                };
-                remote_flag = Some(v);
-            }
-            "--username" => o.username = Some(value("--username")?),
-            "--token" => o.token = Some(value("--token")?),
-            "-j" | "--jobs" => {
-                let v = value("-j/--jobs")?;
-                o.jobs = match v.parse::<i64>() {
-                    Ok(n) if n >= 1 => n as usize,
-                    Ok(_) => return Err(usage_error("argument -j/--jobs: must be at least 1")),
-                    Err(_) => return Err(usage_error(format!("argument -j/--jobs: invalid int value: '{v}'"))),
-                };
-            }
-            "--persona" => {
-                let v = value("--persona")?;
-                choice("--persona", &v, &["regular", "pedantic", "auditor"])?;
-                o.filter.persona = Persona::parse(&v).unwrap_or(Persona::Regular);
-            }
-            "--min-severity" => {
-                let v = value("--min-severity")?;
-                choice("--min-severity", &v, &["low", "medium", "high"])?;
-                o.filter.min_severity = audit::Severity::parse(&v).unwrap_or(audit::Severity::Low);
-            }
-            "--min-confidence" => {
-                let v = value("--min-confidence")?;
-                choice("--min-confidence", &v, &["low", "medium", "high"])?;
-                o.filter.min_confidence = Confidence::parse(&v).unwrap_or(Confidence::Low);
-            }
-            "--ignore" => {
-                let rules = value("--ignore")?;
-                for name in rules.split(',').map(str::trim) {
-                    let Some(id) = audit::rule_id(name) else {
-                        let ids: Vec<&str> = audit::RULES.iter().map(|r| r.id).collect();
-                        return Err(usage_error(format!(
-                            "argument --ignore: unknown rule {name:?}; the rules are {}",
-                            ids.join(", ")
-                        )));
-                    };
-                    if !o.filter.ignore.contains(&id) {
-                        o.filter.ignore.push(id);
-                    }
-                }
-            }
-            // Named and working as in ruff check.
-            "--fix" | "--no-fix" | "--unsafe-fixes" | "--no-unsafe-fixes" | "--show-fixes" | "--no-show-fixes" if inline.is_some() => {
-                return Err(usage_error(format!("argument {flag}: ignored explicit argument")))
-            }
-            "--fix" => o.fix = true,
-            "--no-fix" => o.fix = false,
-            "--unsafe-fixes" => o.unsafe_fixes = true,
-            "--no-unsafe-fixes" => o.unsafe_fixes = false,
-            "--show-fixes" => o.show_fixes = true,
-            "--no-show-fixes" => o.show_fixes = false,
-            "--diff" => o.diff = true,
-            "--format" => {
-                let v = value("--format")?;
-                choice("--format", &v, &["text", "json", "sarif"])?;
-                o.format = match v.as_str() {
-                    "json" => Format::Json,
-                    "sarif" => Format::Sarif,
-                    _ => Format::Text,
-                };
-            }
-            "--skip" => o.skip.push(value("--skip")?),
-            "--include" => o.include.push(value("--include")?),
-            _ => return Err(usage_error(format!("unrecognized arguments: {arg}"))),
+            Some(url)
         }
-    }
-    if o.paths.is_empty() {
-        return Err(usage_error("the following arguments are required: PATH"));
-    }
-    if o.diff && o.format != Format::Text {
-        return Err(usage_error("argument --diff: not allowed with argument --format"));
-    }
-    if let Some(v) = remote_flag {
-        let url = if v.is_empty() { env("JENKINS_URL").unwrap_or_default() } else { v };
-        if url.is_empty() {
-            return Err(usage_error("argument --remote: no URL given and JENKINS_URL is not set"));
-        }
-        if o.format != Format::Text || o.diff {
-            let flag = if o.diff { "--diff" } else { "--format" };
-            return Err(usage_error(format!("argument {flag}: not allowed with argument --remote")));
-        }
-        o.remote = Some(url);
-        o.username = o.username.or_else(|| env("JENKINS_USER"));
-        o.token = o.token.or_else(|| env("JENKINS_TOKEN"));
-    } else {
-        for (flag, set) in [("--username", o.username.is_some()), ("--token", o.token.is_some())] {
-            if set {
-                return Err(usage_error(format!("argument {flag}: requires --remote")));
-            }
-        }
-    }
-    Ok(o)
+    };
+    let (username, token) = match remote {
+        Some(_) => (a.username.or_else(|| env("JENKINS_USER")), a.token.or_else(|| env("JENKINS_TOKEN"))),
+        None => (None, None),
+    };
+    let mut ignore = a.ignore;
+    ignore.dedup();
+    Ok(Options {
+        paths: a.paths,
+        remote,
+        username,
+        token,
+        jobs: a.jobs as usize,
+        filter: Filter {
+            persona: match a.persona {
+                PersonaArg::Regular => Persona::Regular,
+                PersonaArg::Pedantic => Persona::Pedantic,
+                PersonaArg::Auditor => Persona::Auditor,
+            },
+            min_severity: level(a.min_severity).0,
+            min_confidence: level(a.min_confidence).1,
+            ignore,
+        },
+        fix: a.fix,
+        unsafe_fixes: a.unsafe_fixes,
+        show_fixes: a.show_fixes,
+        diff: a.diff,
+        format: a.format,
+        skip: a.skip,
+        include: a.include,
+        verbose: a.verbose,
+    })
 }
 
 impl Options {
@@ -343,7 +328,7 @@ fn check_file(path: &Path, o: &Options) -> Checked {
             }
         }
     };
-    let (fixed, findings, text, unreadable) = match fix_source(&src, &o.filter, mode) {
+    let (fixed, findings, text, unreadable) = match fix(&src, &o.filter, mode) {
         Ok(f) if o.fix && f.src != src => match std::fs::write(path, &f.src) {
             Ok(()) => (f.fixed, f.remaining, f.src, None),
             Err(e) => (Vec::new(), f.findings, src, Some(e.to_string())),
@@ -418,12 +403,12 @@ pub fn run(o: Options) -> ExitCode {
             let _ = out.flush(); // keep the output in file order when piped
             eprint!("{errors}");
         }
-        let _ = write!(out, "{}", audit_text(&name, &c.findings, mode));
+        let _ = write!(out, "{}", findings_text(&name, &c.findings, mode));
         for f in &c.findings {
             counts[match f.severity {
-                audit::Severity::High => 0,
-                audit::Severity::Medium => 1,
-                audit::Severity::Low => 2,
+                rules::Severity::High => 0,
+                rules::Severity::Medium => 1,
+                rules::Severity::Low => 2,
             }] += 1;
             if let Some(fix) = &f.fix {
                 fixable[(fix.disposition == Disposition::Unsafe) as usize] += 1;
@@ -596,9 +581,9 @@ fn write_report(files: &[&PathBuf], o: &Options) -> ExitCode {
                     continue;
                 }
             };
-            match fix_source(&src, &o.filter, mode) {
+            match fix(&src, &o.filter, mode) {
                 Ok(f) => {
-                    let diff = audit::fix::diff(&name, &src, &f.src);
+                    let diff = rules::fix::diff(&name, &src, &f.src);
                     changed |= !diff.is_empty();
                     print!("{diff}");
                 }
@@ -613,7 +598,7 @@ fn write_report(files: &[&PathBuf], o: &Options) -> ExitCode {
         if let Some(e) = &c.unreadable {
             unreadable = true;
             if o.format == Format::Json {
-                items.push(format!("{{\"file\":\"{}\",\"error\":\"{}\"}}", json_escape(&name), json_escape(e)));
+                items.push(serde_json::to_value(UnreadableJson { file: &name, error: e }).unwrap_or_default());
             } else {
                 eprintln!("{name}: {e}");
             }
@@ -621,8 +606,8 @@ fn write_report(files: &[&PathBuf], o: &Options) -> ExitCode {
         }
         flagged |= !c.valid() || !c.findings.is_empty();
         match o.format {
-            Format::Json => items.push(audit_json(&name, &c.report, &c.findings, &c.fixed)),
-            _ => checked.push(audit::sarif::Checked {
+            Format::Json => items.push(serde_json::to_value(file_json(&name, &c.report, &c.findings, &c.fixed)).unwrap_or_default()),
+            _ => checked.push(SarifFile {
                 path: name,
                 findings: c.findings,
                 diagnostics: c.report.diagnostics,
@@ -630,8 +615,8 @@ fn write_report(files: &[&PathBuf], o: &Options) -> ExitCode {
         }
     }
     match o.format {
-        Format::Json => println!("[{}]", items.join(",")),
-        Format::Sarif => println!("{}", audit::sarif::sarif(&checked)),
+        Format::Json => println!("{}", serde_json::Value::Array(items)),
+        Format::Sarif => println!("{}", sarif(&checked)),
         Format::Text => {}
     }
     let failed = if o.diff { changed } else { flagged && o.format != Format::Sarif };

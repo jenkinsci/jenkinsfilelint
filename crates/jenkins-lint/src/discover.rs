@@ -183,9 +183,9 @@ fn is_pipeline_file(path: &Path, in_library: bool) -> bool {
     false
 }
 
-/// A path written without `.` and with `a/..` removed, as Python's
-/// os.path.normpath writes it.
-pub fn normpath(path: &Path) -> PathBuf {
+/// A path without `.` components and with `a/..` removed, so that one file
+/// named two ways is checked once.
+pub fn normalize(path: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     let mut depth = 0usize;
     for c in path.components() {
@@ -241,7 +241,7 @@ pub fn find_files(dir: &Path) -> Vec<PathBuf> {
             .chain(rel.components().filter_map(|c| c.as_os_str().to_str()))
             .any(|p| LIBRARY_DIRS.contains(&p));
         for name in files {
-            let path = normpath(&current.join(&name));
+            let path = normalize(&current.join(&name));
             if is_pipeline_file(&path, in_library) {
                 found.push(path);
             }
@@ -261,7 +261,7 @@ pub fn find_files(dir: &Path) -> Vec<PathBuf> {
 /// another directory, is checked once. Also returns the directories in
 /// which no file was found.
 pub fn expand_paths(paths: &[PathBuf]) -> (Vec<PathBuf>, Vec<PathBuf>) {
-    let mut seen: HashSet<PathBuf> = paths.iter().filter(|p| !p.is_dir()).map(|p| normpath(p)).collect();
+    let mut seen: HashSet<PathBuf> = paths.iter().filter(|p| !p.is_dir()).map(|p| normalize(p)).collect();
     let mut files = Vec::new();
     let mut empty = Vec::new();
     for path in paths {
@@ -367,9 +367,10 @@ fn parts(path: &str) -> Vec<String> {
     out
 }
 
-/// Whether `path` matches `pattern` as Python's PurePath.match does: from
-/// the right, one segment for each segment of the pattern, or the whole
-/// path for an absolute pattern.
+/// Whether `path` matches the glob `pattern`, compared from the right one
+/// path segment at a time: `vars/*.groovy` matches `lib/vars/a.groovy`. An
+/// absolute pattern must match the whole path. `*` and `?` stay within a
+/// segment.
 pub fn path_match(path: &str, pattern: &str) -> bool {
     let path_parts = parts(path);
     let pat_parts = parts(pattern);
@@ -552,7 +553,7 @@ mod tests {
         let given = dir.path().join("Jenkinsfile");
         let (files, empty) = expand_paths(&[dir.path().to_path_buf(), given.clone(), dir.path().join("ci")]);
         // Found once, and the one also given by name only where it is named.
-        assert_eq!(files, [normpath(&dir.path().join("ci/Jenkinsfile")), given]);
+        assert_eq!(files, [normalize(&dir.path().join("ci/Jenkinsfile")), given]);
         assert!(empty.is_empty());
         let none = tempfile::tempdir().unwrap();
         assert_eq!(
@@ -577,10 +578,10 @@ mod tests {
     }
 
     #[test]
-    fn normpaths() {
-        assert_eq!(normpath(Path::new("./a/./b")), PathBuf::from("a/b"));
-        assert_eq!(normpath(Path::new("a/../b")), PathBuf::from("b"));
-        assert_eq!(normpath(Path::new("..")), PathBuf::from(".."));
-        assert_eq!(normpath(Path::new(".")), PathBuf::from("."));
+    fn normalized_paths() {
+        assert_eq!(normalize(Path::new("./a/./b")), PathBuf::from("a/b"));
+        assert_eq!(normalize(Path::new("a/../b")), PathBuf::from("b"));
+        assert_eq!(normalize(Path::new("..")), PathBuf::from(".."));
+        assert_eq!(normalize(Path::new(".")), PathBuf::from("."));
     }
 }

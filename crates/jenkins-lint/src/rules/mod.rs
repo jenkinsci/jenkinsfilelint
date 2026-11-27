@@ -1,4 +1,4 @@
-//! Security audits: ways a pipeline can be attacked or can leak secrets.
+//! The security rules: ways a pipeline can be attacked or can leak secrets.
 //!
 //! Each rule reports findings with a severity (how bad it is if real), a
 //! confidence (how likely it is real) and the persona that sees it:
@@ -9,7 +9,6 @@
 
 mod controller_execution;
 pub mod fix;
-pub mod sarif;
 mod script_injection;
 mod secret_interpolation;
 mod taint;
@@ -150,7 +149,7 @@ impl Filter {
 /// Run every rule on a parsed file and keep the findings the filter shows
 /// and no comment turns off, in file order. `src` is the file's text, which
 /// fixes rewrite.
-pub fn audit(src: &str, stmts: &[Stmt], comments: &[Comment], annotations: &[Annotation], filter: &Filter) -> Vec<Finding> {
+pub fn find(src: &str, stmts: &[Stmt], comments: &[Comment], annotations: &[Annotation], filter: &Filter) -> Vec<Finding> {
     let ignores: Vec<(usize, Vec<&str>)> = comments
         .iter()
         .filter_map(|c| ignored_rules(&c.text).map(|rules| (c.pos.line, rules)))
@@ -179,7 +178,7 @@ pub fn audit(src: &str, stmts: &[Stmt], comments: &[Comment], annotations: &[Ann
 
 /// An annotation and the string literals in its arguments: `@Library('a')`,
 /// `@Library(['a', 'b'])`, `@Library(value = 'a', changelog = false)`. The
-/// parser skips annotations, so the audit reads them from the tokens.
+/// parser skips annotations, so the rules read them from the tokens.
 #[derive(Debug)]
 pub struct Annotation {
     pub name: String,

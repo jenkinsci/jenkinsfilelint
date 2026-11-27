@@ -196,13 +196,13 @@ fn shell_message(u: &Use, kind: Kind, step: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{audit, Filter};
+    use super::super::{find, Filter};
     use crate::lexer::tokenize_with_comments;
     use crate::parser::parse;
 
     fn messages(src: &str, filter: Filter) -> Vec<String> {
         let (tokens, comments) = tokenize_with_comments(src).unwrap();
-        audit(src, &parse(tokens).unwrap(), &comments, &[], &filter)
+        find(src, &parse(tokens).unwrap(), &comments, &[], &filter)
             .into_iter()
             .map(|f| f.message)
             .collect()

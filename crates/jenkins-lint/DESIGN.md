@@ -44,13 +44,16 @@ Both Go and Rust produce small static binaries. Rust won on three points:
 ```
 src/lexer.rs     tokens; all Groovy string forms; newline tracking
 src/parser.rs    recursive-descent parser -> small AST (ast.rs)
-src/validate.rs  declarative structure checks, official message wording
-src/audit/       security rules, findings, ignore comments, fixes, SARIF;
+src/validate.rs  Declarative structure checks, official message wording
+src/rules/       the security rules, findings, ignore comments and fixes;
                  taint.rs follows values from sources to the steps that run them
-src/cli.rs       the command: options, output, exit codes
+src/check.rs     checking one file: lint, rules, fixes
+src/output.rs    text lines and the JSON report
+src/sarif.rs     the SARIF report
 src/discover.rs  the files found in a directory, --include and --skip
 src/remote.rs    --remote: Jenkins's validate endpoint
-src/main.rs      checking one file: lint, audit, fixes; JSON helpers
+src/cli.rs       the command: options (clap), output, exit codes
+src/main.rs      runs the command on a thread with a known stack size
 scripts/corpus_check.py  agreement test against the plugin's own samples
 ```
 

@@ -317,35 +317,41 @@ fn fixes_work_as_in_ruff() {
 fn usage_errors() {
     let dir = tempfile::tempdir().unwrap();
     for (args, message) in [
-        (&[][..], "the following arguments are required: PATH"),
-        (&["--bogus", "J"], "unrecognized arguments: --bogus"),
-        (&["--username", "u", "J"], "argument --username: requires --remote"),
-        (&["--token", "t", "J"], "argument --token: requires --remote"),
-        (&["--remote", "J"], "argument --remote: no URL given and JENKINS_URL is not set"),
+        (&[][..], "the following required arguments were not provided"),
+        (&["--bogus", "J"], "unexpected argument '--bogus' found"),
+        (
+            &["--username", "u", "J"],
+            "the following required arguments were not provided:\n  --remote",
+        ),
+        (
+            &["--token", "t", "J"],
+            "the following required arguments were not provided:\n  --remote",
+        ),
+        (&["--remote", "J"], "--remote needs a URL: pass --remote=URL or set JENKINS_URL"),
         (
             &["--format", "sarif", "--remote", "http://j", "J"],
-            "argument --format: not allowed with argument --remote",
+            "--format json or sarif cannot be used with --remote",
         ),
-        (
-            &["--diff", "--remote", "http://j", "J"],
-            "argument --diff: not allowed with argument --remote",
-        ),
+        (&["--diff", "--remote", "http://j", "J"], "'--diff' cannot be used with '--remote"),
         (
             &["--diff", "--format", "json", "J"],
-            "argument --diff: not allowed with argument --format",
+            "--diff cannot be used with --format json or sarif",
         ),
-        (&["--fix=all", "J"], "argument --fix: ignored explicit argument"),
-        (&["--persona", "everyone", "J"], "argument --persona: invalid choice: 'everyone'"),
+        (&["--fix=all", "J"], "unexpected value 'all' for '--fix' found"),
+        (
+            &["--persona", "everyone", "J"],
+            "invalid value 'everyone' for '--persona <PERSONA>'",
+        ),
         (
             &["--ignore", "no-such-rule", "J"],
-            "argument --ignore: unknown rule \"no-such-rule\"",
+            "invalid value 'no-such-rule' for '--ignore <RULE>': unknown rule",
         ),
-        (&["-j", "0", "J"], "argument -j/--jobs: must be at least 1"),
-        (&["--jobs", "x", "J"], "argument -j/--jobs: invalid int value: 'x'"),
-        (&["--local", "J"], "unrecognized arguments: --local"),
-        (&["--offline", "J"], "unrecognized arguments: --offline"),
-        (&["--audit", "J"], "unrecognized arguments: --audit"),
-        (&["--jenkins-url", "http://j", "J"], "unrecognized arguments: --jenkins-url"),
+        (&["-j", "0", "J"], "invalid value '0' for '--jobs <N>'"),
+        (&["--jobs", "x", "J"], "invalid value 'x' for '--jobs <N>'"),
+        (&["--local", "J"], "unexpected argument '--local' found"),
+        (&["--offline", "J"], "unexpected argument '--offline' found"),
+        (&["--audit", "J"], "unexpected argument '--audit' found"),
+        (&["--jenkins-url", "http://j", "J"], "unexpected argument '--jenkins-url' found"),
     ] {
         let r = run(dir.path(), args);
         assert_eq!(r.code, 2, "{args:?}");
@@ -360,7 +366,7 @@ fn help_and_version() {
     assert_eq!((r.code, r.out.trim()), (0, concat!("jenkins-lint ", env!("CARGO_PKG_VERSION"))));
     let r = run(dir.path(), &["--help"]);
     assert_eq!(r.code, 0);
-    assert!(r.out.contains("Usage: jenkins-lint [check] [OPTIONS] <PATH>..."));
+    assert!(r.out.contains("Usage: jenkins-lint [check] [OPTIONS] <PATH>..."), "{}", r.out);
 }
 
 #[test]
