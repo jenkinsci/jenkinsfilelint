@@ -278,7 +278,7 @@ checksum = "3bd1574e617a9a6c1f8f8181bd7e841e1f20e4277607ef28945765188d6284d4"
 
 [[package]]
 name = "jenkins-lint"
-version = "2.0.0"
+version = "2.1.0"
 dependencies = [
  "annotate-snippets",
  "clap",
