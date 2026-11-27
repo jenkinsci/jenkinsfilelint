@@ -149,6 +149,25 @@ impl Baseline {
             .map(|(k, n)| (k, *n))
             .collect();
         all.extend(self.found.iter().map(|(k, n)| (k, *n)));
+        self.save(all)
+    }
+
+    /// Remove the findings that are gone, and add none. Returns how many it removed.
+    pub fn prune(&self) -> Result<usize, String> {
+        let removed = self.fixed();
+        let kept = self.entries.iter().filter_map(|(k, n)| {
+            let n = if self.checked.contains(&k.0) {
+                (*n).min(self.found.get(k).copied().unwrap_or(0))
+            } else {
+                *n
+            };
+            (n > 0).then_some((k, n))
+        });
+        self.save(kept.collect())?;
+        Ok(removed)
+    }
+
+    fn save(&self, all: BTreeMap<&Key, usize>) -> Result<usize, String> {
         let lines: Vec<String> = all
             .iter()
             .map(|((file, rule, code), count)| serde_json::json!({"file": file, "rule": rule, "code": code, "count": count}).to_string())

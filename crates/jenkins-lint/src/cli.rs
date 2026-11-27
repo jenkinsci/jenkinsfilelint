@@ -146,6 +146,9 @@ struct Args {
     /// Write the findings to the baseline file, so that only new ones fail
     #[arg(long, conflicts_with_all = ["fix", "diff", "no_baseline"], help_heading = "Baseline")]
     write_baseline: bool,
+    /// Remove the fixed findings from the baseline file, and add none
+    #[arg(long, conflicts_with_all = ["fix", "diff", "no_baseline", "write_baseline"], help_heading = "Baseline")]
+    prune_baseline: bool,
     /// Report the findings in the baseline too
     #[arg(long, conflicts_with = "baseline", help_heading = "Baseline")]
     no_baseline: bool,
@@ -198,6 +201,7 @@ pub struct Options {
     /// The baseline file to read, and with --write-baseline to write.
     pub baseline: Option<PathBuf>,
     pub write_baseline: bool,
+    pub prune_baseline: bool,
 }
 
 /// The options, read from the command line and the environment: an `env`
@@ -272,10 +276,10 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>, env: impl Fn(&str) -
         Some(_) => (a.username.or_else(|| env("JENKINS_USER")), a.token.or_else(|| env("JENKINS_TOKEN"))),
         None => (None, None),
     };
-    if a.write_baseline && !a.output_format.is_text() {
+    if (a.write_baseline || a.prune_baseline) && !a.output_format.is_text() {
         return Err(error(
             ErrorKind::ArgumentConflict,
-            "--write-baseline cannot be used with --output-format json, sarif or github",
+            "--write-baseline and --prune-baseline cannot be used with --output-format json, sarif or github",
         ));
     }
     let cwd = std::env::current_dir().unwrap_or_default();
@@ -292,6 +296,9 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>, env: impl Fn(&str) -
         }
         None => baseline::find(&cwd).or_else(|| a.write_baseline.then(|| baseline::default_path(&cwd))),
     };
+    if a.prune_baseline && baseline.as_ref().is_none_or(|p| !p.is_file()) {
+        return Err(error(ErrorKind::ValueValidation, "--prune-baseline needs a baseline file"));
+    }
     let mut ignore = a.ignore;
     ignore.dedup();
     Ok(Options {
@@ -320,6 +327,7 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>, env: impl Fn(&str) -
         verbose: a.verbose,
         baseline,
         write_baseline: a.write_baseline,
+        prune_baseline: a.prune_baseline,
     })
 }
 
@@ -437,7 +445,7 @@ fn split(baseline: &mut Option<Baseline>, path: &Path, c: &mut Checked, write: b
 fn fixed_note(baseline: &Option<Baseline>) -> Option<String> {
     let n = baseline.as_ref().map_or(0, Baseline::fixed);
     let (findings, occur) = if n == 1 { ("finding", "occurs") } else { ("findings", "occur") };
-    (n > 0).then(|| format!("ℹ {n} {findings} in the baseline no longer {occur}: run with --write-baseline to remove them"))
+    (n > 0).then(|| format!("ℹ {n} {findings} in the baseline no longer {occur}: run with --prune-baseline to remove them"))
 }
 
 pub fn run(o: Options) -> ExitCode {
@@ -567,6 +575,16 @@ pub fn run(o: Options) -> ExitCode {
             match b.write() {
                 Ok(n) => {
                     let _ = writeln!(out, "Wrote {n} finding{} to {}", plural(n), b.path.display());
+                }
+                Err(e) => {
+                    eprintln!("Error writing the baseline {e}");
+                    passed = false;
+                }
+            }
+        } else if o.prune_baseline {
+            match b.prune() {
+                Ok(n) => {
+                    let _ = writeln!(out, "Removed {n} fixed finding{} from {}", plural(n), b.path.display());
                 }
                 Err(e) => {
                     eprintln!("Error writing the baseline {e}");

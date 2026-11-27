@@ -108,4 +108,5 @@ git add .jenkins-lint-baseline.json
 ```
 
 The hook reads it with no change to `.pre-commit-config.yaml`: the findings in
-it pass, and a commit that adds a new one fails.
+it pass, and a commit that adds a new one fails. After fixing some, run
+`jenkins-lint --prune-baseline .` to remove them from the file.

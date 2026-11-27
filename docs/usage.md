@@ -150,8 +150,10 @@ $ jenkins-lint .
   `${env.CHANGE_BRANCH}`, so it still matches when code moves. A new finding
   in a file of the baseline fails, unless it is the same code again.
 - Errors are never in the baseline: a file Jenkins would reject always fails.
-- When findings are fixed, jenkins-lint says so; run `--write-baseline` again
-  to remove them. It keeps the entries of the files it did not check.
+- When findings are fixed, jenkins-lint says so. `--prune-baseline` removes
+  them and adds nothing, so new findings still fail: use it from then on, and
+  `--write-baseline` only to start. Both keep the entries of the files they
+  did not check.
 - jenkins-lint reads `.jenkins-lint-baseline.json` from the current
   directory or a parent, up to the root of the Git repository.
   `--baseline FILE` reads another file, and `--no-baseline` shows every finding.

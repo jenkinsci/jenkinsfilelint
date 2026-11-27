@@ -673,7 +673,7 @@ fn a_fixed_finding_gives_a_hint() {
     assert_eq!(
         r.out,
         "No new findings, 1 in the baseline\n\
-         ℹ 1 finding in the baseline no longer occurs: run with --write-baseline to remove them\n"
+         ℹ 1 finding in the baseline no longer occurs: run with --prune-baseline to remove them\n"
     );
 }
 
@@ -720,4 +720,26 @@ fn a_missing_baseline_file_is_an_error() {
     let r = run(dir.path(), &["--baseline", "nope.json", "Jenkinsfile"]);
     assert_eq!(r.code, 2);
     assert!(r.err.contains("baseline file not found: nope.json"), "{}", r.err);
+}
+
+#[test]
+fn prune_removes_fixed_findings_and_adds_none() {
+    let dir = baselined();
+    // CHANGE_TITLE fixed, CHANGE_AUTHOR_DISPLAY_NAME added.
+    write(
+        dir.path(),
+        "Jenkinsfile",
+        &TWO.replace("${env.CHANGE_TITLE}", "${env.CHANGE_AUTHOR_DISPLAY_NAME}"),
+    );
+    let r = run(dir.path(), &["--prune-baseline", "--output-format", "concise", "."]);
+    assert_eq!(r.code, 1);
+    assert!(r.out.contains("CHANGE_AUTHOR_DISPLAY_NAME"), "{}", r.out);
+    assert!(r.out.contains("Removed 1 fixed finding from "), "{}", r.out);
+    let text = std::fs::read_to_string(dir.path().join(".jenkins-lint-baseline.json")).unwrap();
+    assert!(
+        text.contains("CHANGE_BRANCH") && !text.contains("CHANGE_TITLE") && !text.contains("CHANGE_AUTHOR"),
+        "{text}"
+    );
+    let r = run(dir.path(), &["--output-format", "concise", "."]);
+    assert_eq!(r.code, 1, "the new finding still fails: {}", r.out);
 }
