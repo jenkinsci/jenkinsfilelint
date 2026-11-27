@@ -12,6 +12,12 @@ name: Wheels
 # runs build and test without publishing. A manual run with
 # "publish: testpypi" goes through the same jobs against TestPyPI, as a dry
 # run of a release.
+#
+# A release also gets the binaries, taken out of the tested wheels, as
+# archives on the GitHub release, and the Docker image
+# ghcr.io/jenkinsci/jenkins-lint with the Linux musl binaries. Pull
+# requests build both and test the image as a Jenkins docker agent runs it,
+# without uploading.
 
 on:
   release:
@@ -21,6 +27,7 @@ on:
     paths:
       - 'crates/**'
       - 'pyproject.toml'
+      - 'Dockerfile'
       - '.github/workflows/release.yml'
   workflow_dispatch:
     inputs:
@@ -198,6 +205,98 @@ jobs:
         -v "$PWD:/work" -w /work -e PIP_ROOT_USER_ACTION=ignore
         -e PIP_NO_INDEX=1 "$IMAGE"
         sh smoke-test.sh
+
+  binaries:
+    # The binaries of the tested wheels, as archives with a checksum each,
+    # and the Linux musl ones laid out for the Dockerfile.
+    name: Binaries
+    needs: [test]
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+      with:
+        pattern: wheel-*
+        path: wheels
+    - name: Take the binaries out of the wheels
+      run: python3 crates/jenkins-lint/scripts/release_binaries.py --wheels wheels --out binaries --docker-context dist
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+      with:
+        name: binaries
+        path: binaries/
+        if-no-files-found: error
+    - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+      with:
+        name: docker-context
+        path: dist/
+        if-no-files-found: error
+
+  docker:
+    # Build the image for each platform, check it as a Jenkins docker agent
+    # uses it (`docker run -t -d --entrypoint cat`, then `sh` steps in it),
+    # and on a release push it with the tags 2.1.0, 2.1, 2 and latest.
+    name: Docker image
+    needs: [version, binaries]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write  # push to ghcr.io, only on a release
+    env:
+      IMAGE: ghcr.io/jenkinsci/jenkins-lint
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+      with:
+        name: docker-context
+        path: dist
+    - name: Set up a builder for several platforms
+      run: docker buildx create --use
+    - name: Build and check the image
+      run: |
+        version=$(sed -n 's/^version = "\(.*\)"/\1/p' crates/jenkins-lint/Cargo.toml | head -1)
+        echo "VERSION=$version" >> "$GITHUB_ENV"
+        docker buildx build --load --platform linux/amd64 --build-arg "VERSION=$version" -t jenkins-lint:test .
+        docker run --rm jenkins-lint:test jenkins-lint --version | grep -Fx "jenkins-lint $version"
+        # As a Jenkins docker agent: kept running by cat, steps run with sh
+        # in the workspace, as the agent's user.
+        id=$(docker run -t -d --user 1000:1000 -v "$PWD/tests:/ws" -w /ws --entrypoint cat jenkins-lint:test)
+        docker exec "$id" sh -c 'jenkins-lint --verbose Jenkinsfile && ! jenkins-lint Jenkinsfile.fail'
+        docker exec "$id" test -s /etc/ssl/certs/ca-certificates.crt
+        docker stop -t 1 "$id"
+    - name: Push the image
+      if: github.event_name == 'release'
+      env:
+        TOKEN: ${{ github.token }}
+        ACTOR: ${{ github.actor }}
+      run: |
+        echo "$TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+        major=${VERSION%%.*}
+        minor=${VERSION%.*}
+        docker buildx build --push --platform linux/amd64,linux/arm64 --build-arg "VERSION=$VERSION" \
+          -t "$IMAGE:$VERSION" -t "$IMAGE:$minor" -t "$IMAGE:$major" -t "$IMAGE:latest" .
+        docker buildx imagetools inspect "$IMAGE:$VERSION"
+
+  release-assets:
+    name: Upload the binaries to the release
+    needs: [version, binaries]
+    if: github.event_name == 'release'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # upload release assets
+    steps:
+    - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
+      with:
+        name: binaries
+        path: binaries
+    - name: Upload
+      env:
+        GH_TOKEN: ${{ github.token }}
+        TAG: ${{ github.event.release.tag_name }}
+      run: gh release upload "$TAG" binaries/* --clobber --repo "$GITHUB_REPOSITORY"
 
   # The publish job serves both a release (PyPI) and a dry run (TestPyPI).
   publish:

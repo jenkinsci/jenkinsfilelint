@@ -26,6 +26,10 @@ jenkins-lint Jenkinsfile  # syntax, Declarative structure and security
 jenkins-lint .            # every Jenkinsfile and shared library file here
 ```
 
+Without Python, download the [binary](https://jenkinsci.github.io/jenkins-lint/install/#binary)
+of a release, or use the [Docker image](https://jenkinsci.github.io/jenkins-lint/install/#docker)
+`ghcr.io/jenkinsci/jenkins-lint`.
+
 That works as is: files are checked offline, and `--remote` also checks them
 with your own Jenkins. Then add the pre-commit hook (see [below](#pre-commit-hook)) or keep
 using the [CLI](https://jenkinsci.github.io/jenkins-lint/usage/#cli).

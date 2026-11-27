@@ -22,7 +22,9 @@ updates:
         patterns:
           - "*"
   - package-ecosystem: docker
-    directory: /tests/jenkins-server/
+    directories:
+      - /
+      - /tests/jenkins-server/
     schedule:
       interval: "monthly"
     groups:
