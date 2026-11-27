@@ -32,6 +32,10 @@ curl -fsSL https://github.com/jenkinsci/jenkins-lint/releases/latest/download/je
 The glibc builds (`*-unknown-linux-gnu`) are there too. To pin a version,
 replace `latest/download` with `download/v2.1.0`.
 
+Each file has a build provenance attestation, which shows it was built by
+this repository's release workflow:
+`gh attestation verify jenkins-lint-x86_64-unknown-linux-musl.tar.gz --repo jenkinsci/jenkins-lint`.
+
 ## Docker
 
 The image `ghcr.io/jenkinsci/jenkins-lint` has the static binary on Alpine,

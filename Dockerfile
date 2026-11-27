@@ -8,9 +8,9 @@
 # There is no ENTRYPOINT, so that those CI systems can run their own
 # command: `docker run --rm -v "$PWD:/src" IMAGE jenkins-lint .`
 #
-# The binaries are not built here: release.yml takes them out of the
-# wheels it has tested, into dist/<platform>/jenkins-lint, with
-# crates/jenkins-lint/scripts/release_binaries.py --docker-context dist.
+# The binaries are not built here: the docker job of release.yml unpacks
+# the musl archives of the wheels job, the binaries of the tested wheels,
+# into dist/<platform>/jenkins-lint.
 FROM alpine:3.24@sha256:f59abe656b692d901e184be3445e084786602108599d2a51d229c0f5a48c71bf
 
 ARG TARGETPLATFORM
