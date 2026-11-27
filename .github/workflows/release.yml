@@ -117,7 +117,8 @@ jobs:
           file="jenkins-lint-$TARGET.tar.gz"
           tar -czf "$file" -C archive jenkins-lint LICENSE
         fi
-        shasum -a 256 "$file" > "$file.sha256"
+        sum=$(sha256sum "$file" 2>/dev/null || shasum -a 256 "$file")
+        echo "${sum%% *}  $file" > "$file.sha256"
     - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
       with:
         name: binary-${{ matrix.target }}
