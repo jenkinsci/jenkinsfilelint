@@ -2,7 +2,7 @@
 """A real Jenkins in Docker, for development only.
 
 The Docker integration tests and corpus/compare.py check against Jenkins's
-own validator. This builds the image in docker/ and runs it on localhost.
+own validator. This builds the image in tests/jenkins-server/ and runs it on localhost.
 jenkins-lint itself does not use Docker.
 
 Usage:
@@ -21,7 +21,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 
-DOCKER_DIR = Path(__file__).resolve().parent.parent / "docker"
+DOCKER_DIR = Path(__file__).resolve().parent / "jenkins-server"
 IMAGE = "jenkins-lint-test-jenkins"
 NAME = "jenkins-lint-test-jenkins"
 PORT = int(os.environ.get("JENKINS_LINT_TEST_PORT", "18080"))

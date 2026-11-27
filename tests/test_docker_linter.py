@@ -1,6 +1,6 @@
 """End to end: `jenkins-lint --remote` against a real Jenkins in Docker.
 
-Builds docker/ and starts it (tests/jenkins_server.py), then checks files
+Builds tests/jenkins-server/ and starts it (tests/jenkins_server.py), then checks files
 with the jenkins-lint binary. Not run by default: it needs Docker and a few
 minutes for the first build and boot.
 
@@ -44,7 +44,7 @@ def binary() -> str:
 
 @pytest.fixture(scope="module")
 def jenkins_url():
-    """Build docker/, start Jenkins once for the module, then remove it."""
+    """Build tests/jenkins-server/, start Jenkins once for the module, then remove it."""
     with jenkins_server.running() as url:
         yield url
 
@@ -106,7 +106,7 @@ def test_jenkins_knows_what_the_engine_cannot(jenkins_url, tmp_path):
 def test_validate_endpoint_works_without_crumb(jenkins_url):
     """The endpoint answers a POST without a crumb.
 
-    docker/jenkins.yaml enables the crumb issuer, but the container runs
+    tests/jenkins-server/jenkins.yaml enables the crumb issuer, but the container runs
     unsecured. If this fails, CSRF protection blocks anonymous requests,
     which breaks the other tests here and corpus/compare.py.
     """

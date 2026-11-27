@@ -31,14 +31,14 @@ cargo test                         # unit tests, and tests/cli.rs end to end
 python3 scripts/corpus_check.py    # the official validator's test files
 ```
 
-`cargo test` also checks every case in `tests/jenkins/` against what
+`cargo test` also checks every case in `crates/jenkins-lint/tests/jenkins/` against what
 Jenkins's own validator said about it. `tests/` at the root holds the
 Python tests of the release scripts, and the Docker integration tests, which
-check `--remote` against a real Jenkins built from `docker/`:
+check `--remote` against a real Jenkins built from `tests/jenkins-server/`:
 
 ```bash
 pytest tests/ -m "not docker"
-pytest tests/ -m docker            # needs Docker; builds and starts docker/
+pytest tests/ -m docker            # needs Docker; builds and starts tests/jenkins-server/
 ```
 
 A change to the parser, the validator or an audit rule should also be checked

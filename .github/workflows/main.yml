@@ -80,7 +80,7 @@ jobs:
           python-version: "3.x"
 
       - name: Run Docker integration tests
-        # Builds docker/ and checks against that Jenkins (tests/jenkins_server.py).
+        # Builds tests/jenkins-server/ and checks against that Jenkins (tests/jenkins_server.py).
         run: |
           python -m pip install pytest
           pytest tests/test_docker_linter.py -v -m docker
