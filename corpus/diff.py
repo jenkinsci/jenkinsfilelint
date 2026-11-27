@@ -40,8 +40,8 @@ from typing import NamedTuple
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parent
-CRATE = "crates/jenkinsfilelint"
-ENGINE = "jenkinsfilelint-engine"
+CRATE = "crates/jenkins-lint"
+ENGINE = "jenkins-lint"
 sys.path[:0] = [str(HERE), str(REPO)]
 
 from compare import ask_jenkins, category, normalize  # noqa: E402

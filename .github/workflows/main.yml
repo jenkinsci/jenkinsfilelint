@@ -5,6 +5,10 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -12,67 +16,71 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+    defaults:
+      run:
+        shell: bash
 
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       with:
-        fetch-depth: 0  # Required for setuptools-scm
         persist-credentials: false
 
-    - name: Set up Python ${{ matrix.python-version }}
+    - name: Set up Rust
+      run: |
+        rustup toolchain install stable --profile minimal --component clippy,rustfmt
+        rustup default stable
+
+    - name: Check formatting
+      working-directory: crates/jenkins-lint
+      run: cargo fmt --check
+
+    - name: Clippy
+      working-directory: crates/jenkins-lint
+      run: cargo clippy --all-targets -- -D warnings
+
+    - name: Tests
+      # Unit tests, and tests/cli.rs, which runs the jenkins-lint binary.
+      working-directory: crates/jenkins-lint
+      run: cargo test
+
+    - name: Compare with the official validator's test files
+      if: matrix.os == 'ubuntu-latest'
+      working-directory: crates/jenkins-lint
+      run: |
+        cargo build --release
+        python3 scripts/corpus_check.py
+
+    - name: Set up Python
       uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
       with:
-        python-version: ${{ matrix.python-version }}
+        python-version: "3.x"
 
-    - name: Install dependencies
-      # The offline engine is built from crates/ with the runner's Rust, so
-      # the tests run against this commit's engine, not the one on PyPI.
+    - name: Python tests and pre-commit hooks
       run: |
-        python -m pip install --upgrade pip
-        pip install ./crates/jenkinsfilelint
-        pip install -e ".[dev]"
-
-    - name: Run pre-commit hooks
-      run: |
+        python -m pip install --upgrade pip pytest pre-commit
+        pytest tests/ -m "not docker"
         pre-commit run --all-files
-
-    - name: Test CLI installation
-      run: |
-        jenkins-lint --help
-        jenkinsfilelint-engine --version
-
-    - name: Run unit tests
-      run: |
-        pytest tests/ -v -m "not docker" --cov=jenkins_lint --cov-report=term-missing --cov-report=xml
-      shell: bash
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5  # v7.1.1
-      with:
-        token: ${{ secrets.CODECOV_TOKEN }}
-        files: ./coverage.xml
 
   integration-docker:
     runs-on: ubuntu-latest
-    # These tests start a real Jenkins container (Docker-in-Docker),
-    # so they only run on Linux where GitHub Actions has Docker.
+    # These tests start a real Jenkins container, so they only run on Linux
+    # where GitHub Actions has Docker.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Set up Python 3.13
+      - name: Build jenkins-lint
+        working-directory: crates/jenkins-lint
+        run: cargo build
+
+      - name: Set up Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
         with:
-          python-version: "3.13"
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install ./crates/jenkinsfilelint
-          pip install -e ".[dev]"
+          python-version: "3.x"
 
       - name: Run Docker integration tests
-        # Builds docker/ and checks against that Jenkins (tests/jenkins_server.py).
+        # Builds tests/jenkins-server/ and checks against that Jenkins (tests/jenkins_server.py).
         run: |
+          python -m pip install pytest
           pytest tests/test_docker_linter.py -v -m docker

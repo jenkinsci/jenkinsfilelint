@@ -4,15 +4,16 @@ Contributions are welcome! Here's how to get started.
 
 ## Setup
 
-```bash
-pip install ./crates/jenkinsfilelint   # the offline engine; needs a Rust toolchain
-pip install -e ".[dev]"
-pre-commit install
-```
+jenkins-lint is written in Rust, in `crates/jenkins-lint`. You need a
+[Rust toolchain](https://rustup.rs), and Python for pre-commit and a few
+scripts.
 
-The first line builds `jenkinsfilelint-engine` from this checkout, so the tests
-run against the engine you are working on. To try another engine binary
-without installing it, set `JENKINS_LINT_ENGINE` to its path.
+```bash
+cd crates/jenkins-lint
+cargo build
+cargo run -- path/to/Jenkinsfile
+pip install pre-commit && pre-commit install
+```
 
 Run pre-commit before submitting:
 
@@ -23,12 +24,22 @@ pre-commit run --all-files
 ## Testing
 
 ```bash
-pytest tests/ -v --cov=jenkins_lint
+cd crates/jenkins-lint
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo test                         # unit tests, and tests/cli.rs end to end
+python3 scripts/corpus_check.py    # the official validator's test files
 ```
 
-`tests/test_offline.py` also runs `jenkins-lint` end to end on the
-cases in `crates/jenkinsfilelint/tests/jenkins/`. For the engine itself, see
-[crates/jenkinsfilelint/README.md](crates/jenkinsfilelint/README.md#development).
+`cargo test` also checks every case in `crates/jenkins-lint/tests/jenkins/` against what
+Jenkins's own validator said about it. `tests/` at the root holds the
+Python tests of the release scripts, and the Docker integration tests, which
+check `--remote` against a real Jenkins built from `tests/jenkins-server/`:
+
+```bash
+pytest tests/ -m "not docker"
+pytest tests/ -m docker            # needs Docker; builds and starts tests/jenkins-server/
+```
 
 A change to the parser, the validator or an audit rule should also be checked
 on public Jenkinsfiles. `corpus/diff.py` compares the engine with the one on
@@ -36,27 +47,24 @@ on public Jenkinsfiles. `corpus/diff.py` compares the engine with the one on
 right. [corpus/README.md](corpus/README.md#checking-a-change) shows how.
 Paste its summary into the pull request.
 
-## The offline engine and releases
+## Releases
 
-`crates/jenkinsfilelint` is published to PyPI as `jenkinsfilelint-engine`, a
-set of prebuilt wheels. `pyproject.toml` pins it to the exact version in
-`crates/jenkinsfilelint/Cargo.toml`, and a test checks that the two agree.
-When a change touches the engine, bump the version in both places in the
-same PR. Otherwise the next release keeps the engine already on PyPI. One
-bump between two releases is enough.
+`crates/jenkins-lint` is published to PyPI as `jenkins-lint`: one wheel per
+platform with the binary, and an sdist. The root `pyproject.toml` is only
+for pre-commit, which installs a hook's repository from source. It has the
+same version as `crates/jenkins-lint/Cargo.toml` and pins `jenkins-lint` to
+it, so that a hook installs the wheel of its tag.
 
-`crates/jenkinsfilelint/scripts/check_engine_version.py` checks this: it
-fails when the files built into the engine (`src/`, `python/`, `Cargo.toml`,
-`Cargo.lock`, `pyproject.toml` of the crate) differ from the last release tag
-and the version does not. The release workflow runs it on pull requests that
-touch `crates/`, and before a release uploads anything.
+To release, bump the version in `Cargo.toml` and in both places in the root
+`pyproject.toml`, then publish a GitHub release tagged `v<version>`.
+`crates/jenkins-lint/scripts/check_version.py` checks that these agree, and
+the release workflow runs it first.
 
-Publishing a GitHub release runs `.github/workflows/release.yml`. It builds
-the engine wheels and the `jenkins-lint` package, installs them on each
-platform, then uploads `jenkinsfilelint-engine` (skipping files already on
-PyPI) and only then `jenkins-lint`, and finally installs both from PyPI on
-Linux, macOS and Windows. Pull requests that touch `crates/` or
-`pyproject.toml` run the same workflow without uploading.
+Publishing the release runs `.github/workflows/release.yml`. It builds the
+wheels and the sdist, installs each wheel on its platform, uploads them, and
+finally installs `jenkins-lint` from PyPI on Linux, macOS and Windows. Pull
+requests that touch `crates/` or `pyproject.toml` run the same workflow
+without uploading.
 
 To rehearse a release, run it by hand with `publish: testpypi`:
 
@@ -65,16 +73,12 @@ gh workflow run release.yml --ref <branch> -f publish=testpypi
 ```
 
 The same jobs then upload to TestPyPI (environment `testpypi`, which needs a
-TestPyPI trusted publisher for each of the two projects) and install from
-there. `jenkins-lint` gets a development version such as
-`1.5.1.post1.dev18`, so every commit can be uploaded once.
+TestPyPI trusted publisher) and install from there. A version is uploaded
+once: a second rehearsal of the same version skips the upload.
 
-Both packages are uploaded with tokens for the same trusted publisher, so on
-PyPI and TestPyPI the publishers of the two projects must be configured
-identically: owner `jenkinsci`, repository `jenkins-lint`, workflow
-`release.yml` and the same environment. A publisher that differs, even only
-in its environment, is a separate publisher, and the token it gets can upload
-only to its own project.
+The trusted publisher of `jenkins-lint` on PyPI and TestPyPI is: owner
+`jenkinsci`, repository `jenkins-lint`, workflow `release.yml`, environment
+`pypi` (or `testpypi`).
 
 ## Conventions
 

@@ -25,12 +25,12 @@ python3 corpus/collect.py
 # Download the files the manifest lists into corpus/.cache/files:
 python3 corpus/fetch.py
 
-# Start a Jenkins with the plugins in docker/, which keeps running, then compare:
+# Start a Jenkins with the plugins in tests/jenkins-server/, which keeps running, then compare:
 python3 tests/jenkins_server.py start
 python3 corpus/compare.py --copy /tmp/look
 ```
 
-`compare.py` uses the engine built in `crates/jenkinsfilelint/target/release`
+`compare.py` uses the jenkins-lint built in `crates/jenkins-lint/target/release`
 (or `JENKINS_LINT_ENGINE`), keeps Jenkins's answers in
 `corpus/.cache/jenkins.jsonl` so that later runs only ask about new files,
 and writes every file's verdicts to `corpus/.cache/report.tsv`.
@@ -45,7 +45,7 @@ and writes every file's verdicts to `corpus/.cache/report.tsv`.
 | `other-message` | Both report errors, but different ones |
 
 Each `false-error`, `missed` or `other-message` file becomes a small test
-case in `crates/jenkinsfilelint/tests/jenkins/`, checked with Jenkins, before
+case in `crates/jenkins-lint/tests/jenkins/`, checked with Jenkins, before
 the engine changes.
 
 ## Checking a change
@@ -108,7 +108,7 @@ rule's findings rather than only its new ones.
 
 ## Results
 
-On 2026-11-19, against the Jenkins of `ghcr.io/jenkinsci/jenkinsfilelint-server`,
+On 2026-11-19, against the Jenkins of `tests/jenkins-server/`,
 the 17,373 files of the manifest compared as follows:
 
 | Category | Files |

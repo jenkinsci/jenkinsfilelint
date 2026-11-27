@@ -4,11 +4,10 @@
 It checks the file itself, offline, and with `--remote` also POSTs it to a
 Jenkins's `/pipeline-model-converter/validate` endpoint.
 
-- **Offline** (always): no Jenkins at all. The
-  [`jenkinsfilelint-engine`](https://github.com/jenkinsci/jenkins-lint/tree/main/crates/jenkinsfilelint) package, a dependency of
-  `jenkins-lint`, parses the file and checks the Declarative rules itself,
-  using the messages of Jenkins's validator. One run checks all files in
-  milliseconds.
+- **Offline** (always): no Jenkins at all. jenkins-lint, a
+  [Rust program](https://github.com/jenkinsci/jenkins-lint/tree/main/crates/jenkins-lint),
+  parses the file and checks the Declarative rules itself, using the
+  messages of Jenkins's validator. One run checks all files in milliseconds.
 - **Remote** (`--remote URL`): the files that pass offline are then validated
   by your Jenkins server, with the URL and credentials you give.
 

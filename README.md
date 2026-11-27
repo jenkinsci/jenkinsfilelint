@@ -1,33 +1,29 @@
-# Jenkinsfile Lint
+# jenkins-lint
 
 [![CI](https://github.com/jenkinsci/jenkins-lint/actions/workflows/main.yml/badge.svg)](https://github.com/jenkinsci/jenkins-lint/actions/workflows/main.yml)
-[![codecov](https://codecov.io/gh/jenkinsci/jenkins-lint/graph/badge.svg?token=nGrwXORFtI)](https://codecov.io/gh/jenkinsci/jenkins-lint)
 [![PyPI version](https://img.shields.io/pypi/v/jenkins-lint)](https://pypi.org/project/jenkins-lint)
 
-Catch Jenkinsfile syntax errors before they break your CI.
+Catch Jenkinsfile mistakes and security problems before they reach your CI.
+
+`jenkins-lint` checks Jenkinsfiles and shared library files offline, in
+milliseconds, with no Jenkins, Docker or JVM: Groovy syntax and Declarative
+Pipeline structure, with the wording of Jenkins's own validator, and security
+problems such as secrets and pull request titles interpolated into shell
+steps, with fixes. `--remote` also validates the files with your Jenkins,
+which knows its plugins. It is one small binary, for pre-commit, CI and the
+command line.
 
 > [!NOTE]
-> This project was called `jenkinsfilelint` until version 1.7. The PyPI package,
-> the command and the pre-commit hooks are now named `jenkins-lint`. The old
-> hook ids and environment variable names still work.
+> Formerly `jenkinsfilelint`: see [Migrating to 2.0](https://jenkinsci.github.io/jenkins-lint/migrating/).
 
-`jenkins-lint` checks your Declarative Pipeline syntax offline, with no
-Jenkins at all, or with your Jenkins's own validator
-([`/pipeline-model-converter/validate`](https://www.jenkins.io/doc/book/pipeline/development/#linter))
-when you configure one. It's primarily a [pre-commit](https://pre-commit.com/)
-hook, but also works as a standalone CLI tool.
-
-> 📖 Read the [official blog post](https://www.jenkins.io/blog/2026/06/08/jenkinsfilelint-pre-commit/) for the story behind this tool.
-
-![demo](https://raw.githubusercontent.com/jenkinsci/jenkins-lint/main/demo.gif)
+![demo](https://raw.githubusercontent.com/jenkinsci/jenkins-lint/main/docs/assets/demo.gif)
 
 ## Quick Start
 
 ```bash
 pip install jenkins-lint
-jenkins-lint Jenkinsfile
-jenkins-lint .          # every Jenkinsfile in this directory
-jenkins-lint --audit .  # and look for security problems
+jenkins-lint Jenkinsfile  # syntax, Declarative structure and security
+jenkins-lint .            # every Jenkinsfile and shared library file here
 ```
 
 That works as is: files are checked offline, and `--remote` also checks them
@@ -55,7 +51,7 @@ pre-commit install
 
 ## Documentation
 
-Everything else is on the [documentation site](https://jenkinsci.github.io/jenkins-lint/): [install](https://jenkinsci.github.io/jenkins-lint/install/), [usage](https://jenkinsci.github.io/jenkins-lint/usage/), [pre-commit](https://jenkinsci.github.io/jenkins-lint/pre-commit/), [configuration](https://jenkinsci.github.io/jenkins-lint/configuration/), [security](https://jenkinsci.github.io/jenkins-lint/security/), [how it works](https://jenkinsci.github.io/jenkins-lint/how-it-works/) and the [security audit](https://jenkinsci.github.io/jenkins-lint/audit/).
+Everything else is on the [documentation site](https://jenkinsci.github.io/jenkins-lint/): [install](https://jenkinsci.github.io/jenkins-lint/install/), [usage](https://jenkinsci.github.io/jenkins-lint/usage/), [pre-commit](https://jenkinsci.github.io/jenkins-lint/pre-commit/), [configuration](https://jenkinsci.github.io/jenkins-lint/configuration/), [security](https://jenkinsci.github.io/jenkins-lint/security/), [how it works](https://jenkinsci.github.io/jenkins-lint/how-it-works/) and the [security audit](https://jenkinsci.github.io/jenkins-lint/rules/).
 
 ## Contributing
 

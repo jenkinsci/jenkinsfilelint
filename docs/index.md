@@ -1,37 +1,34 @@
-# Jenkinsfile Lint
+# jenkins-lint
 
-Catch Jenkinsfile syntax errors before they break your CI.
+Catch Jenkinsfile mistakes and security problems before they reach your CI.
+
+`jenkins-lint` checks Jenkinsfiles and shared library files offline, in
+milliseconds, with no Jenkins, Docker or JVM: Groovy syntax and Declarative
+Pipeline structure, with the wording of Jenkins's own validator, and security
+problems such as secrets and pull request titles interpolated into shell
+steps, with fixes. `--remote` also validates the files with your Jenkins,
+which knows its plugins. It is one small binary, for pre-commit, CI and the
+command line.
 
 > [!NOTE]
-> This project was called `jenkinsfilelint` until version 1.7. The PyPI package,
-> the command and the pre-commit hooks are now named `jenkins-lint`. The old
-> hook ids and environment variable names still work.
-
-`jenkins-lint` checks your Declarative Pipeline syntax offline, with no
-Jenkins at all, or with your Jenkins's own validator
-([`/pipeline-model-converter/validate`](https://www.jenkins.io/doc/book/pipeline/development/#linter))
-when you configure one. It's primarily a [pre-commit](https://pre-commit.com/)
-hook, but also works as a standalone CLI tool.
-
-> 📖 Read the [official blog post](https://www.jenkins.io/blog/2026/06/08/jenkinsfilelint-pre-commit/) for the story behind this tool.
+> Formerly `jenkinsfilelint`: see [Migrating to 2.0](migrating.md).
 
 ## Quick Start
 
 ```bash
 pip install jenkins-lint
-jenkins-lint Jenkinsfile
-jenkins-lint .          # every Jenkinsfile in this directory
-jenkins-lint --audit .  # and look for security problems
+jenkins-lint Jenkinsfile  # syntax, Declarative structure and security
+jenkins-lint .            # every Jenkinsfile and shared library file here
 ```
 
 That works as is: files are checked offline, and `--remote` also checks them
 with your own Jenkins. Then add the pre-commit hook (see [Pre-commit hook](pre-commit.md)) or keep
 using the [CLI](usage.md#cli).
 
-## Security audit rules
+## Security rules
 
-<!-- audit-rules -->
+<!-- rules -->
 
 ## Demo
 
-![demo](https://raw.githubusercontent.com/jenkinsci/jenkins-lint/main/demo.gif)
+![demo](assets/demo.gif)

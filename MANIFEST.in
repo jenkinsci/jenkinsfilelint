@@ -1,3 +1,0 @@
-# Keep the real-world corpus (corpus/) out of the sdist: only its
-# manifest is in Git, and it is several megabytes.
-prune corpus

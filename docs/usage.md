@@ -45,7 +45,6 @@ A directory is searched recursively, in every mode:
 
 ```bash
 jenkins-lint .
-jenkins-lint --audit .
 jenkins-lint pipelines/ Jenkinsfile
 ```
 
@@ -54,7 +53,7 @@ jenkins-lint pipelines/ Jenkinsfile
 | `Jenkinsfile` and `*.jenkinsfile`, in any case | Always |
 | Other `Jenkinsfile*`, like `Jenkinsfile-prod` | If it contains a pipeline |
 | `*.groovy` | If it contains a pipeline |
-| `*.groovy` under any `vars/` or `src/` directory | Always with `--audit` |
+| `*.groovy` under any `vars/` or `src/` directory | Always |
 
 A file contains a pipeline when it has a `pipeline {`, `node {` or `node(` at
 its top level. Comments, strings and the bodies of methods do not count, so
@@ -76,54 +75,47 @@ A directory with no files to check is not an error. `--verbose` says so.
 
 ## Exit codes
 
-The exit code is `0` when every file is valid and `1` when any file has an
-error or could not be checked.
+The exit code is `0` when every file passes: Jenkins would accept it and it
+has no security finding. It is `1` when any file has an error, a finding, or
+could not be checked. See [the exit codes of the security checks](rules/README.md#exit-codes)
+for `--fix`, `--diff` and `--format sarif`.
 
-`--audit` has [its own exit codes](audit/README.md#exit-codes).
+## Security checks
 
-## Security audit
-
-`--audit` checks Jenkinsfiles and shared library files for security problems
-instead of validating them, offline:
+Every run also checks Jenkinsfiles and shared library files for security
+problems, in the same pass:
 
 ```console
-$ jenkins-lint --audit Jenkinsfile
+$ jenkins-lint Jenkinsfile
 Jenkinsfile:8:36: high: script-injection: CHANGE_BRANCH is the name of the pull request's branch, and Groovy interpolates it into the sh script: ...
-  help: https://jenkinsci.github.io/jenkins-lint/audit/script-injection/
+  help: https://jenkinsci.github.io/jenkins-lint/rules/script-injection/
 Jenkinsfile:12:41: high: secret-interpolation: PASS is a secret, and Groovy interpolates it into the sh script: ...
-  help: https://jenkinsci.github.io/jenkins-lint/audit/secret-interpolation/
+  help: https://jenkinsci.github.io/jenkins-lint/rules/secret-interpolation/
 2 findings (2 high)
 ```
 
-```yaml
-# .pre-commit-config.yaml
-repos:
-  - repo: https://github.com/jenkinsci/jenkins-lint
-    rev: # use the latest version
-    hooks:
-      - id: jenkins-lint-audit
-```
+`jenkins-lint check` is the same command.
 
-[script-injection](audit/script-injection.md) finds pull request
+[script-injection](rules/script-injection.md) finds pull request
 titles, branch names, webhook payloads and build parameters that Groovy
 interpolates into shell steps, where anyone who opens a pull request or
 starts the build can run commands.
-[secret-interpolation](audit/secret-interpolation.md) finds secrets
+[secret-interpolation](rules/secret-interpolation.md) finds secrets
 that Groovy interpolates into shell steps.
-[controller-execution](audit/controller-execution.md) finds `agent` and
+[controller-execution](rules/controller-execution.md) finds `agent` and
 `node` blocks that run their steps on the Jenkins controller.
-[unpinned-library](audit/unpinned-library.md) finds shared libraries
+[unpinned-library](rules/unpinned-library.md) finds shared libraries
 loaded from a branch instead of a tag or commit.
-[unpinned-image](audit/unpinned-image.md) finds container images
+[unpinned-image](rules/unpinned-image.md) finds container images
 without a tag or with `latest`.
-[unrestricted-input](audit/unrestricted-input.md) finds `input` steps
+[unrestricted-input](rules/unrestricted-input.md) finds `input` steps
 without a `submitter`, which any user may approve, with `--persona pedantic`. `--persona`,
 `--min-severity` and `--min-confidence` choose what to see, a
 `// jenkins-lint: ignore[rule]` comment turns off one finding,
 `--ignore RULE` turns off a rule everywhere,
-`--fix=all` rewrites the scripts it can fix, for you to review, and
+`--fix --unsafe-fixes` rewrites the scripts it can fix, for you to review, and
 `--format sarif` writes a report for GitHub code scanning. See
-[Security audit](audit/README.md) for all of it.
+[Security rules](rules/README.md) for all of it.
 
 ## Filtering files
 

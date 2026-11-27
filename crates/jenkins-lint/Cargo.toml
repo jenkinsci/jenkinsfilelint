@@ -1,0 +1,24 @@
+[package]
+name = "jenkins-lint"
+version = "2.0.0"
+edition = "2021"
+description = "Check Jenkinsfiles offline: Groovy syntax, Declarative Pipeline structure and security, without a Jenkins controller"
+license = "MIT"
+repository = "https://github.com/jenkinsci/jenkins-lint"
+readme = "README.md"
+keywords = ["jenkins", "jenkinsfile", "lint", "pipeline", "groovy"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+clap = { version = "4.6.10", features = ["derive", "wrap_help"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = { version = "1.0.154", features = ["preserve_order"] }
+ureq = { version = "3.5", default-features = false, features = ["rustls", "platform-verifier"] }
+
+[profile.release]
+lto = true
+strip = true
+codegen-units = 1
+
+[dev-dependencies]
+tempfile = "3"

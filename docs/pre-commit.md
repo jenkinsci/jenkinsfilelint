@@ -42,9 +42,6 @@ do not depend on plugins. It cannot know which plugins your Jenkins has, so it
 does not check step names and parameters or tool installations, and it only
 warns about agent types it does not know. Add `--remote` for those.
 
-`jenkins-lint-offline` and the ids from before the rename (`jenkinsfilelint`,
-`jenkinsfilelint-offline`) still work and run the same check.
-
 ## Also checking with your Jenkins
 
 ```yaml
@@ -86,6 +83,7 @@ WorkflowScript: 17: Expected a step @ line 17, column 11.
 
 Fix the error and re-commit.
 
-## Security audit
+## Security checks
 
-The `jenkins-lint-audit` hook runs the [security audit](usage.md#security-audit).
+The `jenkins-lint` hook runs the [security checks](usage.md#security-checks)
+too.
