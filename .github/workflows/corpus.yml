@@ -1,0 +1,121 @@
+name: Corpus
+
+# Runs corpus/diff.py on pull requests that change the engine: what the
+# change does to 17,000 public Jenkinsfiles and shared library steps, files
+# that Jenkins now accepts or rejects and security findings added or
+# removed. The summary goes to the job summary for the reviewer. The job
+# fails only when Jenkins says a file that the engine judged right before is
+# judged wrong now.
+#
+# The corpus is other people's code, and some files have real
+# vulnerabilities, so nothing that names a file leaves the runner: the job
+# summary names no repository, and changes.tsv and the samples are never
+# uploaded. The job runs on pull_request with read-only permissions, so a
+# pull request from a fork runs it the same way.
+#
+# The manifest is on the corpus branch, which pre-commit never downloads.
+# Pushes to main warm the caches that pull requests restore.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'crates/**'
+      - 'corpus/**'
+      - '.github/workflows/corpus.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'crates/**'
+      - 'corpus/**'
+      - '.github/workflows/corpus.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: corpus-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  diff:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        # diff.py builds the base commit's engine from its source.
+        fetch-depth: 0
+        persist-credentials: false
+
+    - name: Get the manifest
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        ref: corpus
+        path: .corpus-manifest
+        persist-credentials: false
+
+    - name: Choose the base commit
+      id: base
+      env:
+        PR_BASE: ${{ github.event.pull_request.base.sha }}
+        PUSH_BEFORE: ${{ github.event.before }}
+      run: |
+        base="${PR_BASE:-$PUSH_BEFORE}"
+        if [ -z "$base" ] || ! git cat-file -e "$base^{commit}" 2>/dev/null; then
+          base="$(git rev-parse HEAD^)"
+        fi
+        echo "sha=$base" >> "$GITHUB_OUTPUT"
+
+    - name: Set up Rust
+      run: |
+        rustup toolchain install stable --profile minimal
+        rustup default stable
+
+    - name: Restore the corpus files
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+      with:
+        path: corpus/.cache/files
+        key: corpus-files-${{ hashFiles('.corpus-manifest/manifest.tsv') }}
+        # An older set of files: fetch.py then downloads only the new ones.
+        restore-keys: corpus-files-
+
+    - name: Restore the base engine
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+      with:
+        path: corpus/.cache/engines/${{ steps.base.outputs.sha }}
+        key: corpus-engine-${{ steps.base.outputs.sha }}
+
+    - name: Restore Jenkins's answers
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+      with:
+        path: corpus/.cache/jenkins.jsonl
+        # A cache cannot be updated, so each run saves a new one with the
+        # answers it added, and the next run restores the latest.
+        key: corpus-jenkins-${{ github.run_id }}
+        restore-keys: corpus-jenkins-
+
+    - name: Download the corpus
+      run: python3 corpus/fetch.py --manifest .corpus-manifest/manifest.tsv --jobs 16
+
+    - name: Compare with the base commit
+      env:
+        BASE: ${{ steps.base.outputs.sha }}
+      run: |
+        set +e
+        python3 corpus/diff.py --base "$BASE" --manifest .corpus-manifest/manifest.tsv \
+          --start-jenkins | tee "$RUNNER_TEMP/diff.txt"
+        status=${PIPESTATUS[0]}
+        {
+          echo '### Corpus'
+          echo
+          echo '```text'
+          grep -v '^Details:' "$RUNNER_TEMP/diff.txt"
+          echo '```'
+          if [ "$status" -ne 0 ]; then
+            echo
+            echo 'Jenkins judges some files differently from this change: run `corpus/diff.py` locally to see which.'
+          fi
+        } >> "$GITHUB_STEP_SUMMARY"
+        exit "$status"
