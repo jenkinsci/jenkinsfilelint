@@ -14,6 +14,8 @@ const INVALID: &str = "invalid-pipeline";
 pub struct Checked {
     pub path: String,
     pub findings: Vec<Finding>,
+    /// Findings in the baseline: reported as suppressed.
+    pub baselined: Vec<Finding>,
     pub diagnostics: Vec<Diagnostic>,
 }
 
@@ -109,7 +111,8 @@ pub fn sarif(files: &[Checked]) -> String {
             };
             results.push(result(INVALID, RULES.len(), level, &d.message, path, region(d.pos, end)));
         }
-        for f in &file.findings {
+        let suppressed = file.baselined.iter().map(|f| (f, true));
+        for (f, baselined) in file.findings.iter().map(|f| (f, false)).chain(suppressed) {
             let index = RULES.iter().position(|r| r.id == f.rule).unwrap_or(0);
             let mut r = result(f.rule, index, level(f.severity), &f.message, path, region(f.span.start, f.span.end));
             r["properties"] = json!({"severity": f.severity.name(), "confidence": f.confidence.name()});
@@ -143,6 +146,9 @@ pub fn sarif(files: &[Checked]) -> String {
                     }],
                     "properties": {"disposition": fix.disposition.name()},
                 }]);
+            }
+            if baselined {
+                r["suppressions"] = json!([{"kind": "external", "justification": "In the jenkins-lint baseline"}]);
             }
             results.push(r);
         }

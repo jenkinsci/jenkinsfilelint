@@ -3,6 +3,7 @@
 //! fixes. `--remote` also validates them with a Jenkins server.
 
 pub mod ast;
+pub mod baseline;
 pub mod check;
 pub mod cli;
 pub mod diag;
