@@ -53,6 +53,9 @@ pub struct Use {
     /// Passed through something that makes it safe in a shell, such as
     /// `toInteger()` or `URLEncoder.encode`. A secret is still a secret.
     pub escaped: bool,
+    /// Where it was read, when that is not where it enters the argument:
+    /// `${PASS}` in `def cmd = "...${PASS}..."`, when the argument is `cmd`.
+    pub origin: Option<Span>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -626,6 +629,7 @@ impl Walker {
             via: None,
             via_env: false,
             escaped: false,
+            origin: None,
         };
         match self.scopes.iter().rev().find_map(|s| s.get(var)) {
             Some(Binding::Source(label)) => out.push(source(*label)),
@@ -634,6 +638,8 @@ impl Walker {
                 how,
                 via: Some(var.to_string()),
                 via_env: *env,
+                // Where it was first read: through `a = X; b = a`, at X.
+                origin: u.origin.or(Some(u.span)),
                 ..u.clone()
             })),
             None => {

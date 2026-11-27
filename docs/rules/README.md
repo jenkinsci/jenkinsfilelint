@@ -6,10 +6,24 @@ the syntax check, in the same run.
 
 ```console
 $ jenkins-lint Jenkinsfile
-Jenkinsfile:8:36: high: script-injection: CHANGE_BRANCH is the name of the pull request's branch, and Groovy interpolates it into the sh script: ...
-  help: https://jenkinsci.github.io/jenkins-lint/rules/script-injection/
-Jenkinsfile:12:41: high: secret-interpolation: PASS is a secret, and Groovy interpolates it into the sh script: ...
-  help: https://jenkinsci.github.io/jenkins-lint/rules/secret-interpolation/
+high[script-injection]: CHANGE_BRANCH is the name of the pull request's branch, and Groovy puts it into branch and interpolates that into the sh script: ...
+ --> Jenkinsfile:8:58
+  |
+7 |                     def branch = "${env.CHANGE_BRANCH}"
+  |                                   -------------------- CHANGE_BRANCH is read here, into branch
+8 |                     sh "git fetch origin && git checkout ${branch}"
+  |                                                          ^^^^^^^^^
+  |
+  = help: https://jenkinsci.github.io/jenkins-lint/rules/script-injection/
+
+high[secret-interpolation]: PASS is a secret, and Groovy interpolates it into the sh script: ...
+  --> Jenkinsfile:12:40
+   |
+12 |                     sh "curl -u deploy:${PASS} https://example.com"
+   |                                        ^^^^^^^
+   |
+   = help: https://jenkinsci.github.io/jenkins-lint/rules/secret-interpolation/
+
 2 findings (2 high)
 ```
 
@@ -116,7 +130,7 @@ $ jenkins-lint --diff --unsafe-fixes Jenkinsfile
              }
          }
      }
-$ jenkins-lint --fix --unsafe-fixes --show-fixes .
+$ jenkins-lint --fix --unsafe-fixes --show-fixes --output-format concise .
 Jenkinsfile:8:34: fixed: script-injection: CHANGE_BRANCH is the name of the pull request's branch, and Groovy interpolates it into the sh script: ...
 Jenkinsfile:12:41: high: secret-interpolation: TOKEN is a secret, and Groovy interpolates it into the sh script: ...
   help: https://jenkinsci.github.io/jenkins-lint/rules/secret-interpolation/
@@ -125,7 +139,9 @@ Found 2 findings (1 fixed, 1 remaining).
 
 Without `--show-fixes`, `--fix` prints only the findings left and the
 summary. Without `--fix`, nothing changes. A finding that `--fix` would fix
-starts with `[*]`, and the last line says how many, as ruff does:
+ends with `= help: [*] fixable with the --fix option`, or with
+`--output-format concise` starts with `[*]`, and the last line says how
+many, as ruff does:
 
 ```text
 [*] 1 fixable with the `--fix` option (2 hidden fixes can be enabled with the `--unsafe-fixes` option).
@@ -138,11 +154,19 @@ edits, and the SARIF report carries the fixes for code scanning to suggest.
 
 ## Output
 
-- `--output-format text` (default): one line per finding, and a link to the rule.
-- `--output-format json`: the engine's report, one object per file.
+- `--output-format full` (default): each error and finding with the code it
+  is about, a link to the rule, and for a value that went through a variable,
+  the line where it was read. In color on a terminal; `NO_COLOR` turns color
+  off and `FORCE_COLOR` on. `text` is another name for it.
+- `--output-format concise`: one line per error and finding, and a link to
+  the rule, for tools that read lines.
+- `--output-format json`: the engine's report, one object per file. Each
+  finding's `related` lists the places that explain it, such as where the
+  value was read.
 - `--output-format sarif`: SARIF 2.1.0, for GitHub code scanning and other tools.
   Errors that make Jenkins reject a file are results of the rule
-  `invalid-pipeline`.
+  `invalid-pipeline`. The places that explain a finding are its
+  `relatedLocations`.
   It exits with `0` even when there are findings, so that the report can be
   uploaded.
 - `--output-format github`: GitHub Actions annotations, which show each error

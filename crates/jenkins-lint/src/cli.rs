@@ -3,7 +3,7 @@
 
 use std::collections::HashSet;
 use std::ffi::OsString;
-use std::io::Write;
+use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -15,7 +15,9 @@ use clap::{CommandFactory, Parser, ValueEnum};
 use crate::check::{fix, lint};
 use crate::diag::{Report, Severity};
 use crate::discover::{expand_paths, path_match, LIBRARY_DIRS};
-use crate::output::{diagnostics_text, file_json, findings_text, fixed_text, github_annotations, UnreadableJson};
+use crate::output::{
+    diagnostics_full, diagnostics_text, file_json, findings_full, findings_text, fixed_text, github_annotations, renderer, UnreadableJson,
+};
 use crate::remote::{Jenkins, Verdict};
 use crate::rules::fix::{Disposition, Mode};
 use crate::rules::{self, Confidence, Filter, Finding, Persona};
@@ -29,14 +31,24 @@ pub const OFFLINE_NOTE: &str = "ℹ Checking offline: step names, step parameter
 
 #[derive(Debug, Clone, Copy, PartialEq, ValueEnum)]
 pub enum Format {
+    /// Each error and finding with the code it is about, and a summary
+    #[value(alias = "text")]
+    Full,
     /// One line per error and finding, with a summary
-    Text,
+    Concise,
     /// One object per file
     Json,
     /// SARIF 2.1.0, for code scanning
     Sarif,
     /// GitHub Actions annotations, shown on the lines of a pull request
     Github,
+}
+
+impl Format {
+    /// Printed for people to read, with a summary.
+    fn is_text(self) -> bool {
+        matches!(self, Format::Full | Format::Concise)
+    }
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -129,7 +141,7 @@ struct Args {
 
     /// Output format. sarif exits with 0 when there are findings, so that the
     /// report can be uploaded
-    #[arg(long, value_enum, value_name = "FORMAT", default_value_t = Format::Text)]
+    #[arg(long, value_enum, value_name = "FORMAT", default_value_t = Format::Full)]
     output_format: Format,
     /// Say what is checked, skipped and found
     #[arg(short, long)]
@@ -213,7 +225,7 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>, env: impl Fn(&str) -
     };
     let a = Args::try_parse_from(argv).map_err(fail)?;
     let error = |kind: ErrorKind, message: &str| fail(Args::command().error(kind, message));
-    if a.diff && a.output_format != Format::Text {
+    if a.diff && !a.output_format.is_text() {
         return Err(error(
             ErrorKind::ArgumentConflict,
             "--diff cannot be used with --output-format json, sarif or github",
@@ -233,7 +245,7 @@ pub fn parse_args(args: impl IntoIterator<Item = OsString>, env: impl Fn(&str) -
                     "--remote needs a URL: pass --remote=URL or set JENKINS_URL",
                 ));
             }
-            if a.output_format != Format::Text {
+            if !a.output_format.is_text() {
                 return Err(error(
                     ErrorKind::ArgumentConflict,
                     "--output-format json, sarif or github cannot be used with --remote",
@@ -309,6 +321,9 @@ struct Checked {
     /// Read error, as printed.
     unreadable: Option<String>,
     report: Report,
+    /// The text that `report` and `findings` are about: the file, or what
+    /// --fix made of it.
+    text: String,
     findings: Vec<Finding>,
     fixed: Vec<Finding>,
 }
@@ -328,6 +343,7 @@ fn check_file(path: &Path, o: &Options) -> Checked {
             return Checked {
                 unreadable: Some(e.to_string()),
                 report: Report::default(),
+                text: String::new(),
                 findings: Vec::new(),
                 fixed: Vec::new(),
             }
@@ -345,6 +361,7 @@ fn check_file(path: &Path, o: &Options) -> Checked {
     Checked {
         unreadable,
         report: lint(&text),
+        text,
         findings,
         fixed,
     }
@@ -353,7 +370,7 @@ fn check_file(path: &Path, o: &Options) -> Checked {
 pub fn run(o: Options) -> ExitCode {
     let searched = o.paths.iter().any(|p| p.is_dir());
     let (files, empty) = expand_paths(&o.paths);
-    let report = o.format != Format::Text;
+    let report = !o.format.is_text();
     if o.verbose {
         for dir in &empty {
             let line = format!("ℹ No files to check found in {}", dir.display());
@@ -385,6 +402,9 @@ pub fn run(o: Options) -> ExitCode {
     let mut passed = true;
     let mut send: HashSet<&Path> = HashSet::new();
     let stdout = std::io::stdout();
+    let full = o.format == Format::Full;
+    let out_renderer = renderer(stdout.is_terminal());
+    let err_renderer = renderer(std::io::stderr().is_terminal());
     let mut out = stdout.lock();
     for path in &files {
         if let Some(reason) = skip_reason(path, &o) {
@@ -402,13 +422,19 @@ pub fn run(o: Options) -> ExitCode {
         fixed += c.fixed.len();
         let errors = match &c.unreadable {
             Some(e) => format!("Error reading file {name}: {e}\n"),
+            None if full => diagnostics_full(&name, &c.text, &c.report, &err_renderer),
             None => diagnostics_text(&name, &c.report),
         };
         if !errors.is_empty() {
             let _ = out.flush(); // keep the output in file order when piped
             eprint!("{errors}");
         }
-        let _ = write!(out, "{}", findings_text(&name, &c.findings, mode));
+        let found = if full {
+            findings_full(&name, &c.text, &c.findings, mode, &out_renderer)
+        } else {
+            findings_text(&name, &c.findings, mode)
+        };
+        let _ = write!(out, "{found}");
         for f in &c.findings {
             counts[match f.severity {
                 rules::Severity::High => 0,
@@ -624,7 +650,7 @@ fn write_report(files: &[&PathBuf], o: &Options) -> ExitCode {
     match o.format {
         Format::Json => println!("{}", serde_json::Value::Array(items)),
         Format::Sarif => println!("{}", sarif(&checked)),
-        Format::Text | Format::Github => {}
+        Format::Full | Format::Concise | Format::Github => {}
     }
     let failed = if o.diff { changed } else { flagged && o.format != Format::Sarif };
     if unreadable || failed {

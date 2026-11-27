@@ -155,6 +155,7 @@ fn report(image: &Expr, stmt_line: usize, used_by: &str, findings: &mut Vec<Find
         },
         stmt_line,
         fix: None,
+        related: Vec::new(),
     });
 }
 

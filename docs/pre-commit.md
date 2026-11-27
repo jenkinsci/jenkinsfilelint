@@ -30,8 +30,17 @@ jenkins-lint..........................................................Failed
 - hook id: jenkins-lint
 - exit code: 1
 
-Jenkinsfile:4:9: error: Expected one of "steps", "stages", or "parallel" for stage "Build"
-Jenkinsfile:5:13: error: Unknown stage section "step". Starting with version 0.5, steps in a stage must be in a ‘steps’ block.
+error: Expected one of "steps", "stages", or "parallel" for stage "Build"
+ --> Jenkinsfile:4:9
+  |
+4 |         stage("Build") {
+  |         ^
+
+error: Unknown stage section "step". Starting with version 0.5, steps in a stage must be in a ‘steps’ block.
+ --> Jenkinsfile:5:13
+  |
+5 |             step {
+  |             ^
 ```
 
 It checks Groovy syntax and the Declarative structure: required and allowed
