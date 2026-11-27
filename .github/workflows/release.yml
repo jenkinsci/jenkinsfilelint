@@ -1,5 +1,10 @@
-name: Release Package
+name: Wheels
 
+# Builds the jenkins-lint wheels for every platform and installs each one
+# where it runs. Pull requests that touch the crate run this too, so that a
+# change that breaks a platform (the cross-compiled TLS of --remote, say)
+# shows up before a release, not during one. Nothing is uploaded then.
+#
 # Publishes jenkins-lint to PyPI when a GitHub release is published: one
 # wheel per platform with the jenkins-lint binary, built from
 # crates/jenkins-lint with maturin, and an sdist. The root pyproject.toml,
