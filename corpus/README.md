@@ -11,10 +11,15 @@ which version of each file was checked. The files themselves are other
 people's code and stay out of this repository; `fetch.py` downloads them
 into a local cache.
 
-The manifest is not in Git yet: at about 3 MB, every pre-commit user
-would download it with each release, since pre-commit fetches the whole
-tree of the version it runs. It will be published with the documentation
-site instead.
+The manifest is on the `corpus` branch, not on `main`: at about 3 MB,
+every pre-commit user would download it with each release, since
+pre-commit fetches the whole tree of the version it runs. Get it with:
+
+```console
+git fetch origin corpus && git show FETCH_HEAD:manifest.tsv > corpus/manifest.tsv
+```
+
+After `collect.py` refreshes it, commit it to that branch.
 
 ## Running it
 
@@ -89,12 +94,26 @@ known gaps.
     when it no longer does;
   - `diff.py` exits with 1 when a file broke;
   - `--no-jenkins` skips the check.
-- **Findings** count the audit findings added, removed or changed, by rule and
+- **Findings** count the security findings added, removed or changed, by rule and
   by the least thorough persona that shows them. A file that no longer parses
   loses its findings, as Jenkins does not run it.
 
 The summary names no repository, so it can go in a pull request.
 `.cache/diff/changes.tsv` lists every difference with its file.
+
+`--start-jenkins` starts the Jenkins of `tests/jenkins_server.py` when a
+file changed verdict and the cache has no answer for it, and removes it
+after.
+
+### On pull requests
+
+The [Corpus workflow](../.github/workflows/corpus.yml) runs `diff.py`
+against the pull request's base commit, with `--start-jenkins`, on every
+pull request that changes `crates/` or `corpus/`. Its summary is on the
+run's page. The job fails only when a file broke. The files, the base
+engine and Jenkins's answers are kept in the Actions cache, so a run
+downloads and builds only what is new. Nothing that names a file is
+uploaded.
 
 ### How precise a rule is
 

@@ -34,7 +34,7 @@ htmlcov/
 crates/*/target/
 
 # Files downloaded by corpus/fetch.py, and the manifest corpus/collect.py
-# writes, which is to be published with the documentation site
+# writes, which is kept on the corpus branch
 corpus/.cache/
 corpus/manifest.tsv
 

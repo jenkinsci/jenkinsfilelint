@@ -4,9 +4,9 @@
 Usage: python3 corpus/diff.py [--base REF] [--engine PATH] [--sample N] [--copy DIR]
 
 Runs the engine of a base commit (origin/main by default) and the engine of
-this checkout on every file that fetch.py downloaded, with --audit and every
-persona, and lists each difference: files that now fail or pass validation,
-and audit findings added, removed or changed.
+this checkout on every file that fetch.py downloaded, with every persona, and
+lists each difference: files that now fail or pass validation, and security
+findings added, removed or changed.
 
 The base engine is built from the base commit's source with cargo and kept
 in <cache>/engines/<commit>. The head engine is this checkout's, built
@@ -16,7 +16,9 @@ found nothing: every finding counts as added.
 When files change verdict, Jenkins decides which side was right, through
 the cache and the validator of compare.py: "fixed" files now agree with
 Jenkins, "broken" files no longer do. The exit status is 1 when a file
-broke. --no-jenkins skips this.
+broke. --no-jenkins skips this. --start-jenkins starts the Jenkins of
+tests/jenkins_server.py when a changed file is not in the cache yet, and
+stops it after, so that CI pays for Jenkins only when it has to ask.
 
 The summary names no repository, to paste into a pull request. The details
 go to <cache>/diff/: changes.tsv lists every difference, and with --sample N,
@@ -35,6 +37,7 @@ import tarfile
 import tempfile
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from pathlib import Path
 from typing import NamedTuple
 
@@ -121,14 +124,14 @@ def head_engine():
 
 
 def run(engine, paths, jobs):
-    """blob -> (errors, findings): the errors of validation, and the audit's
+    """blob -> (errors, findings): the errors of validation, and the security
     findings, as a map from (rule, line, column) to the sorted details of
-    the findings there. The audit does not validate, so each file is checked
-    twice."""
+    the findings there."""
 
-    def json_of(options, chunk):
+    def json_of(chunk):
         r = subprocess.run(
-            [engine, *options, "--output-format", "json", "--", *map(str, chunk)],
+            [engine, "--persona", "auditor", "--output-format", "json", "--"]
+            + list(map(str, chunk)),
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -140,14 +143,13 @@ def run(engine, paths, jobs):
             sys.exit(f"{engine} failed: {r.stderr.strip()[:500]}")
 
     def batch(chunk):
-        audit = ["--audit", "--persona", "auditor"]
-        return chunk, json_of([], chunk), json_of(audit, chunk)
+        return chunk, json_of(chunk)
 
     out = {}
     chunks = [paths[i : i + 300] for i in range(0, len(paths), 300)]
     with ThreadPoolExecutor(jobs) as pool:
-        for chunk, checked, audited in pool.map(batch, chunks):
-            for path, report, audit in zip(chunk, checked, audited):
+        for chunk, reports in pool.map(batch, chunks):
+            for path, report in zip(chunk, reports):
                 if "error" in report:
                     out[path.name] = (["(the engine cannot read this file)"], {})
                     continue
@@ -157,7 +159,7 @@ def run(engine, paths, jobs):
                     if d["severity"] == "error"
                 ]
                 findings = defaultdict(list)
-                for f in audit.get("findings", []):
+                for f in report.get("findings", []):
                     findings[(f["rule"], f["line"], f["column"])].append(
                         (
                             f["persona"],
@@ -170,6 +172,24 @@ def run(engine, paths, jobs):
                     )
                 out[path.name] = (errors, {k: sorted(v) for k, v in findings.items()})
     return out
+
+
+@contextmanager
+def jenkins_for(args, answers, paths):
+    """The URL of a Jenkins to ask about these files. With --start-jenkins,
+    one is started for the files that the cache has no answer for."""
+    known = set()
+    if answers.exists():
+        for line in answers.read_text(encoding="utf-8").splitlines():
+            known.add(json.loads(line)["blob"])
+    if not args.start_jenkins or all(p.name in known for p in paths):
+        yield args.jenkins_url
+        return
+    from tests import jenkins_server
+
+    print("starting Jenkins to ask about the changed files", file=sys.stderr)
+    with jenkins_server.running() as url:
+        yield url
 
 
 def verdict_change(before, after):
@@ -198,6 +218,11 @@ def main():
     ap.add_argument("--cache", type=Path, default=HERE / ".cache")
     ap.add_argument("--jenkins-url", default="http://127.0.0.1:18080")
     ap.add_argument("--no-jenkins", action="store_true")
+    ap.add_argument(
+        "--start-jenkins",
+        action="store_true",
+        help="start a Jenkins in Docker if a changed file needs one",
+    )
     ap.add_argument("--jobs", type=int, default=4)
     ap.add_argument(
         "--sample", type=int, default=0, help="added findings to show per rule"
@@ -264,9 +289,9 @@ def main():
     judged = {}
     if verdicts and not args.no_jenkins and args.base != "none":
         changed = [files / blob for blob in verdicts]
-        jenkins = ask_jenkins(
-            args.jenkins_url, changed, args.cache / "jenkins.jsonl", args.jobs
-        )
+        answers = args.cache / "jenkins.jsonl"
+        with jenkins_for(args, answers, changed) as url:
+            jenkins = ask_jenkins(url, changed, answers, args.jobs)
         for blob in verdicts:
             was = category(before[blob][0], jenkins[blob])
             now = category(after[blob][0], jenkins[blob])
