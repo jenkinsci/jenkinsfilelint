@@ -372,6 +372,8 @@ struct Checked {
     fixed: Vec<Finding>,
     /// How many findings the baseline holds.
     known: usize,
+    /// It was read and parsed, so its findings are complete.
+    analyzed: bool,
 }
 
 impl Checked {
@@ -393,10 +395,13 @@ fn check_file(path: &Path, o: &Options) -> Checked {
                 findings: Vec::new(),
                 fixed: Vec::new(),
                 known: 0,
+                analyzed: false,
             }
         }
     };
-    let (fixed, findings, text, unreadable) = match fix(&src, &o.filter, mode) {
+    let parsed = fix(&src, &o.filter, mode);
+    let analyzed = parsed.is_ok();
+    let (fixed, findings, text, unreadable) = match parsed {
         Ok(f) if o.fix && f.src != src => match std::fs::write(path, &f.src) {
             Ok(()) => (f.fixed, f.remaining, f.src, None),
             Err(e) => (Vec::new(), f.findings, src, Some(e.to_string())),
@@ -406,6 +411,7 @@ fn check_file(path: &Path, o: &Options) -> Checked {
         Err(_) => (Vec::new(), Vec::new(), src, None),
     };
     Checked {
+        analyzed: analyzed && unreadable.is_none(),
         unreadable,
         report: lint(&text),
         text,
@@ -429,7 +435,8 @@ fn load_baseline(o: &Options) -> Result<Option<Baseline>, ExitCode> {
 fn split(baseline: &mut Option<Baseline>, path: &Path, c: &mut Checked, write: bool) -> Vec<Finding> {
     let all = std::mem::take(&mut c.findings);
     match baseline {
-        Some(b) => {
+        // A file that does not parse keeps its entries.
+        Some(b) if c.analyzed => {
             let (new, known) = b.split(path, &c.text, all);
             c.known = known.len() + if write { new.len() } else { 0 };
             if write {
@@ -438,7 +445,7 @@ fn split(baseline: &mut Option<Baseline>, path: &Path, c: &mut Checked, write: b
                 new
             }
         }
-        None => all,
+        _ => all,
     }
 }
 
@@ -749,8 +756,8 @@ fn write_report(files: &[&PathBuf], o: &Options, baseline: &mut Option<Baseline>
         let mut c = check_file(path, o);
         let all = std::mem::take(&mut c.findings);
         let (new, known) = match baseline {
-            Some(b) => b.split(path, &c.text, all),
-            None => (all, Vec::new()),
+            Some(b) if c.analyzed => b.split(path, &c.text, all),
+            _ => (all, Vec::new()),
         };
         c.findings = new;
         if let Some(e) = &c.unreadable {

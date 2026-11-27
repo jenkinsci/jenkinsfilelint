@@ -743,3 +743,18 @@ fn prune_removes_fixed_findings_and_adds_none() {
     let r = run(dir.path(), &["--output-format", "concise", "."]);
     assert_eq!(r.code, 1, "the new finding still fails: {}", r.out);
 }
+
+#[test]
+fn a_file_that_does_not_parse_keeps_its_entries() {
+    let dir = baselined();
+    let before = std::fs::read_to_string(dir.path().join(".jenkins-lint-baseline.json")).unwrap();
+    write(dir.path(), "Jenkinsfile", &TWO.replace("stages {", "stages {{"));
+    for args in [&["."][..], &["--prune-baseline", "."]] {
+        let r = run(dir.path(), args);
+        assert_eq!(r.code, 1);
+        assert!(r.err.contains("error: "), "{}", r.err);
+        assert!(!r.out.contains("no longer occur"), "{}", r.out);
+    }
+    let after = std::fs::read_to_string(dir.path().join(".jenkins-lint-baseline.json")).unwrap();
+    assert_eq!(after, before);
+}
