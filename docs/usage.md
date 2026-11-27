@@ -78,7 +78,7 @@ A directory with no files to check is not an error. `--verbose` says so.
 The exit code is `0` when every file passes: Jenkins would accept it and it
 has no security finding. It is `1` when any file has an error, a finding, or
 could not be checked. See [the exit codes of the security checks](rules/README.md#exit-codes)
-for `--fix`, `--diff` and `--format sarif`.
+for `--fix`, `--diff` and `--output-format sarif`.
 
 ## Security checks
 
@@ -114,7 +114,7 @@ without a `submitter`, which any user may approve, with `--persona pedantic`. `-
 `// jenkins-lint: ignore[rule]` comment turns off one finding,
 `--ignore RULE` turns off a rule everywhere,
 `--fix --unsafe-fixes` rewrites the scripts it can fix, for you to review, and
-`--format sarif` writes a report for GitHub code scanning. See
+`--output-format sarif` writes a report for GitHub code scanning. See
 [Security rules](rules/README.md) for all of it.
 
 ## Filtering files

@@ -4,7 +4,7 @@ use serde::Serialize;
 
 use crate::diag::{Diagnostic, Report};
 use crate::rules::fix::{Fix, Mode};
-use crate::rules::{Finding, RULES};
+use crate::rules::{Finding, Severity, RULES};
 
 /// The errors and warnings of checking the file, one line each.
 pub fn diagnostics_text(path: &str, report: &Report) -> String {
@@ -50,6 +50,48 @@ pub fn fixed_text(path: &str, fixed: &[Finding]) -> String {
             )
         })
         .collect()
+}
+
+/// GitHub Actions workflow commands that annotate the lines of the file:
+/// errors and high findings as errors, warnings and medium findings as
+/// warnings, low findings as notices.
+pub fn github_annotations(path: &str, report: &Report, findings: &[Finding]) -> String {
+    let mut out = String::new();
+    for d in &report.diagnostics {
+        let level = match d.severity {
+            crate::diag::Severity::Error => "error",
+            crate::diag::Severity::Warning => "warning",
+        };
+        out += &annotation(level, path, d.pos.line, d.pos.col, None, "jenkins-lint", &d.message);
+    }
+    for f in findings {
+        let level = match f.severity {
+            Severity::High => "error",
+            Severity::Medium => "warning",
+            Severity::Low => "notice",
+        };
+        let title = format!("jenkins-lint ({})", f.rule);
+        let message = format!("{} See {}", f.message, help_url(f.rule));
+        let end = Some((f.span.end.line, f.span.end.col));
+        out += &annotation(level, path, f.span.start.line, f.span.start.col, end, &title, &message);
+    }
+    out
+}
+
+fn annotation(level: &str, path: &str, line: usize, col: usize, end: Option<(usize, usize)>, title: &str, message: &str) -> String {
+    let data = |s: &str| s.replace('%', "%25").replace('\r', "%0D").replace('\n', "%0A");
+    let property = |s: &str| data(s).replace(':', "%3A").replace(',', "%2C");
+    let end = match end {
+        Some((l, c)) if l == line => format!(",endColumn={c}"),
+        Some((l, _)) => format!(",endLine={l}"),
+        None => String::new(),
+    };
+    format!(
+        "::{level} file={},line={line},col={col}{end},title={}::{}\n",
+        property(path),
+        property(title),
+        data(message)
+    )
 }
 
 fn help_url(rule: &str) -> String {
@@ -215,6 +257,22 @@ mod tests {
         // Nothing to fix: the file and its findings as they are.
         let none = fix("sh 'make'\n", &filter, Mode::All).unwrap();
         assert_eq!((none.src.as_str(), none.findings.len()), ("sh 'make'\n", 0));
+    }
+
+    #[test]
+    fn github_annotations_escape_their_data() {
+        let src = "withCredentials([string(credentialsId: 'c', variable: 'TOKEN')]) {\n    sh \"deploy ${TOKEN}\"\n}\n";
+        let out = github_annotations("ci/a,b:c%.groovy", &lint(src), &find(src, &Filter::default()).unwrap());
+        assert!(
+            out.starts_with("::error file=ci/a%2Cb%3Ac%25.groovy,line=2,col=16,endColumn=24,title=jenkins-lint (secret-interpolation)::TOKEN is a secret"),
+            "{out}"
+        );
+        assert!(
+            out.ends_with(" See https://jenkinsci.github.io/jenkins-lint/rules/secret-interpolation/\n"),
+            "{out}"
+        );
+        let broken = "pipeline {\n    agent\n    stages { stage('A') { steps { echo 'x' } } }\n}\n";
+        assert!(github_annotations("J", &lint(broken), &[]).starts_with("::error file=J,line=2,col=5,title=jenkins-lint::Not a valid"));
     }
 
     #[test]

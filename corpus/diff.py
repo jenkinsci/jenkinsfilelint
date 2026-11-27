@@ -128,7 +128,7 @@ def run(engine, paths, jobs):
 
     def json_of(options, chunk):
         r = subprocess.run(
-            [engine, *options, "--format", "json", "--", *map(str, chunk)],
+            [engine, *options, "--output-format", "json", "--", *map(str, chunk)],
             capture_output=True,
             text=True,
             encoding="utf-8",

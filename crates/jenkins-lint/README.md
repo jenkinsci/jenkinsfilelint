@@ -47,13 +47,13 @@ design notes: https://github.com/jenkinsci/jenkins-lint.
 cd crates/jenkins-lint
 cargo build --release
 ./target/release/jenkins-lint path/to/Jenkinsfile [more files or directories...]
-./target/release/jenkins-lint --format json Jenkinsfile
+./target/release/jenkins-lint --output-format json Jenkinsfile
 ```
 
 Exit code is `0` when no file has an error or a finding, `1` when any does,
 and `2` for usage errors. Warnings do not fail the run.
 
-`--format json` prints one object per file:
+`--output-format json` prints one object per file:
 
 ```json
 [{"file": "Jenkinsfile", "declarative": true, "diagnostics": [

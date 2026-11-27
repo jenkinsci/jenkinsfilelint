@@ -128,7 +128,7 @@ def offline(engine, paths):
     for i in range(0, len(paths), 300):
         batch = paths[i : i + 300]
         r = subprocess.run(
-            [engine, "--format", "json", "--", *map(str, batch)],
+            [engine, "--output-format", "json", "--", *map(str, batch)],
             capture_output=True,
             text=True,
             encoding="utf-8",

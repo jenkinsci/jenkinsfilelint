@@ -235,7 +235,7 @@ fn nothing_to_check() {
     let dir = tempfile::tempdir().unwrap();
     let r = run(dir.path(), &["."]);
     assert_eq!((r.code, r.out.as_str()), (0, ""));
-    let r = run(dir.path(), &["--format", "sarif", "."]);
+    let r = run(dir.path(), &["--output-format", "sarif", "."]);
     assert_eq!(r.code, 0);
     assert!(r.out.starts_with("{\"$schema\""));
 }
@@ -314,6 +314,30 @@ fn fixes_work_as_in_ruff() {
 }
 
 #[test]
+fn github_annotations() {
+    let dir = tempfile::tempdir().unwrap();
+    write(dir.path(), "Jenkinsfile", &INJECTION.replace("agent any", "agent"));
+    let r = run(dir.path(), &["--output-format", "github", "Jenkinsfile"]);
+    assert_eq!(r.code, 1);
+    let lines: Vec<&str> = r.out.lines().collect();
+    assert!(
+        lines[0].starts_with("::error file=Jenkinsfile,line=2,col=3,title=jenkins-lint::Not a valid section"),
+        "{}",
+        r.out
+    );
+    assert!(lines[1].starts_with("::error file=Jenkinsfile,line=4,col=14,"), "{}", r.out);
+    assert!(
+        lines[1].contains("title=jenkins-lint (script-injection)::CHANGE_TITLE"),
+        "{}",
+        r.out
+    );
+    assert_eq!(lines.len(), 2);
+    write(dir.path(), "Jenkinsfile", VALID);
+    let r = run(dir.path(), &["--output-format", "github", "Jenkinsfile"]);
+    assert_eq!((r.code, r.out.as_str()), (0, ""));
+}
+
+#[test]
 fn usage_errors() {
     let dir = tempfile::tempdir().unwrap();
     for (args, message) in [
@@ -329,13 +353,13 @@ fn usage_errors() {
         ),
         (&["--remote", "J"], "--remote needs a URL: pass --remote=URL or set JENKINS_URL"),
         (
-            &["--format", "sarif", "--remote", "http://j", "J"],
-            "--format json or sarif cannot be used with --remote",
+            &["--output-format", "sarif", "--remote", "http://j", "J"],
+            "--output-format json, sarif or github cannot be used with --remote",
         ),
         (&["--diff", "--remote", "http://j", "J"], "'--diff' cannot be used with '--remote"),
         (
-            &["--diff", "--format", "json", "J"],
-            "--diff cannot be used with --format json or sarif",
+            &["--diff", "--output-format", "json", "J"],
+            "--diff cannot be used with --output-format json, sarif or github",
         ),
         (&["--fix=all", "J"], "unexpected value 'all' for '--fix' found"),
         (
