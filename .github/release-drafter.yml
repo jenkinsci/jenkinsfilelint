@@ -56,8 +56,6 @@ version-resolver:
   minor:
     labels:
       - minor
-      - feature
-      - enhancement
   patch:
     labels:
       - patch
@@ -114,16 +112,3 @@ autolabeler:
   - label: dependencies
     branch:
       - /^pre-commit-ci-update-config/
-
-  # ── File-based ────────────────────────────────────────────
-  - label: documentation
-    files:
-      - '*.md'
-      - '*.rst'
-      - '*.adoc'
-  - label: tests
-    files:
-      - 'test/**'
-      - 'tests/**'
-      - '__tests__/**'
-      - '*.test.*'
