@@ -69,6 +69,10 @@ export JENKINS_TOKEN=your-api-token
 
 ## What happens on commit
 
+The hook checks the files named `Jenkinsfile` or `Jenkinsfile*`, `*.jenkinsfile`
+and `*.groovy`, in any case, and leaves out notes and copies such as
+`Jenkinsfile.md` and `Jenkinsfile.bak`.
+
 A valid file passes silently:
 
 ```bash

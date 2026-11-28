@@ -3,6 +3,8 @@
   description: "Check Jenkinsfiles and shared library files offline: Groovy syntax, Declarative structure and security. Add --remote to also check with your Jenkins."
   entry: jenkins-lint
   language: python
-  types: [file]
-  files: ^.*(Jenkinsfile.*|.*\.groovy)$
+  types: [text]
+  files: (?i)(^|/)(jenkinsfile[^/]*|[^/]*\.jenkinsfile|[^/]*\.groovy)$
+  # Notes and copies named after a Jenkinsfile, as a directory search skips them.
+  exclude: (?i)\.(adoc|bak|md|old|orig|rej|rst|swp|tmp|txt)$
   require_serial: true
