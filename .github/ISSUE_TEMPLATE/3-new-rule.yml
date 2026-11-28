@@ -1,4 +1,5 @@
 name: New rule
+type: 'Enhancement'
 description: Suggest a new security rule.
 labels: [enhancement]
 body:

@@ -1,7 +1,14 @@
 name: Wrong result
+type: 'Bug'
 description: jenkins-lint reports something it should not, or misses something it should report.
 labels: [bug]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        **Never report security issues on GitHub or other public channels (Gitter/Twitter/etc.)**
+        Follow these instruction to report security issues: https://www.jenkins.io/security/#reporting-vulnerabilities
+
   - type: dropdown
     id: kind
     attributes:

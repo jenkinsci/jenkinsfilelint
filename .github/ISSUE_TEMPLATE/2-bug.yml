@@ -1,7 +1,14 @@
 name: Bug
+type: 'Bug'
 description: A crash, a hang, a wrong exit code, or a problem with installing or running jenkins-lint.
 labels: [bug]
 body:
+  - type: markdown
+    attributes:
+      value: |
+        **Never report security issues on GitHub or other public channels (Gitter/Twitter/etc.)**
+        Follow these instruction to report security issues: https://www.jenkins.io/security/#reporting-vulnerabilities
+
   - type: input
     id: version
     attributes:
