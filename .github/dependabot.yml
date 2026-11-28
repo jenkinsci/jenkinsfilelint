@@ -31,3 +31,11 @@ updates:
       docker:
         patterns:
           - "*"
+  - package-ecosystem: cargo
+    directory: /crates/jenkins-lint/
+    schedule:
+      interval: "monthly"
+    groups:
+      cargo:
+        patterns:
+          - "*"
