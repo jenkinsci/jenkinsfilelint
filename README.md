@@ -98,7 +98,7 @@ high[script-injection]: CHANGE_BRANCH is the name of the pull request's branch, 
 - run: pipx run jenkins-lint --output-format github .
 ```
 
-Or `--output-format sarif` for [code scanning](https://jenkinsci.github.io/jenkins-lint/usage/#output).
+Or `--output-format sarif` for [code scanning](https://jenkinsci.github.io/jenkins-lint/rules/#output).
 
 **Jenkins**, in the pipeline itself:
 
