@@ -88,10 +88,11 @@ jenkins-lint..........................................................Failed
 - hook id: jenkins-lint
 - exit code: 1
 
-Errors encountered validating Jenkinsfile:
-WorkflowScript: 17: Expected a step @ line 17, column 11.
-             test
-             ^
+error: Expected a step
+  --> Jenkinsfile:11:17
+   |
+11 |                 test
+   |                 ^
 ```
 
 Fix the error and re-commit.
