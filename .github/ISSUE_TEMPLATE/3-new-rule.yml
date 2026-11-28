@@ -1,0 +1,43 @@
+name: New rule
+type: 'Enhancement'
+description: Suggest a new security rule.
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A rule is worth adding when it finds a real way to attack a pipeline or leak a secret,
+        and when it can tell that from the Jenkinsfile alone, offline, with few false findings.
+  - type: textarea
+    id: attack
+    attributes:
+      label: The attack or the leak
+      description: Who controls what, and what they can do with it. Link a CVE, an advisory or a write-up if there is one.
+    validations:
+      required: true
+  - type: textarea
+    id: positive
+    attributes:
+      label: Code it should report
+      description: One or more short examples.
+      render: groovy
+    validations:
+      required: true
+  - type: textarea
+    id: negative
+    attributes:
+      label: Similar code it should not report
+      description: The safe way to write it, and look-alikes that are not a problem.
+      render: groovy
+    validations:
+      required: true
+  - type: textarea
+    id: fix
+    attributes:
+      label: How to fix it
+      description: What a user should write instead, and whether `--fix` could do it safely.
+  - type: textarea
+    id: noise
+    attributes:
+      label: Where it may be wrong
+      description: Cases where the rule cannot tell from the file alone, and how common you think they are.

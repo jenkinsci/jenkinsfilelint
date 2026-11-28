@@ -1,0 +1,59 @@
+name: Wrong result
+type: 'Bug'
+description: jenkins-lint reports something it should not, or misses something it should report.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Never report security issues on GitHub or other public channels (Gitter/Twitter/etc.)**
+        Follow these instruction to report security issues: https://www.jenkins.io/security/#reporting-vulnerabilities
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What is wrong
+      options:
+        - An error on a file that Jenkins accepts
+        - No error on a file that Jenkins rejects
+        - A security finding that is not real
+        - A security finding that is missing
+        - The right result, but a wrong message or location
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `jenkins-lint --version`.
+      placeholder: jenkins-lint 2.1.0
+    validations:
+      required: true
+  - type: textarea
+    id: jenkinsfile
+    attributes:
+      label: The smallest Jenkinsfile that shows it
+      description: |
+        Cut the file down until removing anything more makes the problem go away.
+        Replace names, URLs and secrets with made-up ones.
+      render: groovy
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: What jenkins-lint says
+      description: The command you ran and its output. `--output-format json` helps.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected, and why
+      description: |
+        For a validation error, what Jenkins says about the same file: a
+        build's error, or `jenkins-lint --remote`.
+        For a security finding, why it is or is not exploitable.
+    validations:
+      required: true
