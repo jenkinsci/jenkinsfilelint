@@ -1,0 +1,39 @@
+name: Bug
+description: A crash, a hang, a wrong exit code, or a problem with installing or running jenkins-lint.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The output of `jenkins-lint --version`.
+      placeholder: jenkins-lint 2.1.0
+    validations:
+      required: true
+  - type: input
+    id: install
+    attributes:
+      label: How you installed it, and where it runs
+      placeholder: pip on macOS 15 (arm64), the ghcr.io image in a Jenkins agent, pre-commit
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: What you ran
+      description: The command, and a file that shows the problem if one does.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened
+      description: The full output. For a crash, run it again with `RUST_BACKTRACE=1`.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected

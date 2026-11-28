@@ -45,7 +45,44 @@ A change to the parser, the validator or an audit rule should also be checked
 on public Jenkinsfiles. `corpus/diff.py` compares the engine with the one on
 `main` on about 17,000 public files, and asks Jenkins which of them was
 right. [corpus/README.md](corpus/README.md#checking-a-change) shows how.
-Paste its summary into the pull request.
+Paste its summary into the Corpus section of the pull request.
+
+## Reporting a wrong result
+
+Most bugs in a linter are wrong results: an error on a file that Jenkins
+accepts, a finding that is not real, or one that is missing. Open a
+[Wrong result](https://github.com/jenkinsci/jenkins-lint/issues/new?template=1-wrong-result.yml)
+issue with the smallest Jenkinsfile that shows it. Cut the file down until
+removing anything more makes the problem go away.
+
+The fix starts with that file as a test case: in `tests/jenkins/`, with what
+Jenkins said about it in `expected.txt`, for a validation error; in
+`tests/rules/<rule>/`, as a `tp` or `tn` case, for a finding.
+
+## Adding a rule
+
+Open a [New rule](https://github.com/jenkinsci/jenkins-lint/issues/new?template=3-new-rule.yml)
+issue first, so that the rule is agreed on before the code is written. A
+rule's pull request has all of this, and `cargo test` checks most of it:
+
+- **Code**: `crates/jenkins-lint/src/rules/<rule_id>.rs`, with a `RULE` that
+  is listed in `RULES` and a `check` that `find` in `rules/mod.rs` calls.
+- **Cases**: `crates/jenkins-lint/tests/rules/<rule-id>/`, with at least
+  three `tp` cases (true positives, which it reports) and three `tn` cases
+  (true negatives, which it does not), one of them an `ignore` comment.
+  `expected.txt` lists each finding.
+- **Fixes**, if it has any: `tests/rules/<rule-id>/fix/`, `x.groovy` and the
+  `x.fixed.groovy` that `--fix` makes of it.
+- **Docs**: `docs/rules/<rule-id>.md`, with the sections of the other rule
+  pages (What it finds, Why it matters, How to fix it, What it does not
+  report, When to ignore it, How precise it is, References), a row in the
+  table of `docs/rules/README.md`, and an entry in `mkdocs.yml`.
+- **Precision**: run `python3 corpus/diff.py --sample 20` and check each
+  sampled finding by hand. Say in the pull request how many were real, and
+  write it in "How precise it is".
+
+A new rule shows its findings to the `pedantic` persona in its first minor
+release, and moves to `regular` in a later one if its precision holds up.
 
 ## Releases
 
