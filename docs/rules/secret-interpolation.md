@@ -142,6 +142,16 @@ pipeline:
 sh "deploy --token ${TOKEN}"
 ```
 
+## How precise it is
+
+On 17,470 public Jenkinsfiles and shared library steps from GitHub, it
+reports 4,421 findings in 1,422 files with the regular persona. In a random
+sample of 30, each was a value bound by `withCredentials` or
+`credentials()` that Groovy interpolated into the script. A few of them
+hold values that are hardly secret, such as a cloud project or account ID
+stored as a secret text credential; the process arguments still show
+them.
+
 ## References
 
 - Jenkins: [Interpolation of sensitive environment variables](https://www.jenkins.io/doc/book/pipeline/jenkinsfile/#interpolation-of-sensitive-environment-variables)

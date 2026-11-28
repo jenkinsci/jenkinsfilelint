@@ -1,7 +1,8 @@
 name: PR Auto-labeler
 
 on:
-  pull_request_target:
+  # Labels from the title and branch only: nothing of the pull request is checked out.
+  pull_request_target:  # zizmor: ignore[dangerous-triggers]
     types: [opened, reopened, synchronize]
 
 permissions: {}

@@ -386,8 +386,11 @@ mod tests {
         };
         let mut failures = Vec::new();
         let mut cases = 0;
-        for rule in ["script-injection", "secret-interpolation"] {
+        for rule in crate::rules::RULES.iter().map(|r| r.id) {
             let dir = root.join(rule).join("fix");
+            if !dir.is_dir() {
+                continue;
+            }
             for entry in std::fs::read_dir(&dir).unwrap() {
                 let path = entry.unwrap().path();
                 let name = path.file_name().unwrap().to_str().unwrap().to_string();
@@ -419,6 +422,56 @@ mod tests {
             }
         }
         assert!(cases > 20, "{cases} cases");
+        assert!(failures.is_empty(), "{}", failures.join("\n"));
+    }
+
+    /// What CONTRIBUTING.md asks of every rule: cases, a docs page with the
+    /// usual sections, a row in the rules table and an entry in mkdocs.yml.
+    #[test]
+    fn rule_contract() {
+        const SECTIONS: &[&str] = &[
+            "## What it finds",
+            "## Why it matters",
+            "## How to fix it",
+            "## What it does not report",
+            "## When to ignore it",
+            "## How precise it is",
+            "## References",
+        ];
+        let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let read = |p: &str| std::fs::read_to_string(repo.join(p)).unwrap_or_default();
+        let table = read("docs/rules/README.md");
+        let mkdocs = read("mkdocs.yml");
+        let mut failures = Vec::new();
+        for id in crate::rules::RULES.iter().map(|r| r.id) {
+            let cases = repo.join("crates/jenkins-lint/tests/rules").join(id);
+            let count = |prefix: &str| {
+                std::fs::read_dir(&cases)
+                    .map(|d| {
+                        d.filter_map(|e| e.ok()?.file_name().into_string().ok())
+                            .filter(|n| n.starts_with(prefix) && n.ends_with(".groovy"))
+                            .count()
+                    })
+                    .unwrap_or(0)
+            };
+            let (tp, tn) = (count("tp"), count("tn"));
+            if tp < 3 || tn < 3 {
+                failures.push(format!("{id}: {tp} tp and {tn} tn cases, needs 3 of each"));
+            }
+            let page = read(&format!("docs/rules/{id}.md"));
+            if page.is_empty() {
+                failures.push(format!("{id}: no docs/rules/{id}.md"));
+            }
+            for s in SECTIONS.iter().filter(|s| !page.lines().any(|l| l == **s)) {
+                failures.push(format!("{id}: docs/rules/{id}.md has no {s:?}"));
+            }
+            if !table.contains(&format!("| [{id}]({id}.md) |")) {
+                failures.push(format!("{id}: no row in docs/rules/README.md"));
+            }
+            if !mkdocs.contains(&format!("rules/{id}.md")) {
+                failures.push(format!("{id}: not in the nav of mkdocs.yml"));
+            }
+        }
         assert!(failures.is_empty(), "{}", failures.join("\n"));
     }
 }

@@ -9,6 +9,8 @@ updates:
     directory: /
     schedule:
       interval: "monthly"
+    cooldown:
+      default-days: 7
     groups:
       github-action:
         patterns:
@@ -17,6 +19,8 @@ updates:
     directory: /
     schedule:
       interval: "monthly"
+    cooldown:
+      default-days: 7
     groups:
       pip:
         patterns:
@@ -27,6 +31,8 @@ updates:
       - /tests/jenkins-server/
     schedule:
       interval: "monthly"
+    cooldown:
+      default-days: 7
     groups:
       docker:
         patterns:
@@ -35,6 +41,8 @@ updates:
     directory: /crates/jenkins-lint/
     schedule:
       interval: "monthly"
+    cooldown:
+      default-days: 7
     groups:
       cargo:
         patterns:
