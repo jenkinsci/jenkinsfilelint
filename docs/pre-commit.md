@@ -69,6 +69,10 @@ export JENKINS_TOKEN=your-api-token
 
 ## What happens on commit
 
+The hook checks the files named `Jenkinsfile` or `Jenkinsfile*`, `*.jenkinsfile`
+and `*.groovy`, in any case, and leaves out notes and copies such as
+`Jenkinsfile.md` and `Jenkinsfile.bak`.
+
 A valid file passes silently:
 
 ```bash
@@ -84,10 +88,11 @@ jenkins-lint..........................................................Failed
 - hook id: jenkins-lint
 - exit code: 1
 
-Errors encountered validating Jenkinsfile:
-WorkflowScript: 17: Expected a step @ line 17, column 11.
-             test
-             ^
+error: Expected a step
+  --> Jenkinsfile:11:17
+   |
+11 |                 test
+   |                 ^
 ```
 
 Fix the error and re-commit.
